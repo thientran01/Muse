@@ -72,6 +72,9 @@ export function MuseOverlay() {
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
+  // A starter-chip click that needs a re-target first parks its text here; the
+  // effect below fires it once `selection` has actually flipped to that element.
+  const pendingChipRef = useRef<{ text: string; key: string } | null>(null)
 
   useHostTheme(rootRef)
 
@@ -110,6 +113,22 @@ export function MuseOverlay() {
       museStore.appendThread({ id: nextThreadId(), kind: 'target-handoff', target: cur })
       // New target context — open it with an observation too (single only).
       if (selection.length === 1) openObservation(cur)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectionKey])
+
+  // Fire a parked starter-chip submit once selection has flipped to its
+  // element. Runs after the handoff/observation effect above (effects run in
+  // definition order), so the thread reads handoff → observation → user turn.
+  useEffect(() => {
+    const parked = pendingChipRef.current
+    if (!parked) return
+    // Selection settled — fire if it landed on the chip's element, otherwise
+    // abandon (the retarget was interrupted: Esc, another pick, or close). Clear
+    // either way so a stale chip can never fire on a later coincidental match.
+    pendingChipRef.current = null
+    if (selection.length === 1 && selection[0].key === parked.key) {
+      submitText(parked.text)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey])
@@ -208,6 +227,20 @@ export function MuseOverlay() {
     submitText(text)
   }
 
+  // A starter chip belongs to the element its observation is about — not
+  // necessarily the active target. If they differ, re-point to the chip's
+  // element first (the selection effect appends the handoff + cached
+  // observation), then submit once selection has flipped (see effect below).
+  function submitChip(text: string, target: SelectedElement) {
+    const current = selection.length === 1 ? selection[0] : null
+    if (current && current.key === target.key) {
+      submitText(text)
+      return
+    }
+    pendingChipRef.current = { text, key: target.key }
+    setSelection([target])
+  }
+
   // Selecting a fresh element opens the thread with a read of it. Render the
   // synchronous heuristic immediately, then swap in the LLM observation when it
   // lands. Cache per element key so re-selecting never refires the call.
@@ -217,7 +250,7 @@ export function MuseOverlay() {
       museStore.appendThread({
         id: nextThreadId(),
         kind: 'observation',
-        targetKey: target.key,
+        target,
         observation: cached.observation,
         chips: cached.chips,
         pending: false,
@@ -232,7 +265,7 @@ export function MuseOverlay() {
     museStore.appendThread({
       id,
       kind: 'observation',
-      targetKey: target.key,
+      target,
       observation: heuristic.observation,
       chips: heuristic.chips,
       pending: willFetch,
@@ -492,7 +525,7 @@ export function MuseOverlay() {
                   onContinue={submitAnswers}
                   allAnswered={allAnswered}
                   onApprove={approve}
-                  onChipClick={submitText}
+                  onChipClick={submitChip}
                 />
                 {error && (
                   <div className="px-3 pb-2">

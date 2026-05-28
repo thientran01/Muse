@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { FileEdit, ThreadMessage } from '../types'
+import type { FileEdit, SelectedElement, ThreadMessage } from '../types'
 import type { Pending } from '../store'
 import { MessageApplied } from './messages/MessageApplied'
 import { MessageClarify } from './messages/MessageClarify'
@@ -33,7 +33,7 @@ export function MuseThread({
   onContinue: () => void
   allAnswered: boolean
   onApprove: (edits: FileEdit[]) => void
-  onChipClick: (text: string) => void
+  onChipClick: (text: string, target: SelectedElement) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -56,7 +56,7 @@ export function MuseThread({
                 observation={m.observation}
                 chips={m.chips}
                 pending={m.pending}
-                onPick={onChipClick}
+                onPick={(text) => onChipClick(text, m.target)}
                 chipsDisabled={loading}
               />
             )
