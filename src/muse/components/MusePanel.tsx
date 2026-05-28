@@ -35,7 +35,7 @@ export function MusePanel({
     >
       <header className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
-          <UfoIcon size={16} loading={loading} className="text-accent" />
+          <UfoIcon size={18} loading={loading} className="text-accent" />
           Muse
           {mock && (
             <span className="ml-1 rounded border border-line/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
