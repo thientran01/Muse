@@ -40,12 +40,14 @@ export function UfoIcon({
     return () => cancelAnimationFrame(raf)
   }, [loading])
 
-  const h = Math.round((size * 22) / 24)
   return (
+    // viewBox is tightened to the ray's bounds (content lives in x[5,19] y[3.5,18.8])
+    // with a hair of margin, so the mark fills its box instead of floating in
+    // padding. overflow-visible lets the banking animation spill without clipping.
     <svg
       width={size}
-      height={h}
-      viewBox="0 0 24 22"
+      height={size}
+      viewBox="4 3 16 16"
       fill="none"
       overflow="visible"
       aria-hidden
