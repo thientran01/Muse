@@ -465,7 +465,7 @@ async function mockObserve(target: SelectedElement): Promise<ObserveResult> {
   const token = notableToken(target.classNames || '')
   const observation = token
     ? `That ${token} is setting the tone here — worth deciding if it's pulling its weight.`
-    : `A bare <${target.tag}> with almost no styling — a blank canvas, basically.`
+    : `A bare <${target.tag || 'element'}> with almost no styling — a blank canvas, basically.`
   return { observation, chips }
 }
 

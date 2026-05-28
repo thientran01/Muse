@@ -39,10 +39,6 @@ export type MuseState = {
   future: HistoryEntry[]
   historyLoading: boolean
   showRevertConfirm: boolean
-  // Per-element observation cache, keyed by SelectedElement.key. Persists for
-  // the session so re-selecting an element doesn't refire /observe. NOT cleared
-  // by resetConversation — it's an across-conversation memo, like history.
-  observationCache: Record<string, ObserveResult>
 }
 
 const initialState: MuseState = {
@@ -60,11 +56,17 @@ const initialState: MuseState = {
   future: [],
   historyLoading: false,
   showRevertConfirm: false,
-  observationCache: {},
 }
 
 let state: MuseState = initialState
 const subscribers = new Set<() => void>()
+
+// Per-element observation memo, keyed by SelectedElement.key. Kept OFF the
+// reactive `state` object on purpose: it's read imperatively (never rendered
+// from directly), so it must not participate in the useSyncExternalStore
+// snapshot — mutating `state` without notify() would break that invariant.
+// Resets on full refresh / HMR of this file, like the rest of the store.
+let observationCache: Record<string, ObserveResult> = {}
 
 function notify() {
   subscribers.forEach((fn) => fn())
@@ -138,10 +140,15 @@ export const museStore = {
     state = { ...state, thread: updated }
     notify()
   },
-  /** Memo an element's /observe result. No notify — nothing renders from the
-   * cache directly; it's read via getState() when a target is (re)selected. */
+  /** Read an element's memoized /observe result, if any. */
+  getObservation(key: string): ObserveResult | undefined {
+    return observationCache[key]
+  },
+  /** Memo an element's /observe result. Off-state, so no notify — nothing
+   * renders from the cache directly; it's read via getObservation() when a
+   * target is (re)selected. */
   cacheObservation(key: string, result: ObserveResult) {
-    state = { ...state, observationCache: { ...state.observationCache, [key]: result } }
+    observationCache = { ...observationCache, [key]: result }
   },
   /** Swap the LLM read (or a fallback) into an existing observation bubble,
    * clearing its pending shimmer. No-op if the bubble was scrolled past and

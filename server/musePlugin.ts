@@ -131,7 +131,11 @@ function parseObserveJson(text: string): { observation: string; chips: string[] 
     const obj = JSON.parse(t.slice(start, end + 1)) as { observation?: unknown; chips?: unknown }
     const observation = typeof obj.observation === 'string' ? obj.observation.trim() : ''
     const chips = Array.isArray(obj.chips)
-      ? obj.chips.filter((c): c is string => typeof c === 'string' && c.trim().length > 0).map((c) => c.trim()).slice(0, 3)
+      ? obj.chips
+          .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+          .map((c) => c.trim())
+          .filter((c, i, a) => a.indexOf(c) === i) // de-dupe — chips are React keys
+          .slice(0, 3)
       : []
     if (!observation || chips.length === 0) return null
     return { observation, chips }
