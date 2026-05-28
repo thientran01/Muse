@@ -123,8 +123,11 @@ export function MuseOverlay() {
   useEffect(() => {
     const parked = pendingChipRef.current
     if (!parked) return
+    // Selection settled — fire if it landed on the chip's element, otherwise
+    // abandon (the retarget was interrupted: Esc, another pick, or close). Clear
+    // either way so a stale chip can never fire on a later coincidental match.
+    pendingChipRef.current = null
     if (selection.length === 1 && selection[0].key === parked.key) {
-      pendingChipRef.current = null
       submitText(parked.text)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
