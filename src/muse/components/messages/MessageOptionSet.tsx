@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CaretRight } from '@phosphor-icons/react'
 import type { ProposedOption } from '../../types'
 import { DiffView } from '../DiffView'
 
@@ -27,6 +28,7 @@ export function MessageOptionSet({
   onPreviewEnd: () => void
 }) {
   const [focused, setFocused] = useState(0)
+  const [showDiff, setShowDiff] = useState(false)
   const safe = Math.min(focused, Math.max(0, options.length - 1))
   const focusedOption = options[safe]
   const multi = options.length > 1
@@ -82,13 +84,29 @@ export function MessageOptionSet({
       </div>
 
       {focusedOption && (
-        <div className="space-y-2">
-          {focusedOption.edits.map((edit) => (
-            <div key={edit.fileName} className="space-y-1">
-              <span className="block truncate font-mono text-xs text-fg-muted">{fileShort(edit.fileName)}</span>
-              <DiffView original={originals[edit.fileName] ?? ''} newContent={edit.newContent} />
+        <div className="space-y-1.5">
+          {/* Diff is the proof, not the choice — collapsed by default so the
+              option cards stay visible no matter how large the change is. */}
+          <button
+            type="button"
+            onClick={() => setShowDiff((v) => !v)}
+            className="flex items-center gap-1 text-[11px] text-fg-faint transition hover:text-fg-muted"
+          >
+            <CaretRight size={11} weight="bold" className={`transition-transform ${showDiff ? 'rotate-90' : ''}`} />
+            {showDiff ? 'Hide the code change' : 'View the code change'}
+          </button>
+          {showDiff && (
+            // Height-capped + internally scrollable so a big diff can never push
+            // the options out of view.
+            <div className="max-h-[28vh] space-y-2 overflow-y-auto">
+              {focusedOption.edits.map((edit) => (
+                <div key={edit.fileName} className="space-y-1">
+                  <span className="block truncate font-mono text-xs text-fg-muted">{fileShort(edit.fileName)}</span>
+                  <DiffView original={originals[edit.fileName] ?? ''} newContent={edit.newContent} />
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
