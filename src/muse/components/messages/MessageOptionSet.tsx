@@ -1,79 +1,93 @@
 import { useState } from 'react'
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
-import type { FileEdit } from '../../types'
+import type { ProposedOption } from '../../types'
 import { DiffView } from '../DiffView'
-import { PrimaryButton } from '../PrimaryButton'
 
 const fileShort = (p: string) => p.split(/[\\/]/).pop() ?? p
 
+// One or more design directions Muse proposed. On the ACTIVE bubble each card
+// is hoverable (live-previews its edit on the page) and clickable (commits it).
+// Inactive bubbles (a newer turn took over) render read-only.
 export function MessageOptionSet({
-  edits,
+  options,
   originals,
   rationale,
   loading,
-  onApprove,
   active,
+  onApprove,
+  onPreview,
+  onPreviewEnd,
 }: {
-  edits: FileEdit[]
+  options: ProposedOption[]
   originals: Record<string, string>
   rationale: string
   loading: boolean
-  onApprove: () => void
-  /** Active = renders the approve button. Inactive (a newer bubble took
-   *  over before this one was approved) = read-only diff. */
   active: boolean
+  onApprove: (option: ProposedOption) => void
+  onPreview: (option: ProposedOption) => void
+  onPreviewEnd: () => void
 }) {
-  const [idx, setIdx] = useState(0)
-  const safe = Math.min(idx, Math.max(0, edits.length - 1))
-  const edit = edits[safe]
-  const multi = edits.length > 1
+  const [focused, setFocused] = useState(0)
+  const safe = Math.min(focused, Math.max(0, options.length - 1))
+  const focusedOption = options[safe]
+  const multi = options.length > 1
 
   return (
     <div className="space-y-3">
       {rationale && <p className="text-sm leading-relaxed text-fg">{rationale}</p>}
 
-      {edit && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <span className="truncate font-mono text-fg-muted">{fileShort(edit.fileName)}</span>
-            {multi && (
-              <div className="flex shrink-0 items-center gap-1.5 text-fg-faint">
-                <button
-                  data-testid="muse-diff-prev"
-                  onClick={() => setIdx(Math.max(0, safe - 1))}
-                  disabled={safe === 0}
-                  className="rounded p-1 transition hover:bg-line/5 hover:text-fg disabled:opacity-30"
-                  aria-label="Previous file"
-                >
-                  <CaretLeft size={14} />
-                </button>
-                <span className="tabular-nums">
-                  {safe + 1} of {edits.length} files
-                </span>
-                <button
-                  data-testid="muse-diff-next"
-                  onClick={() => setIdx(Math.min(edits.length - 1, safe + 1))}
-                  disabled={safe === edits.length - 1}
-                  className="rounded p-1 transition hover:bg-line/5 hover:text-fg disabled:opacity-30"
-                  aria-label="Next file"
-                >
-                  <CaretRight size={14} />
-                </button>
+      <div className="space-y-1.5" onMouseLeave={active ? onPreviewEnd : undefined}>
+        {options.map((opt, i) => {
+          const isFocused = i === safe
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              disabled={!active || loading}
+              data-testid={`muse-option-${i}`}
+              onMouseEnter={() => {
+                setFocused(i)
+                if (active && !loading) onPreview(opt)
+              }}
+              onFocus={() => {
+                setFocused(i)
+                if (active && !loading) onPreview(opt)
+              }}
+              onClick={() => {
+                if (!active || loading) return
+                setFocused(i) // keep the shown diff aligned with what's being applied
+                onApprove(opt)
+              }}
+              className={`block w-full rounded-xl border px-3 py-2.5 text-left transition disabled:cursor-default ${
+                isFocused && active
+                  ? 'border-accent/40 bg-accent/[0.05]'
+                  : 'border-line/15 hover:border-line/30'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-fg">{multi ? opt.label : 'Proposed change'}</span>
+                {active && (
+                  <span className="shrink-0 text-[11px] text-fg-faint">
+                    {loading ? 'applying…' : isFocused ? 'click to apply' : 'hover to preview'}
+                  </span>
+                )}
               </div>
-            )}
-          </div>
-          <DiffView original={originals[edit.fileName] ?? ''} newContent={edit.newContent} />
-        </div>
-      )}
+              {opt.description && (
+                <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">{opt.description}</p>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-      {active && (
-        <PrimaryButton
-          testId="muse-approve"
-          onClick={onApprove}
-          loading={loading}
-          idle={multi ? `Approve & apply (${edits.length} files)` : 'Approve & apply'}
-          busy="Applying…"
-        />
+      {focusedOption && (
+        <div className="space-y-2">
+          {focusedOption.edits.map((edit) => (
+            <div key={edit.fileName} className="space-y-1">
+              <span className="block truncate font-mono text-xs text-fg-muted">{fileShort(edit.fileName)}</span>
+              <DiffView original={originals[edit.fileName] ?? ''} newContent={edit.newContent} />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

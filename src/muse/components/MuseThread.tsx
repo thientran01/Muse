@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { FileEdit, SelectedElement, ThreadMessage } from '../types'
+import type { ProposedOption, SelectedElement, ThreadMessage } from '../types'
 import type { Pending } from '../store'
 import { MessageApplied } from './messages/MessageApplied'
 import { MessageClarify } from './messages/MessageClarify'
@@ -21,6 +21,8 @@ export function MuseThread({
   allAnswered,
   // option-set handlers
   onApprove,
+  onPreview,
+  onPreviewEnd,
   // observation starter-chip handler
   onChipClick,
 }: {
@@ -32,7 +34,9 @@ export function MuseThread({
   onSelectAnswer: (qi: number, label: string) => void
   onContinue: () => void
   allAnswered: boolean
-  onApprove: (edits: FileEdit[]) => void
+  onApprove: (option: ProposedOption) => void
+  onPreview: (option: ProposedOption) => void
+  onPreviewEnd: () => void
   onChipClick: (text: string, target: SelectedElement) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -76,18 +80,22 @@ export function MuseThread({
                 answeredWith={m.answeredWith}
               />
             )
-          case 'option-set':
+          case 'option-set': {
+            const isActive = pending?.kind === 'propose' && pending.toolUseId === m.toolUseId
             return (
               <MessageOptionSet
                 key={m.id}
-                edits={m.edits}
+                options={m.options}
                 originals={originals}
                 rationale={m.rationale}
                 loading={loading}
-                onApprove={() => onApprove(m.edits)}
-                active={pending?.kind === 'propose' && pending.toolUseId === m.toolUseId}
+                onApprove={onApprove}
+                onPreview={onPreview}
+                onPreviewEnd={onPreviewEnd}
+                active={isActive}
               />
             )
+          }
           case 'applied':
             return <MessageApplied key={m.id} fileCount={m.fileCount} rationale={m.rationale} />
           case 'target-handoff':

@@ -3,8 +3,10 @@ import './muse.css'
 import { museChat, museObserve, museWrite } from './api'
 import { MOCK } from './config'
 import { heuristicObservation } from './observation'
+import { previewDeltaForTarget } from './diffPreview'
 import { useSelection } from './useSelection'
 import { useHostTheme } from './hooks/useHostTheme'
+import { usePreviewLayer } from './hooks/usePreviewLayer'
 import { museStore, nextThreadId, useMuseStore } from './store'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { Composer } from './components/Composer'
@@ -26,7 +28,9 @@ import type {
   FileEdit,
   HistoryEntry,
   ObserveResult,
+  ProposedOption,
   ProposeInput,
+  ProposeOptionsInput,
   SelectedElement,
   ToolUseBlock,
 } from './types'
@@ -77,6 +81,7 @@ export function MuseOverlay() {
   const pendingChipRef = useRef<{ text: string; key: string } | null>(null)
 
   useHostTheme(rootRef)
+  const { preview, restore } = usePreviewLayer()
 
   // When the SET of selected elements changes:
   //   - Empty selection → wipe conversation.
@@ -135,6 +140,7 @@ export function MuseOverlay() {
 
   function requestClose() {
     if (closing) return
+    restore() // never leave a hover-preview stranded when the panel closes
     setClosing(true)
     closeTimer.current = window.setTimeout(() => {
       clearSelection()
@@ -176,20 +182,42 @@ export function MuseOverlay() {
         })
         museStore.appendThread({ id: nextThreadId(), kind: 'clarify', toolUseId: tu.id, questions })
       } else {
-        const input = tu.input as ProposeInput
         const allowed = new Set(Object.keys(resp.originals ?? {}))
-        const edits = (Array.isArray(input.edits) ? input.edits : [])
-          .map((e) => ({ fileName: normPath(e.fileName ?? ''), newContent: e.newContent }))
-          .filter((e) => typeof e.newContent === 'string' && allowed.has(e.fileName))
-        if (edits.length === 0) {
+        // Normalize + sandbox an edits array to files we actually read this turn.
+        const cleanEdits = (raw: unknown): FileEdit[] =>
+          (Array.isArray(raw) ? raw : [])
+            .map((e) => ({ fileName: normPath((e as FileEdit)?.fileName ?? ''), newContent: (e as FileEdit)?.newContent }))
+            .filter((e): e is FileEdit => typeof e.newContent === 'string' && allowed.has(e.fileName))
+
+        let options: ProposedOption[] = []
+        let rationale = ''
+        if (tu.name === 'propose_options') {
+          const input = tu.input as ProposeOptionsInput
+          rationale = input.rationale ?? ''
+          options = (Array.isArray(input.options) ? input.options : [])
+            .map((o, i) => ({
+              id: o.id || `opt-${i}`,
+              label: o.label || `Option ${i + 1}`,
+              description: o.description || '',
+              edits: cleanEdits(o.edits),
+            }))
+            .filter((o) => o.edits.length > 0)
+        } else {
+          // propose_edit fallback — wrap a single edit as one option.
+          const input = tu.input as ProposeInput
+          rationale = input.rationale ?? ''
+          const edits = cleanEdits(input.edits)
+          if (edits.length > 0) options = [{ id: 'opt-0', label: 'Proposed change', description: '', edits }]
+        }
+
+        if (options.length === 0) {
           museStore.setState({ error: "Muse didn't return changes for the selected element(s). Try rephrasing." })
           return
         }
-        const rationale = input.rationale ?? ''
         museStore.setState({
-          pending: { kind: 'propose', toolUseId: tu.id, edits, rationale },
+          pending: { kind: 'propose', toolUseId: tu.id, options, rationale },
         })
-        museStore.appendThread({ id: nextThreadId(), kind: 'option-set', toolUseId: tu.id, edits, rationale })
+        museStore.appendThread({ id: nextThreadId(), kind: 'option-set', toolUseId: tu.id, options, rationale })
       }
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
@@ -305,10 +333,19 @@ export function MuseOverlay() {
     ])
   }
 
-  async function approve(edits: FileEdit[]) {
+  // Hover an option card → live-preview its edit on the active element.
+  function previewOption(option: ProposedOption) {
+    const t = selection.length === 1 ? selection[0] : null
+    if (!t?.node) return
+    const delta = previewDeltaForTarget(option, museStore.getState().originals, t)
+    if (delta) preview(t.node, delta)
+  }
+
+  async function approve(option: ProposedOption) {
     const s = museStore.getState()
     if (!s.pending || s.pending.kind !== 'propose' || s.loading) return
-    const rationale = s.pending.rationale
+    restore() // drop any hover-preview styles before the real write/HMR lands
+    const edits = option.edits
     museStore.setState({ loading: true, error: null })
     try {
       await museWrite(edits)
@@ -319,7 +356,7 @@ export function MuseOverlay() {
           after: e.newContent,
         })),
         elements: selection,
-        label: rationale.slice(0, 80),
+        label: (option.description || option.label).slice(0, 80),
       }
       museStore.setState((cur) => ({
         past: [...cur.past, entry],
@@ -525,6 +562,8 @@ export function MuseOverlay() {
                   onContinue={submitAnswers}
                   allAnswered={allAnswered}
                   onApprove={approve}
+                  onPreview={previewOption}
+                  onPreviewEnd={restore}
                   onChipClick={submitChip}
                 />
                 {error && (
