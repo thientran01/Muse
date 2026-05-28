@@ -70,9 +70,10 @@ export type ThreadMessage =
   | {
       id: string
       kind: 'observation'
-      // The element this opener belongs to (its `key`), so we can match the
-      // async LLM read back to the right bubble.
-      targetKey: string
+      // The element this opener is about. Carried in full (not just its key) so
+      // clicking one of its starter chips can re-target Muse to THIS element,
+      // even if the active target has since moved on.
+      target: SelectedElement
       observation: string
       chips: string[]
       // True while the instant heuristic is showing and the LLM read is still
