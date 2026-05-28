@@ -1,6 +1,14 @@
 import { MOCK } from './config'
 import { fxEdits, fxOriginals } from './fixtures'
-import type { ChatMessage, ChatResponse, ClarifyingQuestion, FileEdit, SelectedElement } from './types'
+import { heuristicObservation } from './observation'
+import type {
+  ChatMessage,
+  ChatResponse,
+  ClarifyingQuestion,
+  FileEdit,
+  ObserveResult,
+  SelectedElement,
+} from './types'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -25,6 +33,29 @@ export async function museChat(
     }),
   })
   return (await res.json()) as ChatResponse
+}
+
+export async function museObserve(target: SelectedElement): Promise<ObserveResult> {
+  if (MOCK) return mockObserve(target)
+
+  const res = await fetch('/api/muse/observe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      target: {
+        fileName: target.fileName,
+        tag: target.tag,
+        classNames: target.classNames,
+        text: target.text,
+        line: target.line,
+      },
+    }),
+  })
+  const data = (await res.json()) as Partial<ObserveResult> & { error?: string }
+  if (data.error || !data.observation || !Array.isArray(data.chips)) {
+    throw new Error(data.error ?? 'Observe failed')
+  }
+  return { observation: data.observation, chips: data.chips }
 }
 
 export async function museWrite(files: FileEdit[]): Promise<void> {
@@ -402,5 +433,39 @@ async function mockChat(targets: SelectedElement[], messages: ChatMessage[]): Pr
   const presets = INTENT_PRESETS[intentForPresets]
   const preset = pickOne(presets)
   return mockPropose(targets, preset)
+}
+
+// Mock observation — stands in for /api/muse/observe with no credits. Grounds
+// the read in a REAL class token off the element so it reads like Muse actually
+// looked, and so it visibly differs from the synchronous heuristic it replaces.
+// Chips reuse the heuristic's (already tag-aware). Slight delay so the swap is
+// perceptible in the demo.
+const NOTABLE_CLASS = [
+  /\btext-(4xl|5xl|6xl|7xl|8xl|9xl)\b/,
+  /\bfont-(thin|light|normal|medium|semibold|bold|extrabold|black)\b/,
+  /\b(rounded(-\w+)?|rounded-full)\b/,
+  /\bshadow(-\w+)?\b/,
+  /\bbg-[\w/-]+\b/,
+  /\btracking-(tight|wide|wider|widest)\b/,
+  /\bp[xy]?-\d+(\.\d+)?\b/,
+] as const
+
+function notableToken(cls: string): string | null {
+  for (const re of NOTABLE_CLASS) {
+    const m = cls.match(re)
+    if (m) return m[0]
+  }
+  const first = cls.split(/\s+/).filter(Boolean)[0]
+  return first ?? null
+}
+
+async function mockObserve(target: SelectedElement): Promise<ObserveResult> {
+  await delay(700)
+  const { chips } = heuristicObservation(target)
+  const token = notableToken(target.classNames || '')
+  const observation = token
+    ? `That ${token} is setting the tone here — worth deciding if it's pulling its weight.`
+    : `A bare <${target.tag}> with almost no styling — a blank canvas, basically.`
+  return { observation, chips }
 }
 

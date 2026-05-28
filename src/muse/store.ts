@@ -1,5 +1,12 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ClarifyingQuestion, FileEdit, HistoryEntry, ThreadMessage } from './types'
+import type {
+  ChatMessage,
+  ClarifyingQuestion,
+  FileEdit,
+  HistoryEntry,
+  ObserveResult,
+  ThreadMessage,
+} from './types'
 
 // In-memory only. State resets on full page refresh, or on HMR of THIS file.
 // HMR of other Muse files (components) does not reset state — the store
@@ -32,6 +39,10 @@ export type MuseState = {
   future: HistoryEntry[]
   historyLoading: boolean
   showRevertConfirm: boolean
+  // Per-element observation cache, keyed by SelectedElement.key. Persists for
+  // the session so re-selecting an element doesn't refire /observe. NOT cleared
+  // by resetConversation — it's an across-conversation memo, like history.
+  observationCache: Record<string, ObserveResult>
 }
 
 const initialState: MuseState = {
@@ -49,6 +60,7 @@ const initialState: MuseState = {
   future: [],
   historyLoading: false,
   showRevertConfirm: false,
+  observationCache: {},
 }
 
 let state: MuseState = initialState
@@ -123,6 +135,24 @@ export const museStore = {
     const target = updated[idx]
     if (target.kind !== 'clarify') return
     updated[idx] = { ...target, answeredWith: { ...answers } }
+    state = { ...state, thread: updated }
+    notify()
+  },
+  /** Memo an element's /observe result. No notify — nothing renders from the
+   * cache directly; it's read via getState() when a target is (re)selected. */
+  cacheObservation(key: string, result: ObserveResult) {
+    state = { ...state, observationCache: { ...state.observationCache, [key]: result } }
+  },
+  /** Swap the LLM read (or a fallback) into an existing observation bubble,
+   * clearing its pending shimmer. No-op if the bubble was scrolled past and
+   * is gone, or the id no longer points at an observation. */
+  resolveObservation(id: string, result: ObserveResult) {
+    const idx = state.thread.findIndex((m) => m.id === id && m.kind === 'observation')
+    if (idx === -1) return
+    const target = state.thread[idx]
+    if (target.kind !== 'observation') return
+    const updated = state.thread.slice()
+    updated[idx] = { ...target, observation: result.observation, chips: result.chips, pending: false }
     state = { ...state, thread: updated }
     notify()
   },

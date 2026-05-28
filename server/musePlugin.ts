@@ -8,6 +8,9 @@
 //                             propose_edit). Accepts one OR many target elements
 //                             (a batch), reads each element's source file, and
 //                             returns edits across however many files change.
+//    POST /api/muse/observe-> a cheap, tool-less, ~300-token call that returns a
+//                             one-line observation + 3 starter chips when the
+//                             user selects a fresh element (the thread opener).
 //    POST /api/muse/write  -> writes the approved files to disk (each sandboxed
 //                             to src/), which triggers Vite HMR -> live reload.
 //
@@ -112,6 +115,31 @@ function resolveInSrc(root: string, fileName: unknown): string | null {
 
 const relOf = (root: string, abs: string) => path.relative(root, abs).replace(/\\/g, '/')
 
+// The observe endpoint asks for a bare JSON object, but models sometimes wrap
+// it in prose or a ```json fence. Be liberal: strip fences, grab the outermost
+// braces, parse, and validate the shape. Returns null if it can't recover a
+// usable {observation, chips} — the client falls back to its heuristic opener.
+function parseObserveJson(text: string): { observation: string; chips: string[] } | null {
+  if (!text) return null
+  let t = text.trim()
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fence) t = fence[1].trim()
+  const start = t.indexOf('{')
+  const end = t.lastIndexOf('}')
+  if (start === -1 || end === -1 || end < start) return null
+  try {
+    const obj = JSON.parse(t.slice(start, end + 1)) as { observation?: unknown; chips?: unknown }
+    const observation = typeof obj.observation === 'string' ? obj.observation.trim() : ''
+    const chips = Array.isArray(obj.chips)
+      ? obj.chips.filter((c): c is string => typeof c === 'string' && c.trim().length > 0).map((c) => c.trim()).slice(0, 3)
+      : []
+    if (!observation || chips.length === 0) return null
+    return { observation, chips }
+  } catch {
+    return null
+  }
+}
+
 export function musePlugin(): Plugin {
   let root = process.cwd()
   let apiKey = ''
@@ -196,6 +224,60 @@ export function musePlugin(): Plugin {
           })
         } catch (err) {
           console.error('[muse] /chat error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/observe ----------------------------------------
+      // Cheap opener: one element in, {observation, chips} out. No tools, low
+      // token cap. The client renders an instant heuristic first and swaps in
+      // this read when it lands, caching per element so it fires at most once.
+      server.middlewares.use('/api/muse/observe', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          if (!apiKey) {
+            return sendJson(res, 500, {
+              error:
+                'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the repo root (ANTHROPIC_API_KEY=sk-ant-...) and restart `npm run dev`.',
+            })
+          }
+
+          const { target } = JSON.parse(await readBody(req))
+          if (!target || typeof target !== 'object') {
+            return sendJson(res, 400, { error: 'No target element provided.' })
+          }
+          const abs = resolveInSrc(root, target.fileName)
+          if (!abs) {
+            return sendJson(res, 400, {
+              error: 'The selected element does not map to an editable file under src/.',
+            })
+          }
+          const rel = relOf(root, abs)
+          const source = fs.readFileSync(abs, 'utf8')
+
+          const context =
+            `Selected element: <${target.tag ?? '?'}> in ${rel}` +
+            (target.text ? ` — "${target.text}"` : '') +
+            `\nIts className: "${target.classNames ?? ''}"\n\n` +
+            `Full source of ${rel} (for surrounding context):\n\`\`\`tsx\n${source}\n\`\`\`\n\n` +
+            `Give your read as the JSON object described in your instructions — nothing else.`
+
+          const client = new Anthropic({ apiKey })
+          const resp = await client.messages.create({
+            model,
+            max_tokens: 300,
+            system: [{ type: 'text', text: OBSERVE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+            messages: [{ role: 'user', content: context }],
+          })
+
+          const textBlock = resp.content.find((b) => b.type === 'text') as { text?: string } | undefined
+          const parsed = parseObserveJson(textBlock?.text ?? '')
+          if (!parsed) {
+            return sendJson(res, 200, { error: "Couldn't read a usable observation." })
+          }
+          return sendJson(res, 200, parsed)
+        } catch (err) {
+          console.error('[muse] /observe error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
         }
       })

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './muse.css'
-import { museChat, museWrite } from './api'
+import { museChat, museObserve, museWrite } from './api'
 import { MOCK } from './config'
+import { heuristicObservation } from './observation'
 import { useSelection } from './useSelection'
 import { useHostTheme } from './hooks/useHostTheme'
 import { museStore, nextThreadId, useMuseStore } from './store'
@@ -88,6 +89,8 @@ export function MuseOverlay() {
     if (prevKeys.length === 0) {
       prevKeysRef.current = curKeys
       museStore.resetConversation(true)
+      // First target this session — open with an observation of it.
+      if (selection.length === 1) openObservation(selection[0])
       return
     }
     // Pure shrink (cur ⊆ prev) OR pure grow (prev ⊆ cur) = no handoff.
@@ -99,6 +102,8 @@ export function MuseOverlay() {
     const cur = selection[0]
     if (cur) {
       museStore.appendThread({ id: nextThreadId(), kind: 'target-handoff', target: cur })
+      // New target context — open it with an observation too (single only).
+      if (selection.length === 1) openObservation(cur)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey])
@@ -168,10 +173,11 @@ export function MuseOverlay() {
     }
   }
 
-  // Send the composer text as the next user message. Reads from store.getState()
-  // so a rapid double-submit can't see a stale closed-over `pending` / `messages`.
-  function sendDraft() {
-    const text = draft.trim()
+  // Send a message as the next user turn. Reads from store.getState() so a rapid
+  // double-submit can't see a stale closed-over `pending` / `messages`. Shared by
+  // the composer (sendDraft) and the observation starter chips (onChipClick).
+  function submitText(raw: string) {
+    const text = raw.trim()
     if (!text) return
     const s = museStore.getState()
     museStore.setState({ draft: '' })
@@ -184,6 +190,50 @@ export function MuseOverlay() {
       ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: s.pending.toolUseId, content: text }] }
       : { role: 'user', content: text }
     runChat([...s.messages, next])
+  }
+
+  function sendDraft() {
+    submitText(museStore.getState().draft)
+  }
+
+  // Selecting a fresh element opens the thread with a read of it. Render the
+  // synchronous heuristic immediately, then swap in the LLM observation when it
+  // lands. Cache per element key so re-selecting never refires the call.
+  function openObservation(target: SelectedElement) {
+    const cached = museStore.getState().observationCache[target.key]
+    if (cached) {
+      museStore.appendThread({
+        id: nextThreadId(),
+        kind: 'observation',
+        targetKey: target.key,
+        observation: cached.observation,
+        chips: cached.chips,
+        pending: false,
+      })
+      return
+    }
+
+    const heuristic = heuristicObservation(target)
+    // Real mode needs a source file to observe; mock mode synthesizes one.
+    const willFetch = MOCK || !!target.fileName
+    const id = nextThreadId()
+    museStore.appendThread({
+      id,
+      kind: 'observation',
+      targetKey: target.key,
+      observation: heuristic.observation,
+      chips: heuristic.chips,
+      pending: willFetch,
+    })
+    if (!willFetch) return
+
+    museObserve(target)
+      .then((res) => {
+        museStore.cacheObservation(target.key, res)
+        museStore.resolveObservation(id, res)
+      })
+      // Keep the heuristic on failure — just drop the pending shimmer.
+      .catch(() => museStore.resolveObservation(id, heuristic))
   }
 
   function submitAnswers() {
@@ -422,6 +472,7 @@ export function MuseOverlay() {
                   onContinue={submitAnswers}
                   allAnswered={allAnswered}
                   onApprove={approve}
+                  onChipClick={submitText}
                 />
                 {error && (
                   <div className="px-3 pb-2">

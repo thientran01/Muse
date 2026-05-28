@@ -18,6 +18,11 @@ export type AskInput = { questions: ClarifyingQuestion[] }
 export type FileEdit = { fileName: string; newContent: string }
 export type ProposeInput = { edits: FileEdit[]; rationale: string }
 
+// --- Observation opener (POST /api/muse/observe) ---
+// A one-line read of a freshly-selected element + 3 tag-aware starter prompts.
+// Rendered as the opener of every new target context.
+export type ObserveResult = { observation: string; chips: string[] }
+
 // --- Anthropic content blocks (the subset we care about) ---
 export type TextBlock = { type: 'text'; text: string }
 export type ToolUseBlock = {
@@ -62,6 +67,18 @@ export type ChatMessage =
 // new turn moves past them.
 export type ThreadMessage =
   | { id: string; kind: 'user'; text: string }
+  | {
+      id: string
+      kind: 'observation'
+      // The element this opener belongs to (its `key`), so we can match the
+      // async LLM read back to the right bubble.
+      targetKey: string
+      observation: string
+      chips: string[]
+      // True while the instant heuristic is showing and the LLM read is still
+      // in flight; flips false when the read lands (or the fetch gives up).
+      pending: boolean
+    }
   | {
       id: string
       kind: 'clarify'
