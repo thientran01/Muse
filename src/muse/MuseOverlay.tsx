@@ -236,6 +236,7 @@ export function MuseOverlay() {
     if (!text) return
     const s = museStore.getState()
     if (s.loading) return // mirror approve(): never stack a turn on an in-flight one
+    restore() // a new turn supersedes any option-set being hover-previewed
     museStore.appendThread({ id: nextThreadId(), kind: 'user', text })
     // If a clarify is currently pending and the user typed in the composer
     // instead of using the option buttons, freeze whatever partial selections
@@ -336,7 +337,12 @@ export function MuseOverlay() {
   // Hover an option card → live-preview its edit on the active element.
   function previewOption(option: ProposedOption) {
     const t = selection.length === 1 ? selection[0] : null
-    if (!t?.node) return
+    // No single live element to preview on (batch, or unmappable) — make sure
+    // any previously-applied preview is cleared rather than left stranded.
+    if (!t?.node) {
+      restore()
+      return
+    }
     const delta = previewDeltaForTarget(option, museStore.getState().originals, t)
     if (delta) preview(t.node, delta)
   }

@@ -31,6 +31,12 @@ export function usePreviewLayer() {
       if (!snap.current) {
         snap.current = { node, className: node.className, cssText: node.style.cssText }
       }
+      // Reset to the captured baseline before applying — so switching between
+      // option cards on the same node overwrites cleanly instead of compounding
+      // (a prop set by the previous option but absent from this one would
+      // otherwise linger, since Object.assign only sets what's in delta.style).
+      node.className = snap.current.className
+      node.style.cssText = snap.current.cssText
       node.className = delta.newClassName
       Object.assign(node.style, delta.style)
     },

@@ -37,24 +37,34 @@ function newClassNameForTarget(
   currentClass: string,
 ): string | null {
   const lines = diffLines(original, newContent)
-  const dels: string[] = []
-  const adds: string[] = []
+  const want = currentClass.trim()
+  const allAdds: string[] = []
   for (const l of lines) {
-    if (l.type === 'del') {
+    if (l.type === 'add') {
       const c = classNameOf(l.text)
-      if (c !== null) dels.push(c)
-    } else if (l.type === 'add') {
-      const c = classNameOf(l.text)
-      if (c !== null) adds.push(c)
+      if (c !== null) allAdds.push(c)
     }
   }
-  if (adds.length === 0) return null
-  const want = currentClass.trim()
-  // Prefer the add whose paired del matches the live element's className.
-  const matchIdx = dels.findIndex((d) => d === want)
-  if (matchIdx !== -1 && adds[matchIdx] !== undefined) return adds[matchIdx]
-  // Otherwise: if exactly one className changed, it's almost certainly ours.
-  if (adds.length === 1) return adds[0]
+  if (allAdds.length === 0) return null
+
+  // Walk sequentially: find the removed line that still carries the element's
+  // CURRENT className, then return the className of the next added line in the
+  // same change hunk. Pairing by adjacency (not by independent index) is robust
+  // when a file changes more than one element.
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].type !== 'del') continue
+    if (classNameOf(lines[i].text) !== want) continue
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].type === 'same') break // past this hunk — no paired add
+      if (lines[j].type === 'add') {
+        const c = classNameOf(lines[j].text)
+        if (c !== null) return c
+      }
+    }
+  }
+  // Fallback: if exactly one className changed in the file, it's almost
+  // certainly the target's.
+  if (allAdds.length === 1) return allAdds[0]
   return null
 }
 
@@ -94,14 +104,18 @@ const arbitrary = (token: string, prefix: string): string | null => {
 // Anything not in this focused map is left to the className swap.
 function resolveStyles(className: string): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const t of className.split(/\s+/).filter(Boolean)) {
+  const tokens = className.split(/\s+/).filter(Boolean)
+  // An explicit leading-* always wins over the line-height bundled with text-*,
+  // regardless of token order (Tailwind's own precedence).
+  const hasLeading = tokens.some((t) => /^leading-/.test(t))
+  for (const t of tokens) {
     let m: RegExpMatchArray | null
 
     if ((m = t.match(/^font-(\w+)$/)) && FONT_WEIGHT[m[1]]) out.fontWeight = FONT_WEIGHT[m[1]]
     else if ((m = t.match(/^text-(xs|sm|base|lg|xl|\dxl)$/)) && FONT_SIZE[m[1]]) {
       const [fs, lh] = FONT_SIZE[m[1]]
       out.fontSize = fs
-      out.lineHeight = lh
+      if (!hasLeading) out.lineHeight = lh
     } else if ((m = t.match(/^text-\[length:(.+)\]$/))) out.fontSize = m[1]
     else if ((m = t.match(/^tracking-(\w+)$/)) && TRACKING[m[1]]) out.letterSpacing = TRACKING[m[1]]
     else if ((m = t.match(/^tracking-\[(.+)\]$/))) out.letterSpacing = m[1]

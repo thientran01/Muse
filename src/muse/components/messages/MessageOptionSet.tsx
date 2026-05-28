@@ -32,10 +32,12 @@ export function MessageOptionSet({
   const multi = options.length > 1
 
   return (
-    <div className="space-y-3">
+    // Leaving the whole bubble (cards OR the diff below) ends the preview, so it
+    // persists while the user moves down to read the focused option's diff.
+    <div className="space-y-3" onMouseLeave={active ? onPreviewEnd : undefined}>
       {rationale && <p className="text-sm leading-relaxed text-fg">{rationale}</p>}
 
-      <div className="space-y-1.5" onMouseLeave={active ? onPreviewEnd : undefined}>
+      <div className="space-y-1.5">
         {options.map((opt, i) => {
           const isFocused = i === safe
           return (
