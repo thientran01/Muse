@@ -10,6 +10,7 @@ import {
 } from './components/SelectionOverlay'
 import { MessageApplied } from './components/messages/MessageApplied'
 import { MessageClarify } from './components/messages/MessageClarify'
+import { MessageObservation } from './components/messages/MessageObservation'
 import { MessageOptionSet } from './components/messages/MessageOptionSet'
 import { MessageTargetHandoff } from './components/messages/MessageTargetHandoff'
 import { MessageThinking } from './components/messages/MessageThinking'
@@ -101,6 +102,28 @@ export function MuseGallery() {
           <div className="w-[380px] rounded-2xl bg-surface ring-1 ring-line/10">
             <Composer value="make this feel more premium" onChange={noop} onSubmit={noop} loading={false} />
           </div>
+        </Cell>
+
+        <Cell title="Thread — observation opener (LLM read landed)">
+          <ThreadFrame target={fxElement2}>
+            <MessageObservation
+              observation="That bg-slate-900 fill is doing the heavy lifting — the padding could match its confidence."
+              chips={['Make it pop', 'Try a different color', 'Adjust the padding']}
+              pending={false}
+              onPick={noop}
+            />
+          </ThreadFrame>
+        </Cell>
+
+        <Cell title="Thread — observation opener (heuristic, pending)">
+          <ThreadFrame target={fxElement2}>
+            <MessageObservation
+              observation="It's got a filled treatment — color and padding decide how hard it pulls."
+              chips={['Make it pop', 'Try a different color', 'Adjust the padding']}
+              pending
+              onPick={noop}
+            />
+          </ThreadFrame>
         </Cell>
 
         <Cell title="Thread — empty + user message">

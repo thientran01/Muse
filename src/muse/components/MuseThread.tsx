@@ -3,6 +3,7 @@ import type { FileEdit, ThreadMessage } from '../types'
 import type { Pending } from '../store'
 import { MessageApplied } from './messages/MessageApplied'
 import { MessageClarify } from './messages/MessageClarify'
+import { MessageObservation } from './messages/MessageObservation'
 import { MessageOptionSet } from './messages/MessageOptionSet'
 import { MessageTargetHandoff } from './messages/MessageTargetHandoff'
 import { MessageThinking } from './messages/MessageThinking'
@@ -20,6 +21,8 @@ export function MuseThread({
   allAnswered,
   // option-set handlers
   onApprove,
+  // observation starter-chip handler
+  onChipClick,
 }: {
   thread: ThreadMessage[]
   pending: Pending | null
@@ -30,6 +33,7 @@ export function MuseThread({
   onContinue: () => void
   allAnswered: boolean
   onApprove: (edits: FileEdit[]) => void
+  onChipClick: (text: string) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -45,6 +49,17 @@ export function MuseThread({
     <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
       {thread.map((m) => {
         switch (m.kind) {
+          case 'observation':
+            return (
+              <MessageObservation
+                key={m.id}
+                observation={m.observation}
+                chips={m.chips}
+                pending={m.pending}
+                onPick={onChipClick}
+                chipsDisabled={loading}
+              />
+            )
           case 'user':
             return <MessageUser key={m.id} text={m.text} />
           case 'clarify':

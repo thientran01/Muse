@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './muse.css'
-import { museChat, museWrite } from './api'
+import { museChat, museObserve, museWrite } from './api'
 import { MOCK } from './config'
+import { heuristicObservation } from './observation'
 import { useSelection } from './useSelection'
 import { useHostTheme } from './hooks/useHostTheme'
 import { museStore, nextThreadId, useMuseStore } from './store'
@@ -24,6 +25,7 @@ import type {
   ContentBlock,
   FileEdit,
   HistoryEntry,
+  ObserveResult,
   ProposeInput,
   SelectedElement,
   ToolUseBlock,
@@ -33,6 +35,11 @@ const EXIT_MS = 170 // keep in sync with the muse-panel-out animation
 
 // Normalize a file path the way the server keys `originals` (forward slashes, no ./).
 const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
+
+// In-flight /observe calls keyed by element key, so concurrent openObservation
+// calls for the same element (rapid re-select) share one network request.
+// Module-level: persists across re-renders, resets on HMR of this file.
+const inflightObserve = new Map<string, Promise<ObserveResult>>()
 
 export type HistoryControls = {
   canUndo: boolean
@@ -88,6 +95,8 @@ export function MuseOverlay() {
     if (prevKeys.length === 0) {
       prevKeysRef.current = curKeys
       museStore.resetConversation(true)
+      // First target this session — open with an observation of it.
+      if (selection.length === 1) openObservation(selection[0])
       return
     }
     // Pure shrink (cur ⊆ prev) OR pure grow (prev ⊆ cur) = no handoff.
@@ -99,6 +108,8 @@ export function MuseOverlay() {
     const cur = selection[0]
     if (cur) {
       museStore.appendThread({ id: nextThreadId(), kind: 'target-handoff', target: cur })
+      // New target context — open it with an observation too (single only).
+      if (selection.length === 1) openObservation(cur)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectionKey])
@@ -168,13 +179,16 @@ export function MuseOverlay() {
     }
   }
 
-  // Send the composer text as the next user message. Reads from store.getState()
-  // so a rapid double-submit can't see a stale closed-over `pending` / `messages`.
-  function sendDraft() {
-    const text = draft.trim()
+  // Send a message as the next user turn. Reads from store.getState() so a rapid
+  // double-submit can't see a stale closed-over `pending` / `messages`. Shared by
+  // the composer (sendDraft) and the observation starter chips (onChipClick).
+  // Does NOT touch the composer draft — clearing it is sendDraft's job, so a chip
+  // click leaves any half-typed message intact.
+  function submitText(raw: string) {
+    const text = raw.trim()
     if (!text) return
     const s = museStore.getState()
-    museStore.setState({ draft: '' })
+    if (s.loading) return // mirror approve(): never stack a turn on an in-flight one
     museStore.appendThread({ id: nextThreadId(), kind: 'user', text })
     // If a clarify is currently pending and the user typed in the composer
     // instead of using the option buttons, freeze whatever partial selections
@@ -184,6 +198,62 @@ export function MuseOverlay() {
       ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: s.pending.toolUseId, content: text }] }
       : { role: 'user', content: text }
     runChat([...s.messages, next])
+  }
+
+  function sendDraft() {
+    const s = museStore.getState()
+    if (s.loading || !s.draft.trim()) return
+    const text = s.draft
+    museStore.setState({ draft: '' })
+    submitText(text)
+  }
+
+  // Selecting a fresh element opens the thread with a read of it. Render the
+  // synchronous heuristic immediately, then swap in the LLM observation when it
+  // lands. Cache per element key so re-selecting never refires the call.
+  function openObservation(target: SelectedElement) {
+    const cached = museStore.getObservation(target.key)
+    if (cached) {
+      museStore.appendThread({
+        id: nextThreadId(),
+        kind: 'observation',
+        targetKey: target.key,
+        observation: cached.observation,
+        chips: cached.chips,
+        pending: false,
+      })
+      return
+    }
+
+    const heuristic = heuristicObservation(target)
+    // Real mode needs a source file to observe; mock mode synthesizes one.
+    const willFetch = MOCK || !!target.fileName
+    const id = nextThreadId()
+    museStore.appendThread({
+      id,
+      kind: 'observation',
+      targetKey: target.key,
+      observation: heuristic.observation,
+      chips: heuristic.chips,
+      pending: willFetch,
+    })
+    if (!willFetch) return
+
+    // De-dupe concurrent fetches for the same element: if one is already in
+    // flight (rapid A→B→A re-select before A resolves), share its promise
+    // instead of firing a second call. Both bubbles still resolve.
+    let p = inflightObserve.get(target.key)
+    if (!p) {
+      p = museObserve(target)
+      inflightObserve.set(target.key, p)
+      void p.finally(() => inflightObserve.delete(target.key))
+    }
+    p.then((res) => {
+      museStore.cacheObservation(target.key, res)
+      museStore.resolveObservation(id, res)
+    })
+      // Keep the heuristic on failure — just drop the pending shimmer.
+      .catch(() => museStore.resolveObservation(id, heuristic))
   }
 
   function submitAnswers() {
@@ -422,6 +492,7 @@ export function MuseOverlay() {
                   onContinue={submitAnswers}
                   allAnswered={allAnswered}
                   onApprove={approve}
+                  onChipClick={submitText}
                 />
                 {error && (
                   <div className="px-3 pb-2">

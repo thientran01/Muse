@@ -1,5 +1,12 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ClarifyingQuestion, FileEdit, HistoryEntry, ThreadMessage } from './types'
+import type {
+  ChatMessage,
+  ClarifyingQuestion,
+  FileEdit,
+  HistoryEntry,
+  ObserveResult,
+  ThreadMessage,
+} from './types'
 
 // In-memory only. State resets on full page refresh, or on HMR of THIS file.
 // HMR of other Muse files (components) does not reset state — the store
@@ -53,6 +60,13 @@ const initialState: MuseState = {
 
 let state: MuseState = initialState
 const subscribers = new Set<() => void>()
+
+// Per-element observation memo, keyed by SelectedElement.key. Kept OFF the
+// reactive `state` object on purpose: it's read imperatively (never rendered
+// from directly), so it must not participate in the useSyncExternalStore
+// snapshot — mutating `state` without notify() would break that invariant.
+// Resets on full refresh / HMR of this file, like the rest of the store.
+let observationCache: Record<string, ObserveResult> = {}
 
 function notify() {
   subscribers.forEach((fn) => fn())
@@ -123,6 +137,29 @@ export const museStore = {
     const target = updated[idx]
     if (target.kind !== 'clarify') return
     updated[idx] = { ...target, answeredWith: { ...answers } }
+    state = { ...state, thread: updated }
+    notify()
+  },
+  /** Read an element's memoized /observe result, if any. */
+  getObservation(key: string): ObserveResult | undefined {
+    return observationCache[key]
+  },
+  /** Memo an element's /observe result. Off-state, so no notify — nothing
+   * renders from the cache directly; it's read via getObservation() when a
+   * target is (re)selected. */
+  cacheObservation(key: string, result: ObserveResult) {
+    observationCache = { ...observationCache, [key]: result }
+  },
+  /** Swap the LLM read (or a fallback) into an existing observation bubble,
+   * clearing its pending shimmer. No-op if the bubble was scrolled past and
+   * is gone, or the id no longer points at an observation. */
+  resolveObservation(id: string, result: ObserveResult) {
+    const idx = state.thread.findIndex((m) => m.id === id && m.kind === 'observation')
+    if (idx === -1) return
+    const target = state.thread[idx]
+    if (target.kind !== 'observation') return
+    const updated = state.thread.slice()
+    updated[idx] = { ...target, observation: result.observation, chips: result.chips, pending: false }
     state = { ...state, thread: updated }
     notify()
   },
