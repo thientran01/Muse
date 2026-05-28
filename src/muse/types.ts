@@ -18,6 +18,17 @@ export type AskInput = { questions: ClarifyingQuestion[] }
 export type FileEdit = { fileName: string; newContent: string }
 export type ProposeInput = { edits: FileEdit[]; rationale: string }
 
+// A single design direction Muse proposes. Each option is a complete, applyable
+// edit (one or more full-file rewrites). Multiple options let the user hover to
+// preview each take on the live element, then click the one they want.
+export type ProposedOption = {
+  id: string
+  label: string // short name — "Editorial", "Punchy"
+  description: string // one-line pitch for a non-technical user
+  edits: FileEdit[]
+}
+export type ProposeOptionsInput = { rationale: string; options: ProposedOption[] }
+
 // --- Observation opener (POST /api/muse/observe) ---
 // A one-line read of a freshly-selected element + 3 tag-aware starter prompts.
 // Rendered as the opener of every new target context.
@@ -28,7 +39,7 @@ export type TextBlock = { type: 'text'; text: string }
 export type ToolUseBlock = {
   type: 'tool_use'
   id: string
-  name: 'ask_clarifying_questions' | 'propose_edit'
+  name: 'ask_clarifying_questions' | 'propose_edit' | 'propose_options'
   input: unknown
 }
 export type ContentBlock = TextBlock | ToolUseBlock | { type: string; [k: string]: unknown }
@@ -91,7 +102,7 @@ export type ThreadMessage =
       // for the next clarify.
       answeredWith?: Record<number, string>
     }
-  | { id: string; kind: 'option-set'; toolUseId: string; edits: FileEdit[]; rationale: string }
+  | { id: string; kind: 'option-set'; toolUseId: string; options: ProposedOption[]; rationale: string }
   | { id: string; kind: 'applied'; fileCount: number; rationale: string }
   | { id: string; kind: 'target-handoff'; target: SelectedElement }
   | { id: string; kind: 'error'; text: string }

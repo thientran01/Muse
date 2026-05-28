@@ -17,9 +17,33 @@ import { MessageThinking } from './components/messages/MessageThinking'
 import { MessageUser } from './components/messages/MessageUser'
 import { UfoIcon } from './components/UfoIcon'
 import { fxEdits, fxElement, fxOriginals, fxQuestions, fxRationale } from './fixtures'
-import type { SelectedElement } from './types'
+import type { ProposedOption, SelectedElement } from './types'
 
 const noop = () => {}
+
+// Two design directions for the option-set demo (hover-to-preview cards).
+const fxOptions: ProposedOption[] = [
+  {
+    id: 'o1',
+    label: 'Refined',
+    description: 'Lighter weight, larger scale, more breathing room — the Apple / Stripe register.',
+    edits: fxEdits,
+  },
+  {
+    id: 'o2',
+    label: 'Bolder',
+    description: 'Heavier and tighter — more anchor, more presence.',
+    edits: [
+      {
+        fileName: 'src/demo/Hero.tsx',
+        newContent: `      <section className="mx-auto max-w-3xl px-6 py-32 text-center">
+        <h1 className="text-6xl font-extrabold tracking-tighter">
+          Build faster than ever
+        </h1>`,
+      },
+    ],
+  },
+]
 const fxElement2: SelectedElement = {
   fileName: 'src/demo/CTA.tsx',
   line: 12,
@@ -163,15 +187,17 @@ export function MuseGallery() {
           </ThreadFrame>
         </Cell>
 
-        <Cell title="Thread — proposed option (active, multi-file)">
+        <Cell title="Thread — option set (active, hover to preview)">
           <ThreadFrame target={fxElement}>
             <MessageUser text="make this feel more premium" />
             <MessageOptionSet
-              edits={fxEdits}
+              options={fxOptions}
               originals={fxOriginals}
               rationale={fxRationale}
               loading={false}
               onApprove={noop}
+              onPreview={noop}
+              onPreviewEnd={noop}
               active
             />
           </ThreadFrame>
@@ -181,11 +207,13 @@ export function MuseGallery() {
           <ThreadFrame target={fxElement}>
             <MessageUser text="make this feel more premium" />
             <MessageOptionSet
-              edits={fxEdits}
+              options={fxOptions}
               originals={fxOriginals}
               rationale={fxRationale}
               loading={false}
               onApprove={noop}
+              onPreview={noop}
+              onPreviewEnd={noop}
               active={false}
             />
             <MessageApplied fileCount={fxEdits.length} rationale="" />
