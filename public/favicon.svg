@@ -1,9 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#17171b"/>
-  <!-- dome -->
-  <ellipse cx="16" cy="17.5" rx="6" ry="4.2" fill="#3d63ff"/>
-  <!-- eye -->
-  <circle cx="16" cy="15.4" r="1.8" fill="#17171b"/>
-  <!-- saucer disk -->
-  <ellipse cx="16" cy="21" rx="11.5" ry="3.5" fill="#3d63ff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="5" fill="#F5EFE6"/>
+  <g transform="translate(0 1)" fill="#7F2F2F">
+    <!-- cephalic horns -->
+    <path d="M9.9 6.6 C9.5 4.8 9.4 3.8 9.9 3.5 C10.4 3.8 10.8 4.9 11.1 6.6 Z"/>
+    <path d="M14.1 6.6 C14.5 4.8 14.6 3.8 14.1 3.5 C13.6 3.8 13.2 4.9 12.9 6.6 Z"/>
+    <!-- body -->
+    <path d="M12 6 C14.8 5.8 17 6.7 19 9 C19.8 9.9 19.5 10.8 18.4 10.8 C16 10.8 14.5 10.5 13.5 11.9 C12.8 12.9 12.5 14.5 12.3 16.4 L12 18.8 L11.7 16.4 C11.5 14.5 11.2 12.9 10.5 11.9 C9.5 10.5 8 10.8 5.6 10.8 C4.5 10.8 4.2 9.9 5 9 C7 6.7 9.2 5.8 12 6 Z"/>
+    <!-- eyes (cream cut-outs) -->
+    <circle cx="9.9" cy="8.5" r="0.85" fill="#F5EFE6"/>
+    <circle cx="14.1" cy="8.5" r="0.85" fill="#F5EFE6"/>
+  </g>
 </svg>

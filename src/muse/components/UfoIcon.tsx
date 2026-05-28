@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react'
 
+// Muse's mark — a manta-ray glider (body is `currentColor`, eyes are punched in
+// the surface color so they read as cut-outs on any theme). When `loading`, it
+// gently banks and bobs like it's swimming; idle it sits still.
+const EYE = 'rgb(var(--muse-surface, 20 18 16))'
+
 export function UfoIcon({
   size = 18,
   loading = false,
@@ -9,87 +14,55 @@ export function UfoIcon({
   loading?: boolean
   className?: string
 }) {
-  const svgRef = useRef<SVGSVGElement>(null)
   const gRef = useRef<SVGGElement>(null)
-  const eyeRef = useRef<SVGCircleElement>(null)
-  const saucerRef = useRef<SVGEllipseElement>(null)
 
   useEffect(() => {
-    const svg = svgRef.current
     const g = gRef.current
-    const eye = eyeRef.current
-    const saucer = saucerRef.current
-    if (!svg || !g || !eye || !saucer) return
-
-    if (!loading) {
-      g.setAttribute('transform', 'translate(0, 0)')
-      eye.setAttribute('cx', '12')
-      eye.setAttribute('cy', '7.4')
-      saucer.setAttribute('transform', '')
-      svg.style.transform = ''
+    if (!g) return
+    const reduceMotion =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (!loading || reduceMotion) {
+      g.removeAttribute('transform')
       return
     }
 
-    let raf: number
+    let raf = 0
     const start = performance.now()
-    const tiltCycle = 1800  // ms per full tilt oscillation
-    const spinInterval = 5000
-    const spinDuration = 700
-
+    const period = 2200 // ms per glide cycle — calm, not frantic
     const tick = (now: number) => {
-      const elapsed = now - start
-
-      // Periodic full spin — rotate the SVG element itself to avoid internal clipping
-      const timeSinceLastSpin = elapsed % spinInterval
-      if (timeSinceLastSpin < spinDuration) {
-        const p = timeSinceLastSpin / spinDuration
-        const spinEased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2
-        svg.style.transform = `rotate(${(spinEased * 360).toFixed(2)}deg)`
-      } else {
-        svg.style.transform = ''
-      }
-
-      // Single tilt value drives everything — saucer, dome roll, and eye
-      const tiltT = (elapsed % tiltCycle) / tiltCycle
-      const tiltSin = Math.sin(2 * Math.PI * tiltT)
-
-      // Saucer tilts left/right
-      saucer.setAttribute('transform', `rotate(${(tiltSin * 12).toFixed(2)}, 12, 13)`)
-
-      // Dome rolls along the saucer surface: x follows the tilt direction,
-      // y follows the ellipse curve so the ball settles into the dish as it rolls outward
-      const domeX = tiltSin * 3.5
-      const curveY = 3.5 * (1 - Math.sqrt(Math.max(0, 1 - Math.pow(domeX / 11.5, 2))))
-      g.setAttribute('transform', `translate(${domeX.toFixed(3)}, ${curveY.toFixed(3)})`)
-
-      // Eye rolls inside the dome
-      eye.setAttribute('cx', (12 + tiltSin * 1.1).toFixed(3))
-      eye.setAttribute('cy', (7.4 + Math.abs(tiltSin) * 0.3).toFixed(3))
-
+      const a = (2 * Math.PI * ((now - start) % period)) / period
+      const bank = Math.sin(a) * 13 // weave left/right
+      const bob = Math.cos(a) * 0.7 // rise/fall, a quarter-cycle out of phase
+      g.setAttribute('transform', `rotate(${bank.toFixed(2)} 12 11) translate(0 ${bob.toFixed(2)})`)
       raf = requestAnimationFrame(tick)
     }
-
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [loading])
 
-  const h = Math.round((size * 16) / 24)
+  const h = Math.round((size * 22) / 24)
   return (
     <svg
-      ref={svgRef}
       width={size}
       height={h}
-      viewBox="0 0 24 16"
+      viewBox="0 0 24 22"
       fill="none"
       overflow="visible"
       aria-hidden
       className={className}
     >
       <g ref={gRef}>
-        <ellipse cx="12" cy="9.5" rx="6" ry="4.2" fill="currentColor" />
-        <circle ref={eyeRef} cx="12" cy="7.4" r="1.8" fill="#17171b" />
+        {/* cephalic horns — bases run under the body so the body fill hides the join */}
+        <path d="M9.9 6.6 C9.5 4.8 9.4 3.8 9.9 3.5 C10.4 3.8 10.8 4.9 11.1 6.6 Z" fill="currentColor" />
+        <path d="M14.1 6.6 C14.5 4.8 14.6 3.8 14.1 3.5 C13.6 3.8 13.2 4.9 12.9 6.6 Z" fill="currentColor" />
+        {/* body — swept wings with concave trailing edges + short tail */}
+        <path
+          d="M12 6 C14.8 5.8 17 6.7 19 9 C19.8 9.9 19.5 10.8 18.4 10.8 C16 10.8 14.5 10.5 13.5 11.9 C12.8 12.9 12.5 14.5 12.3 16.4 L12 18.8 L11.7 16.4 C11.5 14.5 11.2 12.9 10.5 11.9 C9.5 10.5 8 10.8 5.6 10.8 C4.5 10.8 4.2 9.9 5 9 C7 6.7 9.2 5.8 12 6 Z"
+          fill="currentColor"
+        />
+        <circle cx="9.9" cy="8.5" r="0.85" fill={EYE} />
+        <circle cx="14.1" cy="8.5" r="0.85" fill={EYE} />
       </g>
-      <ellipse ref={saucerRef} cx="12" cy="13" rx="11.5" ry="3.5" fill="currentColor" />
     </svg>
   )
 }
