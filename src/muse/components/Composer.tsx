@@ -31,7 +31,7 @@ export function Composer({
 
   return (
     <div className="border-t border-line/[0.07] bg-line/[0.02] p-3">
-      <div className="relative flex items-end gap-2 rounded-xl border border-line/10 bg-line/[0.04] px-3 py-2 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+      <div className="relative flex items-center gap-2 rounded-xl border border-line/10 bg-line/[0.04] px-3 py-2 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
         <textarea
           ref={taRef}
           data-testid="muse-composer"
