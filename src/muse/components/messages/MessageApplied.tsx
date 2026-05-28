@@ -7,9 +7,7 @@ export function MessageApplied({ fileCount, rationale }: { fileCount: number; ra
       {rationale && <p className="text-sm leading-relaxed text-fg">{rationale}</p>}
       <div className="flex animate-muse-rise items-start gap-2 rounded-xl bg-diff-add/30 px-3 py-2.5 text-sm font-semibold text-diff-add-text ring-1 ring-diff-add/60 motion-reduce:animate-none">
         <Check size={16} weight="bold" className="mt-0.5 shrink-0" />
-        <span>
-          Applied to {fileCount} file{fileCount === 1 ? '' : 's'}. Undo anytime.
-        </span>
+        <span>Applied to {fileCount} file{fileCount === 1 ? '' : 's'}.</span>
       </div>
     </div>
   )
