@@ -36,7 +36,7 @@ The FULL source of every React + TypeScript file the selected elements live in, 
 
 You must use exactly one tool per turn.
 
-- propose_edit — your DEFAULT. Return the COMPLETE updated contents of every file that changes (one entry per file, identified by the exact relative path shown in context). Change only what is needed for the selected elements; keep all other code byte-for-byte identical. Only include files that actually change. Style with Tailwind utility classes inline in className only — never add CSS files, style objects, or extracted class variables.
+- propose_options — your DEFAULT. Offer 1–3 distinct design DIRECTIONS for the request, each a complete applyable edit. Give a different option ONLY when there's a genuinely different good take (e.g. "Editorial" vs "Punchy") — don't pad to three with near-duplicates; one confident option is the right answer when there's one clear move. Each option carries the COMPLETE updated contents of every file it changes (one entry per file, exact relative path from context), changing only what's needed and keeping all other code byte-for-byte identical. Style with Tailwind utility classes inline in className only — never add CSS files, style objects, or extracted class variables. IMPORTANT: scope each option's change to the SELECTED element (and its own subtree) so the user can preview it in place; if the request genuinely needs to touch siblings or parents, that's fine, but prefer the tightest change that satisfies it.
 
 - ask_clarifying_questions — the EXCEPTION. Use ONLY when the answer would materially change what you'd ship. If a thoughtful designer would just pick a direction and run with it, do that instead and let the user redirect after seeing it. When you do ask, ask ONE question with 2–3 concrete visual options, written for a non-technical person.
 
@@ -52,7 +52,7 @@ You're a designer collaborator, not an AI assistant. That means:
 
 # Decisiveness rubric
 
-Before calling ask_clarifying_questions, check: would a senior designer ship a confident first pass without asking this? If yes, use propose_edit and ship the first pass. If the user wants a different direction, they'll tell you and you'll iterate. Almost always: don't ask.
+Before calling ask_clarifying_questions, check: would a senior designer ship a confident first pass without asking this? If yes, use propose_options and ship it. If two or three directions are each defensible, that's exactly when to return multiple options instead of asking. If the user wants something else, they'll tell you and you'll iterate. Almost always: don't ask.
 
 Examples of when NOT to ask (just propose):
 - "make this pop" on a CTA → pick a confident treatment (stronger color, denser type, clearer shadow) and propose. Note in the rationale how to dial it back if too loud.
@@ -64,9 +64,9 @@ When TO ask:
 - "redesign this hero" → scope is too big to ship blind. Ask one narrowing question with 2–3 concrete directions ("editorial-and-quiet", "punchy-and-loud", "playful-and-warm").
 - The selected element is doing two unrelated jobs and the request is ambiguous about which one to address.
 
-# Rationale rules (for propose_edit)
+# Rationale rules (for propose_options)
 
-One or two short sentences for a non-technical user. Lead with the move, then the reason. Mention any opportunistic improvements you made along the way. Skip the diff narration — they can see the result.
+The top-level rationale is one or two short sentences for a non-technical user: lead with the move, then the reason. Each option's label is 1–2 words ("Editorial", "Punchy") and its description is one plain-English sentence on what that direction does. Skip the diff narration — they can see the result.
 
 You are a partner, not a tool. Make the call.`
 
@@ -216,7 +216,7 @@ export function musePlugin(): Plugin {
             model,
             max_tokens: 8192,
             system: [{ type: 'text', text: MUSE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-            tools: [ASK_TOOL, PROPOSE_TOOL],
+            tools: [ASK_TOOL, PROPOSE_OPTIONS_TOOL],
             tool_choice: { type: 'any' },
             messages: outMessages,
           })
@@ -362,34 +362,51 @@ const ASK_TOOL: Anthropic.Tool = {
   },
 }
 
-const PROPOSE_TOOL: Anthropic.Tool = {
-  name: 'propose_edit',
+const EDITS_SCHEMA = {
+  type: 'array' as const,
+  description: 'One entry per changed file.',
+  items: {
+    type: 'object' as const,
+    properties: {
+      fileName: {
+        type: 'string' as const,
+        description: 'The exact relative path of the file (as shown in the context).',
+      },
+      newContent: { type: 'string' as const, description: 'The complete updated contents of the file.' },
+    },
+    required: ['fileName', 'newContent'],
+  },
+}
+
+const PROPOSE_OPTIONS_TOOL: Anthropic.Tool = {
+  name: 'propose_options',
   description:
-    'Propose the change as an array of file edits. Include one entry per file that needs to change, with its FULL updated contents. Change only what is needed; keep the rest identical.',
+    'Propose 1–3 distinct design directions for the request. Give multiple options only when there are genuinely different good takes; one confident option is correct when there is one clear move. Each option is a complete, applyable edit. Scope each change to the selected element so it can be previewed in place.',
   input_schema: {
     type: 'object',
     properties: {
-      edits: {
-        type: 'array',
-        description: 'One entry per changed file.',
-        items: {
-          type: 'object',
-          properties: {
-            fileName: {
-              type: 'string',
-              description: 'The exact relative path of the file (as shown in the context).',
-            },
-            newContent: { type: 'string', description: 'The complete updated contents of the file.' },
-          },
-          required: ['fileName', 'newContent'],
-        },
-      },
       rationale: {
         type: 'string',
         description:
-          'One or two plain-English sentences explaining the change for a non-technical user, covering the whole batch.',
+          'One or two plain-English sentences for a non-technical user: the overall move and why. Covers the whole proposal.',
+      },
+      options: {
+        type: 'array',
+        description: '1 to 3 design directions.',
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: 'Short name for this direction (1–2 words), e.g. "Editorial".' },
+            description: {
+              type: 'string',
+              description: 'One plain-English sentence on what this direction does.',
+            },
+            edits: EDITS_SCHEMA,
+          },
+          required: ['label', 'description', 'edits'],
+        },
       },
     },
-    required: ['edits', 'rationale'],
+    required: ['rationale', 'options'],
   },
 }

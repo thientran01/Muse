@@ -281,6 +281,28 @@ const INTENT_PRESETS: Record<Exclude<Intent, 'redesign-big'>, Preset[]> = {
   generic: GENERIC,
 }
 
+// Short option labels per intent, zipped positionally with that intent's
+// presets. Each preset becomes one hoverable option card.
+const OPTION_LABELS: Record<Exclude<Intent, 'redesign-big'>, string[]> = {
+  pop: ['Heavier', 'Outlined', 'Filled'],
+  premium: ['Refined', 'Tailored'],
+  simplify: ['Stripped', 'Quieter'],
+  soften: ['Muted'],
+  tighter: ['Compact'],
+  spacious: ['Airy'],
+  generic: ['Considered', 'Tidied'],
+}
+
+const INTENT_LEADIN: Record<Exclude<Intent, 'redesign-big'>, string> = {
+  pop: 'A few ways to give it more presence — hover to preview, click to apply.',
+  premium: 'Two takes on a more premium feel — hover to see each in place.',
+  simplify: 'A couple of ways to pare it back — hover to preview.',
+  soften: 'Quieter, more supporting — hover to preview.',
+  tighter: 'Denser and more compact — hover to preview.',
+  spacious: 'More breathing room — hover to preview.',
+  generic: 'A couple of small refinements — hover to preview.',
+}
+
 // Clarifying questions for the rare ASK path -----------------------------
 const REDESIGN_QUESTION: ClarifyingQuestion = {
   question: "Big scope. Which direction should it take?",
@@ -316,50 +338,77 @@ function fileKeyFor(target: SelectedElement): string | null {
   return target.fileName.replace(/\\/g, '/').replace(/^\.\//, '')
 }
 
-function mockPropose(targets: SelectedElement[], preset: Preset): ChatResponse {
+// Build one option's edits by applying a preset to each (de-duped by file)
+// target, synthesizing a before/after snippet around the real element. Returns
+// the edits plus the shared `originals` (the "before" is preset-independent).
+function buildOptionEdits(
+  byFile: Map<string, SelectedElement>,
+  preset: Preset,
+): { edits: FileEdit[]; originals: Record<string, string> } {
+  const originals: Record<string, string> = {}
+  const edits: FileEdit[] = []
+  for (const [key, t] of byFile) {
+    originals[key] = snippetFor(t, t.classNames || '')
+    edits.push({ fileName: key, newContent: snippetFor(t, preset.mutate(t.classNames || '', t.tag)) })
+  }
+  return { edits, originals }
+}
+
+function mockProposeOptions(
+  targets: SelectedElement[],
+  intent: Exclude<Intent, 'redesign-big'>,
+): ChatResponse {
   const usable = targets.filter((t) => fileKeyFor(t))
   if (usable.length === 0) {
-    // Fall back to the canned fixtures (gallery / unmappable scenarios).
+    // Unmappable (gallery / source-not-found): fall back to canned fixtures as
+    // a single option so the flow still renders.
     return {
       content: [
         {
           type: 'tool_use',
-          id: 'mock-edit-' + Math.random().toString(36).slice(2, 8),
-          name: 'propose_edit',
-          input: { edits: fxEdits, rationale: preset.rationale },
+          id: 'mock-opt-' + Math.random().toString(36).slice(2, 8),
+          name: 'propose_options',
+          input: {
+            rationale: GENERIC[0].rationale,
+            options: [{ id: 'opt-0', label: 'Refined', description: GENERIC[0].rationale, edits: fxEdits }],
+          },
         },
       ],
       originals: fxOriginals,
     }
   }
 
-  const originals: Record<string, string> = {}
-  const edits: FileEdit[] = []
-  // Group by file so we only emit one edit per file even on a batch.
+  // One target per file (a batch edits one element per file).
   const byFile = new Map<string, SelectedElement>()
   for (const t of usable) {
     const key = fileKeyFor(t)!
     if (!byFile.has(key)) byFile.set(key, t)
   }
 
-  for (const [key, t] of byFile) {
-    const before = snippetFor(t, t.classNames || '')
-    const newClass = preset.mutate(t.classNames || '', t.tag)
-    const after = snippetFor(t, newClass)
-    originals[key] = before
-    edits.push({ fileName: key, newContent: after })
-  }
+  const presets = INTENT_PRESETS[intent].slice(0, 3)
+  const labels = OPTION_LABELS[intent]
+  const mergedOriginals: Record<string, string> = {}
+  const options = presets.map((preset, i) => {
+    const { edits, originals } = buildOptionEdits(byFile, preset)
+    Object.assign(mergedOriginals, originals) // shared "before" across options
+    return {
+      id: `opt-${i}`,
+      label: labels[i] ?? `Option ${i + 1}`,
+      description: preset.rationale,
+      edits,
+    }
+  })
 
   return {
     content: [
       {
         type: 'tool_use',
-        id: 'mock-edit-' + Math.random().toString(36).slice(2, 8),
-        name: 'propose_edit',
-        input: { edits, rationale: preset.rationale },
+        id: 'mock-opt-' + Math.random().toString(36).slice(2, 8),
+        name: 'propose_options',
+        input: { rationale: INTENT_LEADIN[intent], options },
       },
     ],
-    originals,
+    originals: mergedOriginals,
   }
 }
 
@@ -407,7 +456,8 @@ function alreadyProposedOnce(messages: ChatMessage[]): boolean {
     if (Array.isArray(m.content)) {
       for (const c of m.content) {
         const block = c as { type?: string; name?: string }
-        if (block.type === 'tool_use' && block.name === 'propose_edit') return true
+        if (block.type === 'tool_use' && (block.name === 'propose_options' || block.name === 'propose_edit'))
+          return true
       }
     }
   }
@@ -427,12 +477,10 @@ async function mockChat(targets: SelectedElement[], messages: ChatMessage[]): Pr
     return mockAsk()
   }
 
-  // Pick a preset for the intent (or fall through to generic).
+  // Offer the intent's directions as hoverable options (fall through to generic).
   const intentForPresets: Exclude<Intent, 'redesign-big'> =
     intent === 'redesign-big' ? 'generic' : intent
-  const presets = INTENT_PRESETS[intentForPresets]
-  const preset = pickOne(presets)
-  return mockPropose(targets, preset)
+  return mockProposeOptions(targets, intentForPresets)
 }
 
 // Mock observation — stands in for /api/muse/observe with no credits. Grounds

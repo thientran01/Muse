@@ -2,9 +2,9 @@ import { useSyncExternalStore } from 'react'
 import type {
   ChatMessage,
   ClarifyingQuestion,
-  FileEdit,
   HistoryEntry,
   ObserveResult,
+  ProposedOption,
   ThreadMessage,
 } from './types'
 
@@ -14,7 +14,7 @@ import type {
 
 export type Pending =
   | { kind: 'ask'; toolUseId: string; questions: ClarifyingQuestion[] }
-  | { kind: 'propose'; toolUseId: string; edits: FileEdit[]; rationale: string }
+  | { kind: 'propose'; toolUseId: string; options: ProposedOption[]; rationale: string }
 
 export type MuseState = {
   // Per-conversation slice — reset by resetConversation().
