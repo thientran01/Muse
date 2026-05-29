@@ -231,7 +231,7 @@ export function musePlugin(): Plugin {
             const prompt =
               `${context}\n\n## Conversation so far\n${flattenTranscript(messages as Anthropic.MessageParam[])}\n\n` +
               `## Now\nRespond to the user's latest message using the structured output schema. Default to mode="options".`
-            const content = await runChatViaCli(claudeBin, cliModel, prompt)
+            const content = await runChatViaCli(claudeBin, cliModel, prompt, originals)
             return sendJson(res, 200, { content, stop_reason: 'tool_use', originals })
           }
 
@@ -478,10 +478,45 @@ const CLI_SYSTEM_PROMPT = `${MUSE_SYSTEM_PROMPT}
 
 You have NO callable tools here. Return your answer ONLY as the structured object defined by the schema:
 
-- To propose design directions (your DEFAULT, the old propose_options): set mode="options", write the one/two-sentence rationale, and give 1–3 options. Each option has a 1–2 word label, a one-sentence description, and an "edits" array. Each edit is { fileName: the exact relative path from the context, newContent: the COMPLETE updated contents of that file }. Change only what's needed; keep every other byte identical. Tailwind utility classes inline only. Leave "questions" empty.
+- To propose design directions (your DEFAULT, the old propose_options): set mode="options", write the one/two-sentence rationale, and give 1–3 options. Each option has a 1–2 word label, a one-sentence description, and an "edits" array. Each edit is { fileName: the exact relative path from the context, replacements: [ { search, replace } ] }. For each change, "search" is an EXACT, verbatim substring of that file's CURRENT contents — copy it character-for-character including indentation — chosen just long enough to appear EXACTLY ONCE in the file; "replace" is the text to put in its place. Make the smallest replacements that achieve the change (usually just the selected element's className string). Do NOT return whole files. Tailwind utility classes inline only. Leave "questions" empty.
 - To ask (the rare exception, the old ask_clarifying_questions): set mode="clarify" and give exactly ONE entry in "questions" with 2–3 concrete visual options. Leave "rationale" and "options" empty.
 
 Every voice, decisiveness, and rationale rule above still applies — only the delivery mechanism changed.`
+
+// Unlike the API path's EDITS_SCHEMA (full-file newContent), the CLI path asks for
+// search/replace blocks — a fraction of the output tokens, which is what kept the
+// CLI call slow. The server reconstructs full newContent from these (applyReplacements)
+// so the frontend still receives the identical { fileName, newContent } contract.
+const CLI_EDITS_SCHEMA = {
+  type: 'array' as const,
+  description: 'One entry per changed file.',
+  items: {
+    type: 'object' as const,
+    properties: {
+      fileName: {
+        type: 'string' as const,
+        description: 'The exact relative path of the file (as shown in the context).',
+      },
+      replacements: {
+        type: 'array' as const,
+        description: 'One or more search/replace edits to apply within this file, in order.',
+        items: {
+          type: 'object' as const,
+          properties: {
+            search: {
+              type: 'string' as const,
+              description:
+                'An EXACT, verbatim substring of the file\'s CURRENT contents (copied character-for-character, including indentation), long enough to appear exactly once.',
+            },
+            replace: { type: 'string' as const, description: 'The text to put in its place.' },
+          },
+          required: ['search', 'replace'],
+        },
+      },
+    },
+    required: ['fileName', 'replacements'],
+  },
+}
 
 // One schema, `mode` discriminator. We don't hard-require options/questions at
 // the schema level (the model fills the pair that matches `mode`); the reshape
@@ -499,7 +534,7 @@ const CLI_OUTPUT_SCHEMA = {
         properties: {
           label: { type: 'string', description: 'Short name (1–2 words), e.g. "Editorial".' },
           description: { type: 'string', description: 'One plain-English sentence on what this direction does.' },
-          edits: EDITS_SCHEMA,
+          edits: CLI_EDITS_SCHEMA,
         },
         required: ['label', 'description', 'edits'],
       },
@@ -569,8 +604,81 @@ function flattenTranscript(messages: Anthropic.MessageParam[]): string {
   return lines.join('\n')
 }
 
+// Reconstruct a file's full new contents by applying the model's search/replace
+// blocks to the on-disk original. Each block must locate a UNIQUE target; we try
+// progressively looser matches before giving up, and throw (caller drops the
+// option) rather than risk a wrong edit. All-or-nothing: a failed block aborts
+// the whole file so we never half-apply.
+function applyReplacements(
+  original: string,
+  replacements: Array<{ search?: unknown; replace?: unknown }>,
+): string {
+  if (!Array.isArray(replacements) || replacements.length === 0) {
+    throw new Error('no replacements')
+  }
+  let text = original
+  for (const r of replacements) {
+    const search = typeof r?.search === 'string' ? r.search : ''
+    const replace = typeof r?.replace === 'string' ? r.replace : ''
+    if (!search) throw new Error('empty search block')
+
+    // 1) exact, unique substring match.
+    const idx = text.indexOf(search)
+    if (idx !== -1) {
+      if (text.indexOf(search, idx + 1) !== -1) throw new Error('ambiguous search block (matches more than once)')
+      text = text.slice(0, idx) + replace + text.slice(idx + search.length)
+      continue
+    }
+
+    // 2) trimmed exact, unique — tolerates leading/trailing whitespace the model
+    //    included or dropped around the snippet.
+    const trimmed = search.trim()
+    if (trimmed && trimmed !== search) {
+      const ti = text.indexOf(trimmed)
+      if (ti !== -1 && text.indexOf(trimmed, ti + 1) === -1) {
+        text = text.slice(0, ti) + replace + text.slice(ti + trimmed.length)
+        continue
+      }
+    }
+
+    // 3) line-by-line whitespace-normalized block match — tolerates indentation
+    //    differences. Replaces the first uniquely-matching run of lines.
+    const applied = applyNormalizedLines(text, search, replace)
+    if (applied == null) throw new Error('could not locate the snippet to change')
+    text = applied
+  }
+  return text
+}
+
+// Fallback matcher: find a window of lines whose whitespace-normalized form equals
+// the search's, and swap it for `replace`. Returns null if absent or non-unique.
+function applyNormalizedLines(text: string, search: string, replace: string): string | null {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+  const textLines = text.split('\n')
+  const searchLines = search.split('\n').map(norm).filter((l) => l.length > 0)
+  if (searchLines.length === 0) return null
+
+  let matchAt = -1
+  for (let i = 0; i + searchLines.length <= textLines.length; i++) {
+    let ok = true
+    for (let j = 0; j < searchLines.length; j++) {
+      if (norm(textLines[i + j]) !== searchLines[j]) { ok = false; break }
+    }
+    if (ok) {
+      if (matchAt !== -1) return null // non-unique
+      matchAt = i
+    }
+  }
+  if (matchAt === -1) return null
+  const before = textLines.slice(0, matchAt)
+  const after = textLines.slice(matchAt + searchLines.length)
+  return [...before, replace, ...after].join('\n')
+}
+
 // Shell out to `claude -p`, feed the prompt over stdin, and reshape the validated
-// structured_output back into the frontend's tool_use-shaped content array.
+// structured_output back into the frontend's tool_use-shaped content array. The
+// model returns search/replace blocks; we apply them to `originals` to rebuild the
+// full { fileName, newContent } the frontend expects.
 // Flags, in order of why they're here:
 //   --tools ""            no built-in tools — stays a single-shot generator, can't
 //                         read/write files on its own (preserves the approve→/write loop)
@@ -579,7 +687,12 @@ function flattenTranscript(messages: Anthropic.MessageParam[]): string {
 //   --json-schema         server-side structured-output validation
 // ANTHROPIC_API_KEY is stripped from the child env so auth can only resolve to the
 // logged-in subscription, never silently bill a key picked up from .env.local.
-function runChatViaCli(bin: string, model: string, prompt: string): Promise<Anthropic.ContentBlock[]> {
+function runChatViaCli(
+  bin: string,
+  model: string,
+  prompt: string,
+  originals: Record<string, string>,
+): Promise<Anthropic.ContentBlock[]> {
   return new Promise((resolve, reject) => {
     const args = [
       '-p',
@@ -656,14 +769,34 @@ function runChatViaCli(bin: string, model: string, prompt: string): Promise<Anth
           }
           content = [{ type: 'tool_use', id, name: 'ask_clarifying_questions', input: { questions } }]
         } else {
-          // Match the API tool's minItems:1 invariant, and stamp an `id` on each
-          // option so the frontend isn't relying on its index fallback.
-          const options = (Array.isArray(so.options) ? so.options : []).map((o, i) => ({
-            id: `opt-${i}`,
-            ...(o as Record<string, unknown>),
-          }))
+          // Rebuild each option's full-file edits from its search/replace blocks.
+          // An option whose patches don't cleanly apply is DROPPED (not half-written);
+          // surviving options carry an `id` so the frontend isn't relying on its
+          // index fallback. If nothing survives, the user retries.
+          const rawOptions = Array.isArray(so.options) ? so.options : []
+          const options: Array<Record<string, unknown>> = []
+          rawOptions.forEach((o, i) => {
+            const opt = o as { label?: unknown; description?: unknown; edits?: unknown }
+            const rawEdits = Array.isArray(opt.edits) ? opt.edits : []
+            try {
+              const edits = rawEdits.map((e) => {
+                const edit = e as { fileName?: unknown; replacements?: unknown }
+                const fileName = typeof edit.fileName === 'string' ? edit.fileName : ''
+                const key = fileName.replace(/\\/g, '/').replace(/^\.\//, '')
+                const orig = originals[key] ?? originals[fileName]
+                if (orig == null) throw new Error(`edit references unknown file "${fileName}"`)
+                const replacements = Array.isArray(edit.replacements) ? edit.replacements : []
+                return { fileName: key, newContent: applyReplacements(orig, replacements) }
+              })
+              if (edits.length > 0) {
+                options.push({ id: `opt-${i}`, label: opt.label ?? `Option ${i + 1}`, description: opt.description ?? '', edits })
+              }
+            } catch (e) {
+              console.warn(`[muse] dropped option "${(opt.label as string) ?? i}" — ${(e as Error).message}`)
+            }
+          })
           if (options.length === 0) {
-            return reject(new Error("claude CLI didn't return any changes. Try rephrasing."))
+            return reject(new Error("Couldn't apply the proposed changes to the selected element. Try rephrasing."))
           }
           content = [{ type: 'tool_use', id, name: 'propose_options', input: { rationale: so.rationale ?? '', options } }]
         }
