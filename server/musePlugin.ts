@@ -5,7 +5,7 @@
 //  one `npm run dev` process):
 //
 //    POST /api/muse/chat   -> Claude with two tools (ask_clarifying_questions |
-//                             propose_edit). Accepts one OR many target elements
+//                             propose_options). Accepts one OR many target elements
 //                             (a batch), reads each element's source file, and
 //                             returns edits across however many files change.
 //    POST /api/muse/observe-> a cheap, tool-less, ~300-token call that returns a
@@ -14,16 +14,27 @@
 //    POST /api/muse/write  -> writes the approved files to disk (each sandboxed
 //                             to src/), which triggers Vite HMR -> live reload.
 //
-//  Requires ANTHROPIC_API_KEY (env or a .env / .env.local file at repo root).
-//  Model is configurable via MUSE_MODEL (defaults below).
+//  /chat has two backends, selected by MUSE_BACKEND (default 'claude-cli'):
+//    'claude-cli' -> shells out to the `claude` CLI, which spends your logged-in
+//                    Claude subscription rather than metered API tokens. No
+//                    ANTHROPIC_API_KEY required for /chat.
+//    'anthropic'  -> the original metered Messages API path (needs a key).
+//  /observe always uses the cheap Messages API (Haiku by default), so it needs a
+//  key regardless of backend. Models: MUSE_MODEL (api /chat), MUSE_CLI_MODEL
+//  (cli /chat), MUSE_OBSERVE_MODEL (/observe).
 // ============================================================
 import path from 'node:path'
 import fs from 'node:fs'
+import { spawn, execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
 
-const DEFAULT_MODEL = 'claude-sonnet-4-5'
+const DEFAULT_BACKEND = 'claude-cli'
+const DEFAULT_MODEL = 'claude-sonnet-4-5' // anthropic backend, /chat
+const DEFAULT_CLI_MODEL = 'sonnet' // claude-cli backend, /chat (alias = latest on your plan)
+const DEFAULT_OBSERVE_MODEL = 'claude-haiku-4-5' // /observe — cheap + latency-friendly
 const MAX_WRITE_BYTES = 200_000 // sanity cap per file on model-proposed content
 
 const MUSE_SYSTEM_PROMPT = `You are Muse — a design partner embedded in someone's live web app. A non-technical user (a founder, PM, or marketer) points at an element and tells you, in plain language, how they want it to feel. You handle the craft, and you have a point of view.
@@ -148,6 +159,10 @@ export function musePlugin(): Plugin {
   let root = process.cwd()
   let apiKey = ''
   let model = DEFAULT_MODEL
+  let backend = DEFAULT_BACKEND
+  let cliModel = DEFAULT_CLI_MODEL
+  let observeModel = DEFAULT_OBSERVE_MODEL
+  let claudeBin = 'claude'
 
   return {
     name: 'muse-backend',
@@ -157,13 +172,18 @@ export function musePlugin(): Plugin {
       const env = loadEnv(config.mode, root, '')
       apiKey = env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || ''
       model = env.MUSE_MODEL || process.env.MUSE_MODEL || DEFAULT_MODEL
+      backend = (env.MUSE_BACKEND || process.env.MUSE_BACKEND || DEFAULT_BACKEND).trim()
+      cliModel = env.MUSE_CLI_MODEL || process.env.MUSE_CLI_MODEL || DEFAULT_CLI_MODEL
+      observeModel = env.MUSE_OBSERVE_MODEL || process.env.MUSE_OBSERVE_MODEL || DEFAULT_OBSERVE_MODEL
+      if (backend === 'claude-cli') claudeBin = resolveClaudeBin()
     },
     configureServer(server) {
       // --- POST /api/muse/chat -------------------------------------------
       server.middlewares.use('/api/muse/chat', async (req, res, next) => {
         if (req.method !== 'POST') return next()
         try {
-          if (!apiKey) {
+          // The anthropic backend needs a key; claude-cli rides your subscription.
+          if (backend !== 'claude-cli' && !apiKey) {
             return sendJson(res, 500, {
               error:
                 'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the repo root (ANTHROPIC_API_KEY=sk-ant-...) and restart `npm run dev`.',
@@ -203,6 +223,18 @@ export function musePlugin(): Plugin {
             `The user selected ${elementLines.length} element(s):\n${elementLines.join('\n')}\n\n` +
             `Relevant files:\n\n${filesBlock}`
 
+          const originals = Object.fromEntries(files) // rel -> original content, for diffing
+
+          // --- claude-cli backend: spend the subscription, not metered tokens.
+          if (backend === 'claude-cli') {
+            const prompt =
+              `${context}\n\n## Conversation so far\n${flattenTranscript(messages as Anthropic.MessageParam[])}\n\n` +
+              `## Now\nRespond to the user's latest message using the structured output schema. Default to mode="options".`
+            const content = await runChatViaCli(claudeBin, cliModel, prompt)
+            return sendJson(res, 200, { content, stop_reason: 'tool_use', originals })
+          }
+
+          // --- anthropic backend: the original metered Messages API path.
           // Inject the context into the first (user) message.
           const outMessages = (messages as Anthropic.MessageParam[]).map((m, i) => {
             if (i === 0 && m.role === 'user' && typeof m.content === 'string') {
@@ -224,7 +256,7 @@ export function musePlugin(): Plugin {
           return sendJson(res, 200, {
             content: resp.content,
             stop_reason: resp.stop_reason,
-            originals: Object.fromEntries(files), // rel -> original content, for diffing
+            originals,
           })
         } catch (err) {
           console.error('[muse] /chat error:', err)
@@ -268,7 +300,7 @@ export function musePlugin(): Plugin {
 
           const client = new Anthropic({ apiKey })
           const resp = await client.messages.create({
-            model,
+            model: observeModel,
             max_tokens: 300,
             system: [{ type: 'text', text: OBSERVE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
             messages: [{ role: 'user', content: context }],
@@ -409,4 +441,197 @@ const PROPOSE_OPTIONS_TOOL: Anthropic.Tool = {
     },
     required: ['rationale', 'options'],
   },
+}
+
+// --- claude-cli backend -----------------------------------------------------
+// The CLI has no native tool-calling, so the two-tool design (propose_options |
+// ask_clarifying_questions) collapses into ONE structured-output schema with a
+// `mode` discriminator, validated by `claude --json-schema`. The result lands in
+// the response's `structured_output` field, which we reshape back into the exact
+// tool_use-shaped `content` the frontend already consumes — so the client is
+// untouched and either backend looks identical to it.
+
+// Resolve the `claude` executable once. `where` (win) / `which` (posix) returns
+// the real path so spawn can run it shell-free — which matters because we pass a
+// multi-line system prompt and a quote-heavy JSON schema as raw argv entries.
+function resolveClaudeBin(): string {
+  const finder = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const out = execFileSync(finder, ['claude'], { encoding: 'utf8' })
+    const first = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0]
+    return first || 'claude'
+  } catch {
+    return 'claude' // fall back to PATH lookup at spawn time
+  }
+}
+
+// MUSE_SYSTEM_PROMPT references the two tools by name; this appendix maps that
+// same behaviour onto the single structured-output object the CLI returns.
+const CLI_SYSTEM_PROMPT = `${MUSE_SYSTEM_PROMPT}
+
+# Output format (IMPORTANT — read this last, it overrides the "Tools" section above)
+
+You have NO callable tools here. Return your answer ONLY as the structured object defined by the schema:
+
+- To propose design directions (your DEFAULT, the old propose_options): set mode="options", write the one/two-sentence rationale, and give 1–3 options. Each option has a 1–2 word label, a one-sentence description, and an "edits" array. Each edit is { fileName: the exact relative path from the context, newContent: the COMPLETE updated contents of that file }. Change only what's needed; keep every other byte identical. Tailwind utility classes inline only. Leave "questions" empty.
+- To ask (the rare exception, the old ask_clarifying_questions): set mode="clarify" and give exactly ONE entry in "questions" with 2–3 concrete visual options. Leave "rationale" and "options" empty.
+
+Every voice, decisiveness, and rationale rule above still applies — only the delivery mechanism changed.`
+
+// One schema, `mode` discriminator. We don't hard-require options/questions at
+// the schema level (the model fills the pair that matches `mode`); the reshape
+// below tolerates either being absent.
+const CLI_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    mode: { type: 'string', enum: ['options', 'clarify'] },
+    rationale: { type: 'string', description: 'For mode="options": one or two plain-English sentences — the move and why.' },
+    options: {
+      type: 'array',
+      description: 'For mode="options": 1–3 design directions.',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Short name (1–2 words), e.g. "Editorial".' },
+          description: { type: 'string', description: 'One plain-English sentence on what this direction does.' },
+          edits: EDITS_SCHEMA,
+        },
+        required: ['label', 'description', 'edits'],
+      },
+    },
+    questions: {
+      type: 'array',
+      description: 'For mode="clarify": exactly one question.',
+      items: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The question, in plain language.' },
+          options: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'Short choice label (1–4 words).' },
+                description: { type: 'string', description: 'One plain-English sentence on what this option means.' },
+              },
+              required: ['label', 'description'],
+            },
+          },
+        },
+        required: ['question', 'options'],
+      },
+    },
+  },
+  required: ['mode'],
+}
+
+// Flatten the message history (which can carry assistant tool_use blocks and user
+// tool_result blocks from prior turns) into a plain transcript. The CLI is
+// stateless per call and we re-read current file state every turn, so prior edit
+// bodies aren't needed — just the conversational flow that shaped the request.
+function flattenTranscript(messages: Anthropic.MessageParam[]): string {
+  const lines: string[] = []
+  for (const m of messages) {
+    if (m.role === 'user') {
+      if (typeof m.content === 'string') {
+        lines.push(`USER: ${m.content}`)
+      } else if (Array.isArray(m.content)) {
+        for (const b of m.content as Array<{ type?: string; text?: string; content?: unknown }>) {
+          if (b.type === 'tool_result') {
+            const c = typeof b.content === 'string' ? b.content : JSON.stringify(b.content)
+            lines.push(`USER (answering your question): ${c}`)
+          } else if (b.type === 'text' && b.text) {
+            lines.push(`USER: ${b.text}`)
+          }
+        }
+      }
+    } else if (m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const b of m.content as Array<{ type?: string; text?: string; name?: string; input?: any }>) {
+        if (b.type === 'text' && b.text) {
+          lines.push(`MUSE: ${b.text}`)
+        } else if (b.type === 'tool_use') {
+          if (b.name === 'ask_clarifying_questions') {
+            const q = b.input?.questions?.[0]?.question ?? '(a clarifying question)'
+            lines.push(`MUSE (asked): ${q}`)
+          } else {
+            const labels = (b.input?.options ?? []).map((o: { label?: string }) => o?.label).filter(Boolean).join(', ')
+            lines.push(`MUSE (proposed${labels ? ` — ${labels}` : ''}): ${b.input?.rationale ?? ''}`)
+          }
+        }
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
+// Shell out to `claude -p`, feed the prompt over stdin, and reshape the validated
+// structured_output back into the frontend's tool_use-shaped content array.
+// Flags, in order of why they're here:
+//   --tools ""            no built-in tools — stays a single-shot generator, can't
+//                         read/write files on its own (preserves the approve→/write loop)
+//   --strict-mcp-config   ignore this dir's MCP servers (else ~28k tokens of schemas)
+//   --setting-sources ""  ignore user/project settings (hooks, CLAUDE.md, auto-memory)
+//   --json-schema         server-side structured-output validation
+// ANTHROPIC_API_KEY is stripped from the child env so auth can only resolve to the
+// logged-in subscription, never silently bill a key picked up from .env.local.
+function runChatViaCli(bin: string, model: string, prompt: string): Promise<Anthropic.ContentBlock[]> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-p',
+      '--output-format', 'json',
+      '--model', model,
+      '--tools', '',
+      '--disable-slash-commands',
+      '--strict-mcp-config',
+      '--setting-sources', '',
+      '--system-prompt', CLI_SYSTEM_PROMPT,
+      '--json-schema', JSON.stringify(CLI_OUTPUT_SCHEMA),
+    ]
+    const childEnv = { ...process.env }
+    delete childEnv.ANTHROPIC_API_KEY
+
+    const child = spawn(bin, args, { env: childEnv })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (d) => (out += d))
+    child.stderr.on('data', (d) => (err += d))
+    child.on('error', (e) =>
+      reject(new Error(`Could not run the \`claude\` CLI (${(e as Error).message}). Is Claude Code installed and on PATH, and are you logged in (\`claude auth status\`)?`)),
+    )
+    child.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`claude CLI exited with code ${code}: ${err.slice(0, 800) || '(no stderr)'}`))
+      }
+      let res: { structured_output?: unknown; session_id?: string; is_error?: boolean }
+      try {
+        res = JSON.parse(out)
+      } catch {
+        return reject(new Error(`Could not parse claude CLI output: ${out.slice(0, 800)}`))
+      }
+      const so = res.structured_output as
+        | { mode?: string; rationale?: string; options?: unknown; questions?: unknown }
+        | undefined
+      if (!so || typeof so !== 'object') {
+        return reject(new Error('claude CLI returned no structured output.'))
+      }
+      const id = `cli-${res.session_id ?? randomUUID()}`
+      const content =
+        so.mode === 'clarify'
+          ? [{
+              type: 'tool_use' as const,
+              id,
+              name: 'ask_clarifying_questions',
+              input: { questions: Array.isArray(so.questions) ? so.questions : [] },
+            }]
+          : [{
+              type: 'tool_use' as const,
+              id,
+              name: 'propose_options',
+              input: { rationale: so.rationale ?? '', options: Array.isArray(so.options) ? so.options : [] },
+            }]
+      resolve(content as unknown as Anthropic.ContentBlock[])
+    })
+    child.stdin.write(prompt)
+    child.stdin.end()
+  })
 }
