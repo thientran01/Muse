@@ -1,13 +1,3 @@
-<!--
-  Format: DESIGN.md (https://github.com/google-labs-code/design.md), © Google,
-  Apache-2.0. Structure (token frontmatter + ordered prose sections) is borrowed;
-  all content below describes THIS app's design system.
-
-  HOW MUSE USES THIS FILE: it is injected into Muse's context on every edit so
-  proposals stay on-brand. The tokens are NORMATIVE — prefer them over invented
-  values. In code, colors are CSS variables that flip per theme, so always apply
-  them through the variable (e.g. text-[color:var(--c-energy)]), never as raw hex.
--->
 ---
 name: Dink Den Design System
 description: A warm, editorial, high-energy design system for a social pickleball app — deep-forest dark surfaces, a cream canvas, and electric lime/orange accents.
@@ -23,6 +13,7 @@ colors:
   pop: "#ff6b35"           # var(--c-pop) — SECONDARY accent (orange): highlights, badges, "hot" signals
   on-bg: "#f5f1e8"         # var(--c-on-bg) — primary text/icon color on the app bg
   on-bg-muted: "rgba(245,241,232,0.55)"  # var(--c-on-bg-muted) — dimmed text on the app bg
+  rail-line: "rgba(255,255,255,0.07)"    # var(--c-rail-line) — faint rails behind toggles/inactive controls
 typography:
   display-xl:
     fontFamily: Bricolage Grotesque
@@ -55,7 +46,7 @@ typography:
     lineHeight: 1.2
     letterSpacing: 0.18em      # uppercase eyebrow/label
   stat:
-    fontFamily: JetBrains Mono
+    fontFamily: JetBrains Mono   # apply via Tailwind's `font-mono` utility — there is NO --font-mono CSS var
     fontSize: 14px
     fontWeight: "700"
     lineHeight: 1.2
@@ -86,6 +77,17 @@ components:
     rounded: "{rounded.card}"
     padding: "{spacing.pad}"
 ---
+
+<!--
+  Format: DESIGN.md (https://github.com/google-labs-code/design.md), © Google,
+  Apache-2.0. The structure (token frontmatter + ordered prose sections) is
+  borrowed; all content here describes THIS app's design system.
+
+  Muse injects this file into its context on every edit so proposals stay
+  on-brand. Tokens are NORMATIVE — prefer them over invented values, and apply
+  colors through their CSS variable (e.g. text-[color:var(--c-energy)]), never
+  as raw hex (the variables flip per theme).
+-->
 
 # Dink Den Design System
 

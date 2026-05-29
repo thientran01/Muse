@@ -168,10 +168,20 @@ function parseObserveJson(text: string): { observation: string; chips: string[] 
 function loadDesignBrief(root: string, override: string): string | null {
   const tryRead = (p: string): string | null => {
     try {
-      if (!fs.existsSync(p) || !fs.statSync(p).isFile()) return null
-      const text = fs.readFileSync(p, 'utf8').trim()
-      if (!text) return null
-      return text.length > MAX_DESIGN_BYTES ? text.slice(0, MAX_DESIGN_BYTES) : text
+      const st = fs.statSync(p) // throws if missing -> caught below
+      if (!st.isFile()) return null
+      // Read at most the cap (real bytes, not chars) so a mispointed override
+      // can't slurp a huge file into the dev-server heap.
+      const len = Math.min(st.size, MAX_DESIGN_BYTES)
+      const fd = fs.openSync(p, 'r')
+      try {
+        const buf = Buffer.alloc(len)
+        fs.readSync(fd, buf, 0, len, 0)
+        const text = buf.toString('utf8').trim()
+        return text || null
+      } finally {
+        fs.closeSync(fd)
+      }
     } catch {
       return null
     }
