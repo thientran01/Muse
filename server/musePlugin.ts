@@ -36,6 +36,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-5' // anthropic backend, /chat
 const DEFAULT_CLI_MODEL = 'sonnet' // claude-cli backend, /chat (alias = latest on your plan)
 const DEFAULT_OBSERVE_MODEL = 'claude-haiku-4-5' // /observe — cheap + latency-friendly
 const MAX_WRITE_BYTES = 200_000 // sanity cap per file on model-proposed content
+const CLI_TIMEOUT_MS = 300_000 // kill a hung `claude` after this; full-file rewrites are slow + high-variance
 
 const MUSE_SYSTEM_PROMPT = `You are Muse — a design partner embedded in someone's live web app. A non-technical user (a founder, PM, or marketer) points at an element and tells you, in plain language, how they want it to feel. You handle the craft, and you have a point of view.
 
@@ -458,8 +459,12 @@ function resolveClaudeBin(): string {
   const finder = process.platform === 'win32' ? 'where' : 'which'
   try {
     const out = execFileSync(finder, ['claude'], { encoding: 'utf8' })
-    const first = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0]
-    return first || 'claude'
+    const hits = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+    // On Windows `where` may list a .cmd shim alongside the native .exe. Prefer
+    // the .exe — spawn() runs it shell-free; a .cmd would need a shell (and the
+    // multi-line system prompt / JSON-schema args don't survive shell quoting).
+    const exe = hits.find((h) => /\.exe$/i.test(h))
+    return exe || hits[0] || 'claude'
   } catch {
     return 'claude' // fall back to PATH lookup at spawn time
   }
@@ -593,45 +598,84 @@ function runChatViaCli(bin: string, model: string, prompt: string): Promise<Anth
     const child = spawn(bin, args, { env: childEnv })
     let out = ''
     let err = ''
+
+    // Settle exactly once — a timeout, an error, and a close can all race.
+    let settled = false
+    const done = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+    // A hung `claude` (waiting on auth, a stalled API call) would otherwise hold
+    // the HTTP request open forever. Kill it past the deadline and reject.
+    const timer = setTimeout(() => {
+      child.kill()
+      done(() => reject(new Error(`claude CLI timed out after ${CLI_TIMEOUT_MS / 1000}s.`)))
+    }, CLI_TIMEOUT_MS)
+
     child.stdout.on('data', (d) => (out += d))
     child.stderr.on('data', (d) => (err += d))
+    // stdin can EPIPE if the child dies before draining the prompt; swallow it so
+    // it surfaces as a clean reject via 'error'/'close', not an uncaught throw.
+    child.stdin.on('error', () => {})
     child.on('error', (e) =>
-      reject(new Error(`Could not run the \`claude\` CLI (${(e as Error).message}). Is Claude Code installed and on PATH, and are you logged in (\`claude auth status\`)?`)),
+      done(() =>
+        reject(new Error(`Could not run the \`claude\` CLI (${(e as Error).message}). Is Claude Code installed and on PATH, and are you logged in (\`claude auth status\`)?`)),
+      ),
     )
     child.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`claude CLI exited with code ${code}: ${err.slice(0, 800) || '(no stderr)'}`))
-      }
-      let res: { structured_output?: unknown; session_id?: string; is_error?: boolean }
-      try {
-        res = JSON.parse(out)
-      } catch {
-        return reject(new Error(`Could not parse claude CLI output: ${out.slice(0, 800)}`))
-      }
-      const so = res.structured_output as
-        | { mode?: string; rationale?: string; options?: unknown; questions?: unknown }
-        | undefined
-      if (!so || typeof so !== 'object') {
-        return reject(new Error('claude CLI returned no structured output.'))
-      }
-      const id = `cli-${res.session_id ?? randomUUID()}`
-      const content =
-        so.mode === 'clarify'
-          ? [{
-              type: 'tool_use' as const,
-              id,
-              name: 'ask_clarifying_questions',
-              input: { questions: Array.isArray(so.questions) ? so.questions : [] },
-            }]
-          : [{
-              type: 'tool_use' as const,
-              id,
-              name: 'propose_options',
-              input: { rationale: so.rationale ?? '', options: Array.isArray(so.options) ? so.options : [] },
-            }]
-      resolve(content as unknown as Anthropic.ContentBlock[])
+      done(() => {
+        if (code !== 0) {
+          return reject(new Error(`claude CLI exited with code ${code}: ${err.slice(0, 800) || '(no stderr)'}`))
+        }
+        let res: { structured_output?: unknown; session_id?: string; is_error?: boolean; result?: unknown }
+        try {
+          res = JSON.parse(out)
+        } catch {
+          return reject(new Error(`Could not parse claude CLI output: ${out.slice(0, 800)}`))
+        }
+        // The CLI can exit 0 yet flag a model-level failure (rate limit, refusal);
+        // surface its message rather than the generic "no structured output".
+        if (res.is_error) {
+          const msg = typeof res.result === 'string' ? res.result : 'unknown error'
+          return reject(new Error(`claude CLI reported an error: ${msg.slice(0, 800)}`))
+        }
+        const so = res.structured_output as
+          | { mode?: string; rationale?: string; options?: unknown; questions?: unknown }
+          | undefined
+        if (!so || typeof so !== 'object') {
+          return reject(new Error('claude CLI returned no structured output.'))
+        }
+        const id = `cli-${res.session_id ?? randomUUID()}`
+        let content: Array<Record<string, unknown>>
+        if (so.mode === 'clarify') {
+          const questions = Array.isArray(so.questions) ? so.questions : []
+          if (questions.length === 0) {
+            return reject(new Error('claude CLI returned no question. Try rephrasing.'))
+          }
+          content = [{ type: 'tool_use', id, name: 'ask_clarifying_questions', input: { questions } }]
+        } else {
+          // Match the API tool's minItems:1 invariant, and stamp an `id` on each
+          // option so the frontend isn't relying on its index fallback.
+          const options = (Array.isArray(so.options) ? so.options : []).map((o, i) => ({
+            id: `opt-${i}`,
+            ...(o as Record<string, unknown>),
+          }))
+          if (options.length === 0) {
+            return reject(new Error("claude CLI didn't return any changes. Try rephrasing."))
+          }
+          content = [{ type: 'tool_use', id, name: 'propose_options', input: { rationale: so.rationale ?? '', options } }]
+        }
+        resolve(content as unknown as Anthropic.ContentBlock[])
+      })
     })
-    child.stdin.write(prompt)
-    child.stdin.end()
+
+    try {
+      child.stdin.write(prompt)
+      child.stdin.end()
+    } catch {
+      // child already gone — the 'error'/'close' handler will reject.
+    }
   })
 }
