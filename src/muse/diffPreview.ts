@@ -43,8 +43,11 @@ function classNameOf(line: string): string | null {
 
 // Every className change in one file's diff, as (old → new) pairs. Within each
 // contiguous changed run we zip the removed classNames against the added ones in
-// order — pairing by position inside the hunk, which holds up when a single edit
-// touches more than one element's className. Unchanged pairs are dropped.
+// order. We ONLY pair a hunk whose removed/added className counts are EQUAL — a
+// pure restyle where del[k] reliably corresponds to add[k]. If the counts differ
+// the hunk inserted or removed an element (its className shifts the positions),
+// so positional pairing would misattribute a class to the wrong node — we skip
+// the hunk entirely (no preview beats a wrong one). Unchanged pairs are dropped.
 function classNamePairs(original: string, newContent: string): Array<{ oldClassName: string; newClassName: string }> {
   const lines = diffLines(original, newContent)
   const pairs: Array<{ oldClassName: string; newClassName: string }> = []
@@ -61,8 +64,8 @@ function classNamePairs(original: string, newContent: string): Array<{ oldClassN
       if (c !== null) (lines[i].type === 'del' ? dels : adds).push(c)
       i++
     }
-    const n = Math.min(dels.length, adds.length)
-    for (let k = 0; k < n; k++) {
+    if (dels.length !== adds.length) continue // structural change — can't pair safely
+    for (let k = 0; k < dels.length; k++) {
       if (normClass(dels[k]) !== normClass(adds[k])) pairs.push({ oldClassName: dels[k], newClassName: adds[k] })
     }
   }
@@ -150,10 +153,19 @@ export function elementPreviewsForOption(
   const out: ElementPreview[] = []
   const seen = new Set<string>()
   for (const edit of option.edits) {
-    const original = originals[edit.fileName] ?? originals[normPath(edit.fileName)]
+    // edits are normally keyed identically to `originals` (both root-relative);
+    // fall back to a suffix match in case an edit carries an absolute path.
+    const original =
+      originals[edit.fileName] ??
+      originals[normPath(edit.fileName)] ??
+      Object.entries(originals).find(([k]) => {
+        const a = normPath(k)
+        const b = normPath(edit.fileName)
+        return a === b || a.endsWith('/' + b) || b.endsWith('/' + a)
+      })?.[1]
     if (original === undefined) continue
     for (const { oldClassName, newClassName } of classNamePairs(original, edit.newContent)) {
-      const k = `${oldClassName}${newClassName}`
+      const k = `${oldClassName}\n${newClassName}` // \n separator — classNames contain spaces
       if (seen.has(k)) continue
       seen.add(k)
       out.push({ oldClassName, newClassName, style: resolveStyles(newClassName) })
@@ -169,15 +181,30 @@ export function elementPreviewsForOption(
  * returned matches, so a pair's new class can't chain into another pair. */
 export function matchPreviews(previews: ElementPreview[]): PreviewMatch[] {
   if (previews.length === 0 || typeof document === 'undefined') return []
+  // Index by old className. If the same current class would map to two DIFFERENT
+  // new classes (two edited elements happen to share an exact class string but
+  // change differently), it's ambiguous — drop it rather than apply whichever
+  // came last to every matching node.
   const byOld = new Map<string, PreviewDelta>()
-  for (const p of previews) byOld.set(normClass(p.oldClassName), { newClassName: p.newClassName, style: p.style })
+  const ambiguous = new Set<string>()
+  for (const p of previews) {
+    const key = normClass(p.oldClassName)
+    const existing = byOld.get(key)
+    if (existing && existing.newClassName !== p.newClassName) {
+      ambiguous.add(key)
+      continue
+    }
+    byOld.set(key, { newClassName: p.newClassName, style: p.style })
+  }
   const out: PreviewMatch[] = []
   for (const el of Array.from(document.body.querySelectorAll('*'))) {
     // HTMLElement only — SVG/MathML nodes have a read-only `className`, so the
     // apply step would throw; their classes also aren't Tailwind utilities.
     if (!(el instanceof HTMLElement)) continue
     if (el.closest('[data-muse-ui]')) continue // never restyle Muse's own chrome
-    const delta = byOld.get(normClass(el.getAttribute('class') ?? ''))
+    const key = normClass(el.getAttribute('class') ?? '')
+    if (ambiguous.has(key)) continue
+    const delta = byOld.get(key)
     if (delta) out.push({ node: el, delta })
   }
   return out
