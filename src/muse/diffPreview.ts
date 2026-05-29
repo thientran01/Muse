@@ -148,10 +148,23 @@ export function previewDeltaForTarget(
   target: SelectedElement,
 ): PreviewDelta | null {
   if (!target.fileName) return null
-  const key = normPath(target.fileName)
-  const edit: FileEdit | undefined = option.edits.find((e) => normPath(e.fileName) === key)
-  const original = originals[key]
-  if (!edit || original === undefined) return null
+  // target.fileName comes from React's _debugSource and is typically ABSOLUTE,
+  // while the server keys edits/originals by a root-relative path. Match
+  // tolerantly by suffix so the two line up regardless of prefix or slashes —
+  // otherwise the lookup misses and the card silently won't preview (even though
+  // apply still works, since apply uses the edit list directly).
+  const want = normPath(target.fileName)
+  const sameFile = (cand: string) => {
+    const c = normPath(cand)
+    return c === want || want.endsWith('/' + c) || c.endsWith('/' + want)
+  }
+  const edit: FileEdit | undefined = option.edits.find((e) => sameFile(e.fileName))
+  if (!edit) return null
+  const original =
+    originals[edit.fileName] ??
+    originals[normPath(edit.fileName)] ??
+    Object.entries(originals).find(([k]) => sameFile(k))?.[1]
+  if (original === undefined) return null
   const newClassName = newClassNameForTarget(original, edit.newContent, target.classNames)
   if (newClassName === null) return null
   return { newClassName, style: resolveStyles(newClassName) }
