@@ -51,14 +51,18 @@ const model = opt('--model', 'sonnet')
 // if it's in the label, otherwise line-by-line. For repos where a tool shares
 // the codebase (e.g. exclude the overlay's own `--muse-*` tokens that live in a
 // shared tailwind config). The src/muse directory is always skipped regardless.
-const excludes = optAll('--exclude').map((s) => s.toLowerCase())
+const excludes = optAll('--exclude').map((s) => s.toLowerCase()).filter(Boolean)
 const outFile = path.resolve(opt('--out', path.join(root, 'DESIGN.md')))
 const SRC = path.join(root, 'src')
 const MAX_EVIDENCE = concise ? 30_000 : 60_000
+const TIMEOUT_MS = 300_000 // kill a hung `claude` (e.g. a stalled auth prompt on CI)
 
 const die = (msg) => { console.error(`[gen-design-md] ${msg}`); process.exit(1) }
 if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) die(`not a directory: ${root}`)
-if (fs.existsSync(outFile) && !force) die(`${path.relative(root, outFile) || outFile} already exists — pass --force to overwrite, or --out <path>.`)
+if (fs.existsSync(outFile)) {
+  if (fs.statSync(outFile).isDirectory()) die(`--out is a directory: ${outFile}`)
+  if (!force) die(`${path.relative(root, outFile) || outFile} already exists — pass --force to overwrite, or --out <path>.`)
+}
 
 // --- 1. gather evidence -----------------------------------------------------
 // Skip the Muse overlay itself: we want the brief to describe the app being
@@ -97,8 +101,9 @@ const add = (label, body) => {
   }
   if (!text.trim()) return
   const slice = text.slice(0, Math.min(text.length, budget))
-  evidence.push(`### ${label}\n\`\`\`\n${slice}\n\`\`\``)
-  budget -= slice.length
+  const block = `### ${label}\n\`\`\`\n${slice}\n\`\`\``
+  evidence.push(block)
+  budget -= block.length // subtract the whole block (fences + label), so the cap is honest
 }
 
 // (a) Tailwind config — the theme is the design system's backbone.
@@ -126,7 +131,7 @@ if (evidence.length === 0) die(`no styling evidence found under ${rel(SRC)} — 
 // --- 2. the DESIGN.md authoring spec (condensed) ----------------------------
 const SYSTEM = `You author DESIGN.md files: a plain-text design system with YAML frontmatter (machine-readable tokens) followed by markdown prose (human guidance), per github.com/google-labs-code/design.md.
 
-Output ONLY the DESIGN.md content. The FIRST line must be \`---\` (no preamble, no code fences around the whole document).
+Output ONLY the DESIGN.md content. The FIRST line must be \`---\` (no preamble, no code fences around the whole document). Immediately after the closing frontmatter \`---\`, add a short HTML comment crediting the format: <!-- Format: DESIGN.md (github.com/google-labs-code/design.md), Apache-2.0. Content describes this app. -->
 
 FRONTMATTER (between --- delimiters):
   name: <string>
@@ -152,6 +157,8 @@ const prompt =
   `## Evidence\n\n${evidence.join('\n\n')}`
 
 // --- 3. generate via the claude CLI (subscription auth) ----------------------
+// Mirrors resolveClaudeBin() in server/musePlugin.ts (no shared module between
+// the Vite plugin and this standalone script).
 function resolveClaudeBin() {
   try {
     const finder = process.platform === 'win32' ? 'where' : 'which'
@@ -167,6 +174,8 @@ delete env.ANTHROPIC_API_KEY // force subscription auth, never bill a key
 
 console.error(`[gen-design-md] ${evidence.length} evidence blocks (~${MAX_EVIDENCE - budget} chars)${concise ? ', concise' : ''} → asking claude (${model})…`)
 
+// Same lockdown flags as runChatViaCli in server/musePlugin.ts. No --json-schema:
+// a DESIGN.md is freeform markdown, so we read the plain `.result`, not structured output.
 const child = spawn(bin, [
   '-p', '--output-format', 'json', '--model', model,
   '--tools', '', '--disable-slash-commands', '--strict-mcp-config', '--setting-sources', '',
@@ -175,18 +184,29 @@ const child = spawn(bin, [
 
 let out = ''
 let err = ''
+let settled = false
+const finish = (fn) => { if (settled) return; settled = true; clearTimeout(timer); fn() }
+const timer = setTimeout(() => { child.kill(); finish(() => die(`claude timed out after ${TIMEOUT_MS / 1000}s.`)) }, TIMEOUT_MS)
+
 child.stdout.on('data', (d) => (out += d))
 child.stderr.on('data', (d) => (err += d))
-child.on('error', (e) => die(`could not run the \`claude\` CLI (${e.message}). Is Claude Code installed and on PATH, and logged in (\`claude auth status\`)?`))
-child.on('close', (code) => {
+child.stdin.on('error', () => {}) // swallow EPIPE if the child dies before draining the prompt
+child.on('error', (e) => finish(() => die(`could not run the \`claude\` CLI (${e.message}). Is Claude Code installed and on PATH, and logged in (\`claude auth status\`)?`)))
+child.on('close', (code) => finish(() => {
   if (code !== 0) die(`claude exited ${code}: ${err.slice(0, 500) || '(no stderr)'}`)
   let res
   try { res = JSON.parse(out) } catch { return die(`could not parse claude output: ${out.slice(0, 500)}`) }
   if (res.is_error) die(`claude reported an error: ${(typeof res.result === 'string' ? res.result : 'unknown').slice(0, 500)}`)
   const md = (res.result || '').trim()
   if (!md) die('claude returned an empty result.')
+  fs.mkdirSync(path.dirname(outFile), { recursive: true }) // ensure --out parent dirs exist
   fs.writeFileSync(outFile, md + '\n', 'utf8')
   console.error(`[gen-design-md] wrote ${rel(outFile) || outFile} (${md.length} chars). Review it before committing.`)
-})
-child.stdin.write(prompt)
-child.stdin.end()
+}))
+
+try {
+  child.stdin.write(prompt)
+  child.stdin.end()
+} catch {
+  // child already gone — the 'error'/'close' handler will report it.
+}
