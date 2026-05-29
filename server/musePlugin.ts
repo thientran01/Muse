@@ -37,6 +37,11 @@ const DEFAULT_CLI_MODEL = 'sonnet' // claude-cli backend, /chat (alias = latest 
 const DEFAULT_OBSERVE_MODEL = 'claude-haiku-4-5' // /observe — cheap + latency-friendly
 const MAX_WRITE_BYTES = 200_000 // sanity cap per file on model-proposed content
 const CLI_TIMEOUT_MS = 300_000 // kill a hung `claude` after this; full-file rewrites are slow + high-variance
+const MAX_DESIGN_BYTES = 40_000 // cap the injected design brief so it can't bloat every call
+// Where to look for the app's design brief (DESIGN.md format), in order. The
+// first one found is injected into every /chat and /observe call so proposals
+// stay on-brand. Override with MUSE_DESIGN_MD (absolute or root-relative path).
+const DESIGN_MD_CANDIDATES = ['DESIGN.md', 'src/DESIGN.md', 'src/demo/DESIGN.md']
 
 const MUSE_SYSTEM_PROMPT = `You are Muse — a design partner embedded in someone's live web app. A non-technical user (a founder, PM, or marketer) points at an element and tells you, in plain language, how they want it to feel. You handle the craft, and you have a point of view.
 
@@ -156,6 +161,33 @@ function parseObserveJson(text: string): { observation: string; chips: string[] 
   }
 }
 
+// Load the app's design brief (DESIGN.md format) if present. Read fresh each call
+// — the file is small, so editing the brief takes effect without a server restart.
+// MUSE_DESIGN_MD overrides the search; otherwise the first candidate found wins.
+// Returns null when there's no brief (the feature is opt-in by simply adding one).
+function loadDesignBrief(root: string, override: string): string | null {
+  const tryRead = (p: string): string | null => {
+    try {
+      if (!fs.existsSync(p) || !fs.statSync(p).isFile()) return null
+      const text = fs.readFileSync(p, 'utf8').trim()
+      if (!text) return null
+      return text.length > MAX_DESIGN_BYTES ? text.slice(0, MAX_DESIGN_BYTES) : text
+    } catch {
+      return null
+    }
+  }
+  if (override) return tryRead(path.isAbsolute(override) ? override : path.resolve(root, override))
+  for (const rel of DESIGN_MD_CANDIDATES) {
+    const hit = tryRead(path.resolve(root, rel))
+    if (hit) return hit
+  }
+  return null
+}
+
+// Frame the brief consistently wherever it's injected.
+const designBriefBlock = (brief: string) =>
+  `# The app's design system (DESIGN.md)\nFollow this. The tokens are normative — prefer them over inventing values, and apply colors through their CSS variables (never hardcode hex).\n\n${brief}`
+
 export function musePlugin(): Plugin {
   let root = process.cwd()
   let apiKey = ''
@@ -164,6 +196,7 @@ export function musePlugin(): Plugin {
   let cliModel = DEFAULT_CLI_MODEL
   let observeModel = DEFAULT_OBSERVE_MODEL
   let claudeBin = 'claude'
+  let designMdOverride = '' // MUSE_DESIGN_MD, if set
 
   return {
     name: 'muse-backend',
@@ -176,6 +209,7 @@ export function musePlugin(): Plugin {
       backend = (env.MUSE_BACKEND || process.env.MUSE_BACKEND || DEFAULT_BACKEND).trim()
       cliModel = env.MUSE_CLI_MODEL || process.env.MUSE_CLI_MODEL || DEFAULT_CLI_MODEL
       observeModel = env.MUSE_OBSERVE_MODEL || process.env.MUSE_OBSERVE_MODEL || DEFAULT_OBSERVE_MODEL
+      designMdOverride = env.MUSE_DESIGN_MD || process.env.MUSE_DESIGN_MD || ''
       if (backend === 'claude-cli') claudeBin = resolveClaudeBin()
     },
     configureServer(server) {
@@ -220,7 +254,9 @@ export function musePlugin(): Plugin {
           const filesBlock = [...files.entries()]
             .map(([rel, content]) => `// ${rel}\n\`\`\`tsx\n${content}\n\`\`\``)
             .join('\n\n')
+          const brief = loadDesignBrief(root, designMdOverride)
           const context =
+            (brief ? `${designBriefBlock(brief)}\n\n` : '') +
             `The user selected ${elementLines.length} element(s):\n${elementLines.join('\n')}\n\n` +
             `Relevant files:\n\n${filesBlock}`
 
@@ -291,8 +327,10 @@ export function musePlugin(): Plugin {
           }
           const rel = relOf(root, abs)
           const source = fs.readFileSync(abs, 'utf8')
+          const brief = loadDesignBrief(root, designMdOverride)
 
           const context =
+            (brief ? `${designBriefBlock(brief)}\n\n` : '') +
             `Selected element: <${target.tag ?? '?'}> in ${rel}` +
             (target.text ? ` — "${target.text}"` : '') +
             `\nIts className: "${target.classNames ?? ''}"\n\n` +
