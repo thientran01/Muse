@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "design:gen": "node scripts/gen-design-md.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
