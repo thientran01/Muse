@@ -650,6 +650,14 @@ export function MuseOverlay() {
             onToggleHistory={() => setHistoryOpen((v) => !v)}
             onClose={requestClose}
           >
+            {/* Keyed by which view is showing, so switching views (home ⇄
+                history ⇄ thread) remounts this wrapper and replays muse-step —
+                the new view rises + unblurs in instead of snapping. Carries the
+                panel's flex column so the inner views lay out unchanged. */}
+            <div
+              key={historyOpen ? 'history' : home ? 'home' : 'thread'}
+              className="flex min-h-0 flex-1 flex-col animate-muse-step motion-reduce:animate-none"
+            >
             {historyOpen ? (
               <MuseHistory entries={archived} onPick={openFromHistory} />
             ) : home ? (
@@ -711,6 +719,7 @@ export function MuseOverlay() {
             )}
             </>
             )}
+            </div>
           </MusePanel>
         </div>
       )}
