@@ -207,6 +207,18 @@ export const museStore = {
     state = { ...state, thread: updated }
     notify()
   },
+  /** Transition a design bubble (offer → generating → view). No-op if the id
+   * no longer points at a design bubble (scrolled past / replaced). */
+  setDesignBubble(id: string, patch: Partial<Extract<ThreadMessage, { kind: 'design' }>>) {
+    const idx = state.thread.findIndex((m) => m.id === id && m.kind === 'design')
+    if (idx === -1) return
+    const target = state.thread[idx]
+    if (target.kind !== 'design') return
+    const updated = state.thread.slice()
+    updated[idx] = { ...target, ...patch }
+    state = { ...state, thread: updated }
+    notify()
+  },
   /** Read an element's memoized /observe result, if any. */
   getObservation(key: string): ObserveResult | undefined {
     return observationCache[key]

@@ -3,6 +3,7 @@ import type { ProposedOption, SelectedElement, ThreadMessage } from '../types'
 import type { Pending } from '../store'
 import { MessageApplied } from './messages/MessageApplied'
 import { MessageClarify } from './messages/MessageClarify'
+import { MessageDesign } from './messages/MessageDesign'
 import { MessageObservation } from './messages/MessageObservation'
 import { MessageOptionSet } from './messages/MessageOptionSet'
 import { MessageTargetHandoff } from './messages/MessageTargetHandoff'
@@ -25,6 +26,8 @@ export function MuseThread({
   onPreviewEnd,
   // observation starter-chip handler
   onChipClick,
+  // design-brief generate handler
+  onGenerateDesign,
 }: {
   thread: ThreadMessage[]
   pending: Pending | null
@@ -38,6 +41,7 @@ export function MuseThread({
   onPreview: (option: ProposedOption) => void
   onPreviewEnd: () => void
   onChipClick: (text: string, target: SelectedElement) => void
+  onGenerateDesign: (id: string) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -100,6 +104,16 @@ export function MuseThread({
             return <MessageApplied key={m.id} fileCount={m.fileCount} rationale={m.rationale} />
           case 'target-handoff':
             return <MessageTargetHandoff key={m.id} target={m.target} />
+          case 'design':
+            return (
+              <MessageDesign
+                key={m.id}
+                status={m.status}
+                content={m.content}
+                path={m.path}
+                onGenerate={() => onGenerateDesign(m.id)}
+              />
+            )
           case 'error':
             return (
               <p key={m.id} className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 ring-1 ring-rose-500/20">
