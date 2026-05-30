@@ -112,9 +112,10 @@ export function MessageOptionSet({
             {showDiff ? 'Hide the code change' : 'View the code change'}
           </button>
           {showDiff && (
-            // Height-capped + internally scrollable so a big diff can never push
-            // the options out of view.
-            <div className="max-h-[28vh] space-y-2 overflow-y-auto">
+            // No inner scroll — the diff flows in the panel's single scroll area
+            // so expanding it never stacks a second scrollbar inside the first
+            // (matches the DESIGN.md expansion in MessageDesign).
+            <div className="space-y-2">
               {focusedOption.edits.map((edit) => (
                 <div key={edit.fileName} className="space-y-1">
                   <span className="block truncate font-mono text-xs text-fg-muted">{fileShort(edit.fileName)}</span>

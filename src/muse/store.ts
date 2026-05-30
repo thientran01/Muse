@@ -167,8 +167,9 @@ export const museStore = {
     notify()
   },
   /** Restore an archived proposal into the live view (thread + pending +
-   * originals), so its options are viewable and still applyable. Selection is
-   * left as-is — Apply uses the restored edits, which don't depend on it. */
+   * originals), so its options are viewable and still applyable. Does not touch
+   * selection — the caller (openFromHistory) restores the entry's `elements`, so
+   * the panel renders the conversation (home is keyed on an empty selection). */
   restoreArchived(id: string): boolean {
     const entry = state.archived.find((a) => a.id === id)
     if (!entry) return false
