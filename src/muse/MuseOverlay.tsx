@@ -154,12 +154,17 @@ export function MuseOverlay() {
     if (closing) return
     restore() // never leave a hover-preview stranded when the panel closes
     museStore.archive(selection) // keep a closed-before-applying proposal in history
-    setHistoryOpen(false)
     setClosing(true)
+    // NOTE: don't reset historyOpen here — flipping it mid-collapse swaps the
+    // panel's content back to the (taller) home view, so you'd see the WRONG
+    // content shrink into the FAB. Reset it only once the panel has unmounted,
+    // so the collapse animates whatever was on screen. (A cancelClose mid-flight
+    // therefore correctly leaves you on the history view.)
     closeTimer.current = window.setTimeout(() => {
       setOpen(false)
       clearSelection()
       setClosing(false)
+      setHistoryOpen(false)
     }, EXIT_MS)
   }
 
