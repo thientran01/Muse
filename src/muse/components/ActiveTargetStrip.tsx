@@ -1,4 +1,4 @@
-import { Crosshair, X } from '@phosphor-icons/react'
+import { Crosshair, FileText, X } from '@phosphor-icons/react'
 import type { SelectedElement } from '../types'
 
 const fileOf = (e: SelectedElement) => (e.fileName ? e.fileName.split(/[\\/]/).pop() : null)
@@ -16,11 +16,13 @@ export function ActiveTargetStrip({
   mock,
   onRemove,
   onSwapTarget,
+  onShowDesign,
 }: {
   elements: SelectedElement[]
   mock: boolean
   onRemove?: (key: string) => void
   onSwapTarget?: () => void
+  onShowDesign?: () => void
 }) {
   const single = elements.length === 1 ? elements[0] : null
 
@@ -66,16 +68,28 @@ export function ActiveTargetStrip({
           </div>
         )}
       </div>
-      {onSwapTarget && (
-        <button
-          onClick={onSwapTarget}
-          aria-label="Pick a different element"
-          title="Pick a different element (Esc to cancel)"
-          className="shrink-0 rounded-md p-1 text-accent transition hover:bg-accent/10"
-        >
-          <Crosshair size={13} weight="bold" />
-        </button>
-      )}
+      <div className="flex shrink-0 items-center gap-0.5">
+        {onShowDesign && (
+          <button
+            onClick={onShowDesign}
+            aria-label="App design system"
+            title="App design system (DESIGN.md)"
+            className="rounded-md p-1 text-fg-faint transition hover:bg-line/10 hover:text-fg"
+          >
+            <FileText size={14} />
+          </button>
+        )}
+        {onSwapTarget && (
+          <button
+            onClick={onSwapTarget}
+            aria-label="Pick a different element"
+            title="Pick a different element (Esc to cancel)"
+            className="rounded-md p-1 text-accent transition hover:bg-accent/10"
+          >
+            <Crosshair size={13} weight="bold" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }

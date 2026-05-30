@@ -73,6 +73,46 @@ export async function museWrite(files: FileEdit[]): Promise<void> {
   if (!data.ok) throw new Error(data.error ?? 'Write failed')
 }
 
+export type DesignGet = { exists: boolean; content?: string; path?: string }
+
+// Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.
+export async function museDesignGet(): Promise<DesignGet> {
+  if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'src/demo/DESIGN.md' }
+  const res = await fetch('/api/muse/design')
+  const data = (await res.json()) as DesignGet & { error?: string }
+  if (data.error) throw new Error(data.error) // surface server errors, not a false "no brief"
+  return data
+}
+
+// Generate a DESIGN.md from the app's code (concise). ~45s — caller shows a
+// pending state. Returns the written brief.
+export async function museDesignGenerate(): Promise<{ content: string; path?: string }> {
+  if (MOCK) {
+    await delay(1200)
+    return { content: MOCK_DESIGN_MD, path: 'src/demo/DESIGN.md' }
+  }
+  const res = await fetch('/api/muse/design/generate', { method: 'POST' })
+  const data = (await res.json()) as { content?: string; path?: string; error?: string }
+  if (data.error || !data.content) throw new Error(data.error ?? 'Generation failed')
+  return { content: data.content, path: data.path }
+}
+
+// A small sample brief for mock mode so the card renders without a backend.
+const MOCK_DESIGN_MD = `---
+name: Dink Den Design System
+colors:
+  energy: "#d4ff3a"   # var(--c-energy)
+  pop: "#ff6b35"      # var(--c-pop)
+  bg: "#0f1f1a"       # var(--c-bg)
+  card: "#f5f1e8"     # var(--c-card)
+typography:
+  display: { fontFamily: "Bricolage Grotesque" }
+  body: { fontFamily: "Schibsted Grotesk" }
+---
+
+## Brand & Style
+Warm, editorial, high-energy — a boutique sports feel with electric lime and orange accents.`
+
 // =============================================================================
 // Mock mode — credit-free dev iteration on the thread shell.
 //

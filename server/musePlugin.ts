@@ -198,6 +198,22 @@ function loadDesignBrief(root: string, override: string): string | null {
 const designBriefBlock = (brief: string) =>
   `# The app's design system (DESIGN.md)\nFollow this. The tokens are normative — prefer them over inventing values, and apply colors through their CSS variables (never hardcode hex).\n\n${brief}`
 
+// Where the design brief lives, or should be written. Returns the first existing
+// candidate (or the override) and whether it exists; when none exist, returns the
+// default write target (<root>/DESIGN.md) so the generator has somewhere to land.
+function resolveDesignPath(root: string, override: string): { path: string; exists: boolean } {
+  const isFile = (p: string) => { try { return fs.statSync(p).isFile() } catch { return false } }
+  if (override) {
+    const p = path.isAbsolute(override) ? override : path.resolve(root, override)
+    return { path: p, exists: isFile(p) }
+  }
+  for (const rel of DESIGN_MD_CANDIDATES) {
+    const p = path.resolve(root, rel)
+    if (isFile(p)) return { path: p, exists: true }
+  }
+  return { path: path.resolve(root, DESIGN_MD_CANDIDATES[0]), exists: false }
+}
+
 export function musePlugin(): Plugin {
   let root = process.cwd()
   let apiKey = ''
@@ -207,6 +223,8 @@ export function musePlugin(): Plugin {
   let observeModel = DEFAULT_OBSERVE_MODEL
   let claudeBin = 'claude'
   let designMdOverride = '' // MUSE_DESIGN_MD, if set
+  let designExclude: string[] = [] // MUSE_DESIGN_EXCLUDE — terms the generator drops from evidence
+  let designGenerating = false // in-flight guard: one generation at a time
 
   return {
     name: 'muse-backend',
@@ -220,6 +238,8 @@ export function musePlugin(): Plugin {
       cliModel = env.MUSE_CLI_MODEL || process.env.MUSE_CLI_MODEL || DEFAULT_CLI_MODEL
       observeModel = env.MUSE_OBSERVE_MODEL || process.env.MUSE_OBSERVE_MODEL || DEFAULT_OBSERVE_MODEL
       designMdOverride = env.MUSE_DESIGN_MD || process.env.MUSE_DESIGN_MD || ''
+      designExclude = (env.MUSE_DESIGN_EXCLUDE || process.env.MUSE_DESIGN_EXCLUDE || '')
+        .split(',').map((s) => s.trim()).filter(Boolean)
       if (backend === 'claude-cli') claudeBin = resolveClaudeBin()
     },
     configureServer(server) {
@@ -397,6 +417,65 @@ export function musePlugin(): Plugin {
           return sendJson(res, 200, { ok: true })
         } catch (err) {
           console.error('[muse] /write error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/design/generate --------------------------------
+      // Author a DESIGN.md from the app's code by running the standalone generator
+      // (scripts/gen-design-md.mjs) as a subprocess — same logic as `npm run
+      // design:gen`, no fork. Concise by default (smaller/faster). MUST be
+      // registered BEFORE /api/muse/design so this exact path isn't swallowed.
+      server.middlewares.use('/api/muse/design/generate', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        // One generation at a time — a ~45s subprocess writing one file; parallel
+        // runs (rapid clicks / two tabs) would race the output.
+        if (designGenerating) {
+          return sendJson(res, 409, { error: 'A design brief is already being generated — hang on.' })
+        }
+        try {
+          const scriptPath = path.resolve(root, 'scripts/gen-design-md.mjs')
+          if (!fs.existsSync(scriptPath)) {
+            return sendJson(res, 500, { error: 'Generator not found at scripts/gen-design-md.mjs.' })
+          }
+          const outPath = resolveDesignPath(root, designMdOverride).path
+          const args = [scriptPath, root, '--concise', '--force', '--out', outPath,
+            ...designExclude.flatMap((x) => ['--exclude', x])]
+          designGenerating = true
+          const child = spawn(process.execPath, args, { env: process.env })
+          let err = ''
+          let sent = false
+          const reply = (status: number, body: unknown) => {
+            if (sent) return
+            sent = true
+            designGenerating = false
+            sendJson(res, status, body)
+          }
+          child.stderr.on('data', (d) => (err += d))
+          child.on('error', (e) => reply(500, { error: `Could not run the generator: ${(e as Error).message}` }))
+          child.on('close', (code) => {
+            if (code !== 0) return reply(500, { error: `Generator failed: ${err.slice(-600).trim() || '(no output)'}` })
+            const content = loadDesignBrief(root, designMdOverride)
+            if (!content) return reply(500, { error: `Generator finished but no readable brief at ${relOf(root, outPath)}.` })
+            reply(200, { content, path: relOf(root, outPath) })
+          })
+        } catch (err) {
+          designGenerating = false
+          console.error('[muse] /design/generate error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- GET /api/muse/design ------------------------------------------
+      // Does a design brief exist, and what is it? Drives the UI's document icon.
+      server.middlewares.use('/api/muse/design', (req, res, next) => {
+        if (req.method !== 'GET') return next()
+        try {
+          const { path: p, exists } = resolveDesignPath(root, designMdOverride)
+          const content = exists ? loadDesignBrief(root, designMdOverride) : null
+          return sendJson(res, 200, { exists: !!content, content: content ?? undefined, path: relOf(root, p) })
+        } catch (err) {
+          console.error('[muse] /design error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
         }
       })
