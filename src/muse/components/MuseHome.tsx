@@ -1,16 +1,20 @@
+import type { ReactNode } from 'react'
 import { CaretRight, Crosshair, FileText } from '@phosphor-icons/react'
 import type { ThreadMessage } from '../types'
 import { MessageDesign } from './messages/MessageDesign'
 
 // The panel's empty / home state — what you see when Muse is open but no
 // element is targeted yet (the FAB now opens straight here instead of dropping
-// into select mode). Target selection is the key feature, so it's the hero: a
-// big accent CTA that arms select mode. Everything else (the design system,
-// and future entries) sits below as quieter secondary rows.
+// into select mode). Target selection is the key feature, so it leads; the
+// design system (and future entries) follow below.
 //
-// Selection-independent thread bubbles (the DESIGN.md card, any error from
-// fetching it) render under the menu — once the brief is shown, its own card
-// replaces the "View design system" row.
+// Every entry is the same HomeCard so their icon column and trailing caret
+// align on one grid — hierarchy comes from icon color + an accent vs. neutral
+// treatment, NOT from different box geometry.
+//
+// Selection-independent thread bubbles (the DESIGN.md brief, any error from
+// fetching it) render under the cards — once the brief is shown, its own card
+// replaces the "View design system" entry.
 export function MuseHome({
   onSelect,
   onShowDesign,
@@ -26,35 +30,30 @@ export function MuseHome({
 
   return (
     <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-      {/* Hero — the primary action. */}
-      <button
-        data-testid="muse-home-select"
-        onClick={onSelect}
-        className="group flex w-full items-center gap-3 rounded-xl bg-line/[0.03] p-3.5 text-left ring-1 ring-line/10 transition hover:bg-line/[0.06] active:scale-[0.99] motion-reduce:active:scale-100"
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
-          <Crosshair size={18} weight="bold" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-fg">Select an element to redesign</span>
-          <span className="block text-xs leading-snug text-fg-faint">
-            Point Muse at any part of the page
-          </span>
-        </span>
-        <CaretRight size={15} className="shrink-0 text-fg-faint/60 transition group-hover:translate-x-0.5" />
-      </button>
+      <div className="space-y-2">
+        {/* Primary action — accent icon marks it as the lead. */}
+        <HomeCard
+          primary
+          testid="muse-home-select"
+          onClick={onSelect}
+          icon={<Crosshair size={18} weight="bold" />}
+          iconClass="bg-accent/10 text-accent ring-1 ring-accent/20"
+          title="Select an element to redesign"
+          sub="Point Muse at any part of the page"
+        />
 
-      {/* Secondary entries. New Muse features slot in here as they land. */}
-      {!hasDesign && (
-        <div className="space-y-1.5">
-          <SecondaryRow
-            icon={<FileText size={15} />}
-            label="View design system"
-            sub="DESIGN.md"
+        {/* Secondary entries. New Muse features slot in here as they land. */}
+        {!hasDesign && (
+          <HomeCard
             onClick={onShowDesign}
+            icon={<FileText size={17} />}
+            iconClass="bg-line/5 text-fg-faint ring-1 ring-line/10"
+            title="View design system"
+            sub="DESIGN.md"
+            subMono
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Design brief / errors, once requested. */}
       {bubbles.map((m) => {
@@ -85,28 +84,48 @@ export function MuseHome({
   )
 }
 
-function SecondaryRow({
+// One card spec for every home entry. Fixed icon-box size + padding + trailing
+// caret keep the columns aligned across cards; `primary` (accent icon, heavier
+// title) is the only emphasis lever, and `subMono` renders a filename subtitle.
+function HomeCard({
   icon,
-  label,
+  iconClass,
+  title,
   sub,
+  subMono = false,
+  primary = false,
   onClick,
+  testid,
 }: {
-  icon: React.ReactNode
-  label: string
+  icon: ReactNode
+  iconClass: string
+  title: string
   sub?: string
+  subMono?: boolean
+  primary?: boolean
   onClick: () => void
+  testid?: string
 }) {
   return (
     <button
+      data-testid={testid}
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-line/5"
+      className="group flex w-full items-center gap-3 rounded-xl bg-line/[0.03] p-3 text-left ring-1 ring-line/10 transition hover:bg-line/[0.06] active:scale-[0.99] motion-reduce:active:scale-100"
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-line/5 text-fg-faint ring-1 ring-line/10">
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
         {icon}
       </span>
-      <span className="min-w-0 flex-1 text-sm text-fg">{label}</span>
-      {sub && <span className="shrink-0 font-mono text-[11px] text-fg-faint">{sub}</span>}
-      <CaretRight size={13} className="shrink-0 text-fg-faint/60" />
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm text-fg ${primary ? 'font-semibold' : 'font-medium'}`}>{title}</span>
+        {sub && (
+          <span
+            className={`block leading-snug text-fg-faint ${subMono ? 'font-mono text-[11px]' : 'text-xs'}`}
+          >
+            {sub}
+          </span>
+        )}
+      </span>
+      <CaretRight size={15} className="shrink-0 text-fg-faint/50 transition group-hover:translate-x-0.5" />
     </button>
   )
 }
