@@ -91,7 +91,9 @@ export function MessageDesign({
         {path && <span className="truncate font-mono text-fg-faint">{path}</span>}
       </div>
       {open && (
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-line/5 p-2.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/10">
+        // No inner scroll — the brief flows in the panel's single scroll area
+        // so expanding it never stacks a second scrollbar inside the first.
+        <pre className="whitespace-pre-wrap rounded-lg bg-line/5 p-2.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/10">
           {content}
         </pre>
       )}
