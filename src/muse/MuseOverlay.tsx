@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './muse.css'
-import { museChat, museObserve, museWrite } from './api'
+import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { MOCK } from './config'
 import { heuristicObservation } from './observation'
 import { previewDeltaForTarget } from './diffPreview'
@@ -334,6 +334,32 @@ export function MuseOverlay() {
     ])
   }
 
+  // Document icon → show the app's design brief, or offer to generate one.
+  async function showDesign() {
+    try {
+      const res = await museDesignGet()
+      if (res.exists && res.content) {
+        museStore.appendThread({ id: nextThreadId(), kind: 'design', status: 'view', content: res.content, path: res.path })
+      } else {
+        museStore.appendThread({ id: nextThreadId(), kind: 'design', status: 'offer' })
+      }
+    } catch (e) {
+      museStore.appendThread({ id: nextThreadId(), kind: 'error', text: (e as Error).message })
+    }
+  }
+
+  // Generate (or regenerate) the brief from the offer/result bubble.
+  async function generateDesign(id: string) {
+    museStore.setDesignBubble(id, { status: 'generating' })
+    try {
+      const res = await museDesignGenerate()
+      museStore.setDesignBubble(id, { status: 'view', content: res.content, path: res.path })
+    } catch (e) {
+      museStore.setDesignBubble(id, { status: 'offer' }) // back to offer so they can retry
+      museStore.appendThread({ id: nextThreadId(), kind: 'error', text: (e as Error).message })
+    }
+  }
+
   // Hover an option card → live-preview its edit on the active element.
   function previewOption(option: ProposedOption) {
     const t = selection.length === 1 ? selection[0] : null
@@ -546,6 +572,7 @@ export function MuseOverlay() {
               mock={MOCK}
               onRemove={removeChip}
               onSwapTarget={() => setActive(true)}
+              onShowDesign={showDesign}
             />
             {unmappable ? (
               <div className="flex-1 overflow-y-auto px-4 py-3.5">
@@ -571,6 +598,7 @@ export function MuseOverlay() {
                   onPreview={previewOption}
                   onPreviewEnd={restore}
                   onChipClick={submitChip}
+                  onGenerateDesign={generateDesign}
                 />
                 {error && (
                   <div className="px-3 pb-2">

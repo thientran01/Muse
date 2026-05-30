@@ -106,3 +106,6 @@ export type ThreadMessage =
   | { id: string; kind: 'applied'; fileCount: number; rationale: string }
   | { id: string; kind: 'target-handoff'; target: SelectedElement }
   | { id: string; kind: 'error'; text: string }
+  // The app's design system (DESIGN.md). `offer` → no brief yet, prompt to make
+  // one; `generating` → the LLM is writing it; `view` → show the brief (content set).
+  | { id: string; kind: 'design'; status: 'offer' | 'generating' | 'view'; content?: string; path?: string }
