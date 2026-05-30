@@ -37,7 +37,7 @@ import type {
   ToolUseBlock,
 } from './types'
 
-const EXIT_MS = 170 // keep in sync with the muse-panel-out animation
+const EXIT_MS = 240 // keep in sync with muse-panel-out (200ms) + muse-fab-catch (40ms delay + 180ms)
 
 // Normalize a file path the way the server keys `originals` (forward slashes, no ./).
 const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
@@ -558,9 +558,14 @@ export function MuseOverlay() {
         </div>
       )}
 
-      {!panelOpen && (
+      {/* FAB renders while closing too (not just once the panel unmounts), so the
+          button is already in its shared bottom-right corner to "catch" the
+          collapsing panel — the close reads as one motion, not a flash-and-pop.
+          The undo bar stays hidden until the collapse finishes so it doesn't pop
+          in over the morph. */}
+      {(!panelOpen || closing) && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
-          {!active && hasHistory && (
+          {!active && hasHistory && !closing && (
             <UndoRedoBar
               canUndo={historyControls.canUndo}
               canRedo={historyControls.canRedo}
@@ -571,7 +576,12 @@ export function MuseOverlay() {
             />
           )}
           {/* Idle → open the panel onto its home state. In select mode → cancel. */}
-          <MuseFab active={active} loading={loading} onToggle={() => (active ? setActive(false) : setOpen(true))} />
+          <MuseFab
+            active={active}
+            loading={loading}
+            entering={closing}
+            onToggle={() => (active ? setActive(false) : setOpen(true))}
+          />
         </div>
       )}
 
