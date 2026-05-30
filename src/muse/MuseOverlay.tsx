@@ -153,14 +153,37 @@ export function MuseOverlay() {
   function requestClose() {
     if (closing) return
     restore() // never leave a hover-preview stranded when the panel closes
-    museStore.archive(selection) // keep a closed-before-applying proposal in history
-    setHistoryOpen(false)
     setClosing(true)
+    // Defer ALL teardown into the timer, so a cancelClose mid-collapse (which
+    // clears this timer) leaves the session fully intact:
+    //   - archive() only on a COMPLETED close — otherwise cancelling leaves the
+    //     still-live proposal also sitting in Closed Proposals (a ghost entry).
+    //     The thread isn't wiped until clearSelection() below triggers the
+    //     selection effect on the next render, so it's still readable here.
+    //   - historyOpen reset is deferred too: flipping it mid-collapse would swap
+    //     the panel's content back to the (taller) home view, so you'd see the
+    //     WRONG content shrink into the FAB. (A cancel therefore correctly leaves
+    //     you on the history view you were on.)
     closeTimer.current = window.setTimeout(() => {
+      museStore.archive(selection) // keep a closed-before-applying proposal in history
       setOpen(false)
       clearSelection()
       setClosing(false)
+      setHistoryOpen(false)
     }, EXIT_MS)
+  }
+
+  // Abort an in-flight close (the FAB was clicked mid-collapse). `open` is still
+  // true and selection is still intact — all teardown (archive, clearSelection,
+  // historyOpen reset) lives in the timer we cancel here — so clearing `closing`
+  // flips the panel's data-closing back and the CSS transition reverses it home
+  // from wherever it was, with nothing left half-torn-down (no ghost archive).
+  function cancelClose() {
+    if (closeTimer.current) {
+      window.clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+    setClosing(false)
   }
 
   // Bring a past proposal back into the live view (still applyable), close history.
@@ -602,12 +625,13 @@ export function MuseOverlay() {
               onRevert={historyControls.onRevert}
             />
           )}
-          {/* Idle → open the panel onto its home state. In select mode → cancel. */}
+          {/* Mid-collapse → abort the close (reverses home). Select mode →
+              cancel select. Idle → open the panel onto its home state. */}
           <MuseFab
             active={active}
             loading={loading}
             entering={closing}
-            onToggle={() => (active ? setActive(false) : setOpen(true))}
+            onToggle={() => (closing ? cancelClose() : active ? setActive(false) : setOpen(true))}
           />
         </div>
       )}
@@ -630,6 +654,14 @@ export function MuseOverlay() {
             onToggleHistory={() => setHistoryOpen((v) => !v)}
             onClose={requestClose}
           >
+            {/* Keyed by which view is showing, so switching views (home ⇄
+                history ⇄ thread) remounts this wrapper and replays muse-step —
+                the new view rises + unblurs in instead of snapping. Carries the
+                panel's flex column so the inner views lay out unchanged. */}
+            <div
+              key={historyOpen ? 'history' : home ? 'home' : 'thread'}
+              className="flex min-h-0 flex-1 flex-col animate-muse-step motion-reduce:animate-none"
+            >
             {historyOpen ? (
               <MuseHistory entries={archived} onPick={openFromHistory} />
             ) : home ? (
@@ -691,6 +723,7 @@ export function MuseOverlay() {
             )}
             </>
             )}
+            </div>
           </MusePanel>
         </div>
       )}
