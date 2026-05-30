@@ -12,6 +12,7 @@ import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
 import { MuseHistory } from './components/MuseHistory'
+import { MuseHome } from './components/MuseHome'
 import { MusePanel } from './components/MusePanel'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
@@ -74,6 +75,10 @@ export function MuseOverlay() {
     archived,
   } = useMuseStore()
 
+  // Panel visibility, decoupled from selection: the FAB opens the panel onto
+  // its home state (no target yet), and only an explicit close shuts it. A
+  // target can come and go underneath without the panel opening or closing.
+  const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const closeTimer = useRef<number | null>(null)
@@ -148,6 +153,7 @@ export function MuseOverlay() {
     setHistoryOpen(false)
     setClosing(true)
     closeTimer.current = window.setTimeout(() => {
+      setOpen(false)
       clearSelection()
       setClosing(false)
     }, EXIT_MS)
@@ -433,6 +439,7 @@ export function MuseOverlay() {
         future: [entry, ...s.future],
         applied: false,
       }))
+      setOpen(true) // surface the panel onto the reverted element (may fire from the idle bar)
       setSelection(entry.elements)
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
@@ -452,6 +459,7 @@ export function MuseOverlay() {
         past: [...s.past, entry],
         applied: true,
       }))
+      setOpen(true) // surface the panel onto the redone element (may fire from the idle bar)
       setSelection(entry.elements)
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
@@ -492,8 +500,9 @@ export function MuseOverlay() {
   const allAnswered =
     pending?.kind === 'ask' &&
     pending.questions.every((_, i) => (answers[i] ?? '').trim() !== '')
-  const panelOpen = selection.length >= 1 && !active
+  const panelOpen = open && !active
   const showMarkers = selection.length >= 1
+  const home = selection.length === 0 // panel is open with no target → home state
 
   // Keyboard for both phases + click-outside while the panel is open.
   useEffect(() => {
@@ -505,7 +514,7 @@ export function MuseOverlay() {
         }
         return
       }
-      if (selection.length === 0 || closing) return
+      if (!open || closing) return
       if (e.key === 'Escape') {
         e.preventDefault()
         requestClose()
@@ -523,7 +532,7 @@ export function MuseOverlay() {
     document.addEventListener('keydown', onKey, true)
 
     let onDocClick: ((e: MouseEvent) => void) | null = null
-    if (!active && selection.length >= 1 && !closing) {
+    if (!active && open && !closing) {
       onDocClick = (e: MouseEvent) => {
         const t = e.target as Element | null
         if (t && !t.closest('[data-muse-ui]')) requestClose()
@@ -536,7 +545,7 @@ export function MuseOverlay() {
       if (onDocClick) document.removeEventListener('click', onDocClick, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, selection, closing, pending, allAnswered, loading])
+  }, [active, open, selection, closing, pending, allAnswered, loading])
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
@@ -549,9 +558,9 @@ export function MuseOverlay() {
         </div>
       )}
 
-      {selection.length === 0 && (
+      {!panelOpen && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
-          {hasHistory && (
+          {!active && hasHistory && (
             <UndoRedoBar
               canUndo={historyControls.canUndo}
               canRedo={historyControls.canRedo}
@@ -561,7 +570,8 @@ export function MuseOverlay() {
               onRevert={historyControls.onRevert}
             />
           )}
-          <MuseFab active={active} loading={loading} onToggle={() => setActive((v) => !v)} />
+          {/* Idle → open the panel onto its home state. In select mode → cancel. */}
+          <MuseFab active={active} loading={loading} onToggle={() => (active ? setActive(false) : setOpen(true))} />
         </div>
       )}
 
@@ -585,6 +595,13 @@ export function MuseOverlay() {
           >
             {historyOpen ? (
               <MuseHistory entries={archived} onPick={openFromHistory} />
+            ) : home ? (
+              <MuseHome
+                onSelect={() => setActive(true)}
+                onShowDesign={showDesign}
+                bubbles={thread}
+                onGenerateDesign={generateDesign}
+              />
             ) : (
             <>
             <ActiveTargetStrip
