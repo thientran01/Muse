@@ -336,6 +336,8 @@ export function MuseOverlay() {
 
   // Document icon → show the app's design brief, or offer to generate one.
   async function showDesign() {
+    // Already shown (or generating) — don't stack duplicate bubbles.
+    if (museStore.getState().thread.some((m) => m.kind === 'design')) return
     try {
       const res = await museDesignGet()
       if (res.exists && res.content) {

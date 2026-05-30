@@ -224,6 +224,7 @@ export function musePlugin(): Plugin {
   let claudeBin = 'claude'
   let designMdOverride = '' // MUSE_DESIGN_MD, if set
   let designExclude: string[] = [] // MUSE_DESIGN_EXCLUDE — terms the generator drops from evidence
+  let designGenerating = false // in-flight guard: one generation at a time
 
   return {
     name: 'muse-backend',
@@ -427,6 +428,11 @@ export function musePlugin(): Plugin {
       // registered BEFORE /api/muse/design so this exact path isn't swallowed.
       server.middlewares.use('/api/muse/design/generate', async (req, res, next) => {
         if (req.method !== 'POST') return next()
+        // One generation at a time — a ~45s subprocess writing one file; parallel
+        // runs (rapid clicks / two tabs) would race the output.
+        if (designGenerating) {
+          return sendJson(res, 409, { error: 'A design brief is already being generated — hang on.' })
+        }
         try {
           const scriptPath = path.resolve(root, 'scripts/gen-design-md.mjs')
           if (!fs.existsSync(scriptPath)) {
@@ -435,19 +441,26 @@ export function musePlugin(): Plugin {
           const outPath = resolveDesignPath(root, designMdOverride).path
           const args = [scriptPath, root, '--concise', '--force', '--out', outPath,
             ...designExclude.flatMap((x) => ['--exclude', x])]
+          designGenerating = true
           const child = spawn(process.execPath, args, { env: process.env })
           let err = ''
           let sent = false
-          const reply = (status: number, body: unknown) => { if (sent) return; sent = true; sendJson(res, status, body) }
+          const reply = (status: number, body: unknown) => {
+            if (sent) return
+            sent = true
+            designGenerating = false
+            sendJson(res, status, body)
+          }
           child.stderr.on('data', (d) => (err += d))
           child.on('error', (e) => reply(500, { error: `Could not run the generator: ${(e as Error).message}` }))
           child.on('close', (code) => {
             if (code !== 0) return reply(500, { error: `Generator failed: ${err.slice(-600).trim() || '(no output)'}` })
             const content = loadDesignBrief(root, designMdOverride)
-            if (!content) return reply(500, { error: 'Generator finished but produced no DESIGN.md.' })
+            if (!content) return reply(500, { error: `Generator finished but no readable brief at ${relOf(root, outPath)}.` })
             reply(200, { content, path: relOf(root, outPath) })
           })
         } catch (err) {
+          designGenerating = false
           console.error('[muse] /design/generate error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
         }

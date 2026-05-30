@@ -79,7 +79,9 @@ export type DesignGet = { exists: boolean; content?: string; path?: string }
 export async function museDesignGet(): Promise<DesignGet> {
   if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'src/demo/DESIGN.md' }
   const res = await fetch('/api/muse/design')
-  return (await res.json()) as DesignGet
+  const data = (await res.json()) as DesignGet & { error?: string }
+  if (data.error) throw new Error(data.error) // surface server errors, not a false "no brief"
+  return data
 }
 
 // Generate a DESIGN.md from the app's code (concise). ~45s — caller shows a

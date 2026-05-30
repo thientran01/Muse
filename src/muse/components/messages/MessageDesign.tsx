@@ -4,7 +4,8 @@ import { CircleNotch, Sparkle } from '@phosphor-icons/react'
 // Loosely summarize the brief's YAML frontmatter for a visual card — name, the
 // color swatches, and the type pairing. Display-only; not a real YAML parser.
 function summarize(md: string): { name: string; colors: string[]; fonts: string[] } {
-  const fm = md.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? md
+  const src = (md || '').slice(0, 8000) // frontmatter lives at the top; cap the scan
+  const fm = src.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? src
   const name = (fm.match(/^name:\s*(.+)$/m)?.[1] ?? 'Design system').trim().replace(/^["']|["']$/g, '')
   const colors = [...new Set(fm.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [])].slice(0, 12)
   const fonts = [
