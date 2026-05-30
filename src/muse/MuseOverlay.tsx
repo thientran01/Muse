@@ -153,14 +153,19 @@ export function MuseOverlay() {
   function requestClose() {
     if (closing) return
     restore() // never leave a hover-preview stranded when the panel closes
-    museStore.archive(selection) // keep a closed-before-applying proposal in history
     setClosing(true)
-    // NOTE: don't reset historyOpen here — flipping it mid-collapse swaps the
-    // panel's content back to the (taller) home view, so you'd see the WRONG
-    // content shrink into the FAB. Reset it only once the panel has unmounted,
-    // so the collapse animates whatever was on screen. (A cancelClose mid-flight
-    // therefore correctly leaves you on the history view.)
+    // Defer ALL teardown into the timer, so a cancelClose mid-collapse (which
+    // clears this timer) leaves the session fully intact:
+    //   - archive() only on a COMPLETED close — otherwise cancelling leaves the
+    //     still-live proposal also sitting in Closed Proposals (a ghost entry).
+    //     The thread isn't wiped until clearSelection() below triggers the
+    //     selection effect on the next render, so it's still readable here.
+    //   - historyOpen reset is deferred too: flipping it mid-collapse would swap
+    //     the panel's content back to the (taller) home view, so you'd see the
+    //     WRONG content shrink into the FAB. (A cancel therefore correctly leaves
+    //     you on the history view you were on.)
     closeTimer.current = window.setTimeout(() => {
+      museStore.archive(selection) // keep a closed-before-applying proposal in history
       setOpen(false)
       clearSelection()
       setClosing(false)
@@ -169,11 +174,10 @@ export function MuseOverlay() {
   }
 
   // Abort an in-flight close (the FAB was clicked mid-collapse). `open` is still
-  // true and selection is still intact — the wipe only happens in the timer we
-  // cancel here — so clearing `closing` flips the panel's data-closing back and
-  // the CSS transition reverses it home from wherever it was. The proposal may
-  // have been archived by requestClose; that's harmless (it's still live, and
-  // archived === restorable).
+  // true and selection is still intact — all teardown (archive, clearSelection,
+  // historyOpen reset) lives in the timer we cancel here — so clearing `closing`
+  // flips the panel's data-closing back and the CSS transition reverses it home
+  // from wherever it was, with nothing left half-torn-down (no ghost archive).
   function cancelClose() {
     if (closeTimer.current) {
       window.clearTimeout(closeTimer.current)
