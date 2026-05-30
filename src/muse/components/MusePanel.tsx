@@ -37,7 +37,9 @@ export function MusePanel({
   return (
     <div
       className={`pointer-events-auto flex max-h-[40vh] w-[380px] origin-bottom-right flex-col overflow-hidden rounded-2xl bg-surface/95 text-fg shadow-2xl shadow-black/40 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none ${
-        closing ? 'animate-muse-panel-out' : 'animate-muse-panel'
+        closing
+          ? 'animate-muse-panel-out [&>*]:animate-muse-content-out motion-reduce:[&>*]:animate-none'
+          : 'animate-muse-panel'
       }`}
     >
       <header className="flex items-center justify-between px-4 py-3">

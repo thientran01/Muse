@@ -37,7 +37,7 @@ import type {
   ToolUseBlock,
 } from './types'
 
-const EXIT_MS = 240 // keep in sync with muse-panel-out (200ms) + muse-fab-catch (40ms delay + 180ms)
+const EXIT_MS = 240 // keep in sync with the longest close animation: muse-fab-catch (40ms delay + 200ms)
 
 // Normalize a file path the way the server keys `originals` (forward slashes, no ./).
 const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
