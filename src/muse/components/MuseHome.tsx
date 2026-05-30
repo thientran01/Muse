@@ -30,9 +30,9 @@ export function MuseHome({
       <button
         data-testid="muse-home-select"
         onClick={onSelect}
-        className="group flex w-full items-center gap-3 rounded-xl bg-accent/10 p-3.5 text-left ring-1 ring-accent/20 transition hover:bg-accent/15 hover:ring-accent/30 active:scale-[0.99] motion-reduce:active:scale-100"
+        className="group flex w-full items-center gap-3 rounded-xl bg-line/[0.03] p-3.5 text-left ring-1 ring-line/10 transition hover:bg-line/[0.06] active:scale-[0.99] motion-reduce:active:scale-100"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white shadow-sm">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
           <Crosshair size={18} weight="bold" />
         </span>
         <span className="min-w-0 flex-1">
@@ -41,7 +41,7 @@ export function MuseHome({
             Point Muse at any part of the page
           </span>
         </span>
-        <CaretRight size={15} className="shrink-0 text-accent/70 transition group-hover:translate-x-0.5" />
+        <CaretRight size={15} className="shrink-0 text-fg-faint/60 transition group-hover:translate-x-0.5" />
       </button>
 
       {/* Secondary entries. New Muse features slot in here as they land. */}
