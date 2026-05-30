@@ -99,7 +99,7 @@ export function MusePanel({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg"
+            className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg"
           >
             <X size={15} />
           </button>
