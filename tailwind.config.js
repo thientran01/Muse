@@ -75,15 +75,17 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(8px) scale(0.96)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
-        // Content swap within the (stationary) panel — switching views, or
-        // step-to-step in a thread. Scales up slightly from 0.98 (never from 0)
-        // + clearing blur, so the new content materializes IN PLACE. A scale
-        // reads as "settling in" without a direction; a translate slid the
-        // content up from below, which felt like it arrived from nowhere — but a
-        // pure opacity fade had no life and read as instant. Scale is the middle.
+        // Content swap within the panel (view switch, or step-to-step in a
+        // thread). Pure opacity + clearing blur, NO transform: the panel
+        // container itself animates its height to reshape around the new view
+        // (see the `height` transition on .muse-panel-surface in muse.css), and
+        // THAT reshape is the spatial motion. A transform here fought the
+        // container's height change and was what read as "off" no matter the
+        // value — slide, scale, or flat fade. Let the card reshape; just
+        // crossfade the content (Emil: blur masks the swap).
         'muse-step-in': {
-          '0%': { opacity: '0', transform: 'scale(0.98)', filter: 'blur(2px)' },
-          '100%': { opacity: '1', transform: 'scale(1)', filter: 'blur(0)' },
+          '0%': { opacity: '0', filter: 'blur(2px)' },
+          '100%': { opacity: '1', filter: 'blur(0)' },
         },
         // The "Applied" success moment — a rare, delightful beat, so it earns one.
         'muse-rise-in': {
