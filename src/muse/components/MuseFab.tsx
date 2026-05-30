@@ -22,7 +22,7 @@ export function MuseFab({
       }${active ? 'ring-accent/60 hover:bg-surface' : 'ring-line/10 hover:bg-surface-raised'}`}
     >
       <UfoIcon size={18} loading={loading} className={active ? 'text-fg-muted' : 'text-accent'} />
-      {active ? 'Cancel' : 'Design with Muse'}
+      {active ? 'Cancel' : 'Muse'}
     </button>
   )
 }
