@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
+import { MuseHome } from './components/MuseHome'
 import { MusePanel } from './components/MusePanel'
 import {
   HoverHighlight,
@@ -115,6 +116,12 @@ export function MuseGallery() {
         </Cell>
         <Cell title="Batch tray">
           <SelectionTray count={3} onDesign={noop} />
+        </Cell>
+
+        <Cell title="Panel — home (no target yet)">
+          <MusePanel mock onClose={noop}>
+            <MuseHome onSelect={noop} onShowDesign={noop} bubbles={[]} onGenerateDesign={noop} />
+          </MusePanel>
         </Cell>
 
         <Cell title="Composer — empty">
