@@ -3,6 +3,7 @@ import {
   ArrowCounterClockwise,
   ArrowUUpLeft,
   ArrowUUpRight,
+  ClockCounterClockwise,
   X,
 } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
@@ -17,6 +18,9 @@ export function MusePanel({
   closing = false,
   loading = false,
   historyControls,
+  archivedCount = 0,
+  showingHistory = false,
+  onToggleHistory,
   onClose,
   children,
 }: {
@@ -24,6 +28,9 @@ export function MusePanel({
   closing?: boolean
   loading?: boolean
   historyControls?: HistoryControls
+  archivedCount?: number
+  showingHistory?: boolean
+  onToggleHistory?: () => void
   onClose: () => void
   children: ReactNode
 }) {
@@ -44,6 +51,15 @@ export function MusePanel({
           )}
         </div>
         <div className="flex items-center gap-0.5">
+          {onToggleHistory && (archivedCount > 0 || showingHistory) && (
+            <HeaderIconBtn
+              onClick={onToggleHistory}
+              disabled={false}
+              label={showingHistory ? 'Back to conversation' : 'Past proposals'}
+              icon={<ClockCounterClockwise size={15} />}
+              active={showingHistory}
+            />
+          )}
           {historyControls && (
             <>
               <HeaderIconBtn
@@ -89,12 +105,14 @@ function HeaderIconBtn({
   label,
   icon,
   danger = false,
+  active = false,
 }: {
   onClick: () => void
   disabled: boolean
   label: string
   icon: ReactNode
   danger?: boolean
+  active?: boolean
 }) {
   return (
     <button
@@ -103,9 +121,11 @@ function HeaderIconBtn({
       title={label}
       aria-label={label}
       className={`rounded-md p-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${
-        danger
-          ? 'text-rose-400 hover:bg-rose-500/10 hover:text-rose-300'
-          : 'text-fg-faint hover:bg-line/5 hover:text-fg'
+        active
+          ? 'bg-accent/10 text-accent'
+          : danger
+            ? 'text-rose-400 hover:bg-rose-500/10 hover:text-rose-300'
+            : 'text-fg-faint hover:bg-line/5 hover:text-fg'
       }`}
     >
       {icon}

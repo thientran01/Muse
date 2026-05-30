@@ -11,6 +11,7 @@ import { museStore, nextThreadId, useMuseStore } from './store'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
+import { MuseHistory } from './components/MuseHistory'
 import { MusePanel } from './components/MusePanel'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
@@ -70,9 +71,11 @@ export function MuseOverlay() {
     future,
     historyLoading,
     showRevertConfirm,
+    archived,
   } = useMuseStore()
 
   const [closing, setClosing] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
@@ -141,11 +144,18 @@ export function MuseOverlay() {
   function requestClose() {
     if (closing) return
     restore() // never leave a hover-preview stranded when the panel closes
+    museStore.archive() // keep a closed-before-applying proposal in history
+    setHistoryOpen(false)
     setClosing(true)
     closeTimer.current = window.setTimeout(() => {
       clearSelection()
       setClosing(false)
     }, EXIT_MS)
+  }
+
+  // Bring a past proposal back into the live view (still applyable), close history.
+  function openFromHistory(id: string) {
+    if (museStore.restoreArchived(id)) setHistoryOpen(false)
   }
 
   function removeChip(key: string) {
@@ -538,8 +548,15 @@ export function MuseOverlay() {
             closing={closing}
             loading={loading || historyLoading}
             historyControls={hasHistory ? historyControls : undefined}
+            archivedCount={archived.length}
+            showingHistory={historyOpen}
+            onToggleHistory={() => setHistoryOpen((v) => !v)}
             onClose={requestClose}
           >
+            {historyOpen ? (
+              <MuseHistory entries={archived} onPick={openFromHistory} />
+            ) : (
+            <>
             <ActiveTargetStrip
               elements={selection}
               mock={MOCK}
@@ -585,6 +602,8 @@ export function MuseOverlay() {
                   loading={loading}
                 />
               </>
+            )}
+            </>
             )}
           </MusePanel>
         </div>
