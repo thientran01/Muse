@@ -163,7 +163,21 @@ export function MuseOverlay() {
   // Archive the current live proposal first so picking an old one doesn't drop it.
   function openFromHistory(id: string) {
     museStore.archive(selection)
-    if (museStore.restoreArchived(id)) setHistoryOpen(false)
+    const entry = museStore.getState().archived.find((a) => a.id === id)
+    if (museStore.restoreArchived(id)) {
+      setHistoryOpen(false)
+      // Also restore the selection the proposal was about. `home` is keyed on an
+      // empty selection, so without this the panel bounces back to its home state
+      // instead of the restored conversation (and a later Apply would record the
+      // wrong elements). Pre-seed prevKeysRef to the same keys so the
+      // selection-change effect above sees a no-op diff and does NOT
+      // resetConversation() over the thread we just restored.
+      const els = entry?.elements ?? []
+      if (els.length > 0) {
+        prevKeysRef.current = els.map((e) => e.key)
+        setSelection(els)
+      }
+    }
   }
 
   function removeChip(key: string) {
