@@ -3,7 +3,7 @@ import './muse.css'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { MOCK } from './config'
 import { heuristicObservation } from './observation'
-import { previewDeltaForTarget } from './diffPreview'
+import { elementPreviewsForOption, matchPreviews } from './diffPreview'
 import { useSelection } from './useSelection'
 import { useHostTheme } from './hooks/useHostTheme'
 import { usePreviewLayer } from './hooks/usePreviewLayer'
@@ -362,17 +362,16 @@ export function MuseOverlay() {
     }
   }
 
-  // Hover an option card → live-preview its edit on the active element.
+  // Hover an option card → live-preview every className change it makes, each
+  // matched to the real DOM by current className. This covers the selected
+  // element AND any children or looped siblings the edit restyles — and matching
+  // by exact current class means a change can never be misattributed to the
+  // wrong node. Nothing matched (text/structure-only change, or dynamic
+  // classes) → clear, so the card just shows no preview rather than a wrong one.
   function previewOption(option: ProposedOption) {
-    const t = selection.length === 1 ? selection[0] : null
-    // No single live element to preview on (batch, or unmappable) — make sure
-    // any previously-applied preview is cleared rather than left stranded.
-    if (!t?.node) {
-      restore()
-      return
-    }
-    const delta = previewDeltaForTarget(option, museStore.getState().originals, t)
-    if (delta) preview(t.node, delta)
+    const matches = matchPreviews(elementPreviewsForOption(option, museStore.getState().originals))
+    if (matches.length > 0) preview(matches)
+    else restore()
   }
 
   async function approve(option: ProposedOption) {
