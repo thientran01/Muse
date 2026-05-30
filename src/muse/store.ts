@@ -5,6 +5,7 @@ import type {
   HistoryEntry,
   ObserveResult,
   ProposedOption,
+  SelectedElement,
   ThreadMessage,
 } from './types'
 
@@ -15,6 +16,22 @@ import type {
 export type Pending =
   | { kind: 'ask'; toolUseId: string; questions: ClarifyingQuestion[] }
   | { kind: 'propose'; toolUseId: string; options: ProposedOption[]; rationale: string }
+
+// A snapshot of a conversation that produced a proposal, kept so closing the
+// panel before applying doesn't lose it. Captures everything needed to restore
+// the proposal as still-applyable (thread + pending + the originals it diffs
+// against). In-memory only — resets on full refresh, like the rest of the store.
+export type ArchivedThread = {
+  id: string
+  time: number
+  label: string
+  elements: SelectedElement[] // what was being edited — shown in the list
+  thread: ThreadMessage[]
+  messages: ChatMessage[]
+  pending: Pending | null
+  originals: Record<string, string>
+  answers: Record<number, string>
+}
 
 export type MuseState = {
   // Per-conversation slice — reset by resetConversation().
@@ -39,6 +56,8 @@ export type MuseState = {
   future: HistoryEntry[]
   historyLoading: boolean
   showRevertConfirm: boolean
+  // Past proposals, newest first — survives close/switch so you can revisit one.
+  archived: ArchivedThread[]
 }
 
 const initialState: MuseState = {
@@ -56,6 +75,7 @@ const initialState: MuseState = {
   future: [],
   historyLoading: false,
   showRevertConfirm: false,
+  archived: [],
 }
 
 let state: MuseState = initialState
@@ -117,6 +137,53 @@ export const museStore = {
       draft: keepDraft ? state.draft : '',
     }
     notify()
+  },
+  /** Snapshot the current conversation into `archived` IF it produced a proposal
+   * (an option-set or clarify) worth revisiting. Called before the thread is
+   * wiped (panel close) so a proposal closed-before-applying isn't lost. Dedupes
+   * the just-archived thread and caps the list. */
+  archive(elements: SelectedElement[]) {
+    const t = state.thread
+    // Only threads with an UNRESOLVED proposal are worth revisiting — skip ones
+    // already applied (those live in undo/redo) and ones with no proposal at all.
+    if (!t.some((m) => m.kind === 'option-set' || m.kind === 'clarify')) return
+    if (t.some((m) => m.kind === 'applied')) return
+    if (state.archived[0]?.thread === t) return // already archived this exact thread
+    const userMsg = t.find((m): m is Extract<ThreadMessage, { kind: 'user' }> => m.kind === 'user')
+    const optSet = t.find((m): m is Extract<ThreadMessage, { kind: 'option-set' }> => m.kind === 'option-set')
+    const label = (userMsg?.text || optSet?.rationale || 'Muse proposal').slice(0, 80)
+    const entry: ArchivedThread = {
+      id: nextThreadId(),
+      time: Date.now(),
+      label,
+      elements,
+      thread: t,
+      messages: state.messages,
+      pending: state.pending,
+      originals: state.originals,
+      answers: state.answers,
+    }
+    state = { ...state, archived: [entry, ...state.archived].slice(0, 20) }
+    notify()
+  },
+  /** Restore an archived proposal into the live view (thread + pending +
+   * originals), so its options are viewable and still applyable. Selection is
+   * left as-is — Apply uses the restored edits, which don't depend on it. */
+  restoreArchived(id: string): boolean {
+    const entry = state.archived.find((a) => a.id === id)
+    if (!entry) return false
+    state = {
+      ...state,
+      thread: entry.thread,
+      messages: entry.messages,
+      pending: entry.pending,
+      originals: entry.originals,
+      answers: entry.answers,
+      loading: false,
+      error: null,
+    }
+    notify()
+    return true
   },
   /** Append a single bubble to the thread, replacing state immutably. */
   appendThread(msg: ThreadMessage) {
