@@ -32,7 +32,7 @@ import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
 
 const DEFAULT_BACKEND = 'claude-cli'
-const DEFAULT_MODEL = 'claude-sonnet-4-5' // anthropic backend, /chat
+const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
 const DEFAULT_CLI_MODEL = 'sonnet' // claude-cli backend, /chat (alias = latest on your plan)
 const DEFAULT_OBSERVE_MODEL = 'claude-haiku-4-5' // /observe — cheap + latency-friendly
 const MAX_WRITE_BYTES = 200_000 // sanity cap per file on model-proposed content
