@@ -1,5 +1,16 @@
 import type { ArchivedThread } from '../store'
 
+// Short element descriptor for an entry, e.g. "<div> · HomePage.tsx" — the
+// context for what each proposal was about.
+function elementsLabel(e: ArchivedThread): string {
+  const els = e.elements
+  if (els.length === 0) return ''
+  if (els.length > 1) return `${els.length} elements`
+  const el = els[0]
+  const file = el.fileName ? el.fileName.split(/[\\/]/).pop() : ''
+  return `<${el.tag}>${file ? ` · ${file}` : ''}`
+}
+
 // Relative "time ago" for the list. Recomputed on each render (cheap).
 function rel(t: number): string {
   const s = (Date.now() - t) / 1000
@@ -33,12 +44,15 @@ export function MuseHistory({
         <button
           key={e.id}
           onClick={() => onPick(e.id)}
-          className="block w-full rounded-lg border border-line/15 px-3 py-2 text-left transition hover:border-line/30 hover:bg-line/[0.03]"
+          className="block w-full rounded-lg border border-line/15 px-3 py-2 text-left transition hover:border-line/30 hover:bg-line/5"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-sm text-fg">{e.label}</span>
             <span className="shrink-0 text-[11px] text-fg-faint">{rel(e.time)}</span>
           </div>
+          {elementsLabel(e) && (
+            <span className="mt-0.5 block truncate font-mono text-[11px] text-fg-faint">{elementsLabel(e)}</span>
+          )}
         </button>
       ))}
     </div>

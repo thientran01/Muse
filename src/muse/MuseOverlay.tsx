@@ -144,7 +144,7 @@ export function MuseOverlay() {
   function requestClose() {
     if (closing) return
     restore() // never leave a hover-preview stranded when the panel closes
-    museStore.archive() // keep a closed-before-applying proposal in history
+    museStore.archive(selection) // keep a closed-before-applying proposal in history
     setHistoryOpen(false)
     setClosing(true)
     closeTimer.current = window.setTimeout(() => {
@@ -154,7 +154,9 @@ export function MuseOverlay() {
   }
 
   // Bring a past proposal back into the live view (still applyable), close history.
+  // Archive the current live proposal first so picking an old one doesn't drop it.
   function openFromHistory(id: string) {
+    museStore.archive(selection)
     if (museStore.restoreArchived(id)) setHistoryOpen(false)
   }
 

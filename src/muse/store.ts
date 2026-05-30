@@ -5,6 +5,7 @@ import type {
   HistoryEntry,
   ObserveResult,
   ProposedOption,
+  SelectedElement,
   ThreadMessage,
 } from './types'
 
@@ -24,6 +25,7 @@ export type ArchivedThread = {
   id: string
   time: number
   label: string
+  elements: SelectedElement[] // what was being edited — shown in the list
   thread: ThreadMessage[]
   messages: ChatMessage[]
   pending: Pending | null
@@ -140,9 +142,12 @@ export const museStore = {
    * (an option-set or clarify) worth revisiting. Called before the thread is
    * wiped (panel close) so a proposal closed-before-applying isn't lost. Dedupes
    * the just-archived thread and caps the list. */
-  archive() {
+  archive(elements: SelectedElement[]) {
     const t = state.thread
+    // Only threads with an UNRESOLVED proposal are worth revisiting — skip ones
+    // already applied (those live in undo/redo) and ones with no proposal at all.
     if (!t.some((m) => m.kind === 'option-set' || m.kind === 'clarify')) return
+    if (t.some((m) => m.kind === 'applied')) return
     if (state.archived[0]?.thread === t) return // already archived this exact thread
     const userMsg = t.find((m): m is Extract<ThreadMessage, { kind: 'user' }> => m.kind === 'user')
     const optSet = t.find((m): m is Extract<ThreadMessage, { kind: 'option-set' }> => m.kind === 'option-set')
@@ -151,6 +156,7 @@ export const museStore = {
       id: nextThreadId(),
       time: Date.now(),
       label,
+      elements,
       thread: t,
       messages: state.messages,
       pending: state.pending,
@@ -173,6 +179,7 @@ export const museStore = {
       pending: entry.pending,
       originals: entry.originals,
       answers: entry.answers,
+      loading: false,
       error: null,
     }
     notify()

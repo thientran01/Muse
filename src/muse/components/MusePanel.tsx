@@ -55,7 +55,7 @@ export function MusePanel({
             <HeaderIconBtn
               onClick={onToggleHistory}
               disabled={false}
-              label={showingHistory ? 'Back to conversation' : 'Past proposals'}
+              label={showingHistory ? 'Back to conversation' : 'Closed proposals'}
               icon={<ClockCounterClockwise size={15} />}
               active={showingHistory}
             />
