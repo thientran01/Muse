@@ -75,11 +75,14 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(8px) scale(0.96)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
-        // Step-to-step content swap (intent -> questions -> edit). A small rise
-        // plus a clearing blur to smooth an otherwise abrupt content change.
+        // Content swap within the (stationary) panel — switching views, or
+        // step-to-step in a thread. A clearing blur crossfades the new content
+        // in place; NO translate, because the content isn't arriving from
+        // anywhere — it's replacing what was there, and a vertical slide inside
+        // a still panel reads as an unnatural "slide up from the bottom".
         'muse-step-in': {
-          '0%': { opacity: '0', transform: 'translateY(4px)', filter: 'blur(2px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)', filter: 'blur(0)' },
+          '0%': { opacity: '0', filter: 'blur(2px)' },
+          '100%': { opacity: '1', filter: 'blur(0)' },
         },
         // The "Applied" success moment — a rare, delightful beat, so it earns one.
         'muse-rise-in': {
