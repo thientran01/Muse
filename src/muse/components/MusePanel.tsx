@@ -70,6 +70,10 @@ export function MusePanel({
           )}
           {historyControls && (
             <>
+              {/* Divider only when the clock is also present — the closed-proposals
+                  view is a different category from the live undo/redo actions,
+                  mirroring the divider before the close button. */}
+              {onToggleHistory && <div className="mx-1 h-3.5 w-px bg-line/10" />}
               <HeaderIconBtn
                 onClick={historyControls.onUndo}
                 disabled={!historyControls.canUndo || historyControls.loading}

@@ -10,10 +10,10 @@
 //   • Blur masks an imperfect morph (tip #7): used on the panel collapse.
 const EASE = {
   // Enter & exit: easeOutExpo — strong, snappy deceleration that settles soft.
+  // One curve for everything, including the collapse: an ease-OUT fades the panel
+  // early and decelerates it INTO the FAB (a soft landing), where an ease-in held
+  // it visible until the last frame and then cut out abruptly.
   out: 'cubic-bezier(0.16, 1, 0.3, 1)',
-  // "Absorb": slight ease-IN so the panel accelerates as the FAB swallows it,
-  // rather than drifting to a stop mid-air. Used only for collapse-into-FAB.
-  absorb: 'cubic-bezier(0.4, 0, 0.7, 1)',
 }
 // Duration scale — all under the 300ms ceiling, in ~40ms steps.
 const DUR = {
@@ -111,10 +111,10 @@ export default {
         'muse-panel': `muse-panel-in ${DUR.slow} ${EASE.out}`,
         'muse-step': `muse-step-in ${DUR.base} ${EASE.out}`,
         'muse-rise': `muse-rise-in ${DUR.mid} ${EASE.out}`,
-        // Collapse-into-FAB: the panel is *absorbed* (ease-in) while its content
-        // fades faster, then the FAB "catches" it (easeOut, 40ms delay so it
-        // emerges as the panel falls in). Both run ${DUR.mid} so they read as one.
-        'muse-panel-out': `muse-panel-out ${DUR.mid} ${EASE.absorb} forwards`,
+        // Collapse-into-FAB: panel scales+fades into the corner while its content
+        // empties faster, then the FAB "catches" it (40ms delay so it emerges as
+        // the panel falls in). All easeOut at ${DUR.mid} so they read as one.
+        'muse-panel-out': `muse-panel-out ${DUR.mid} ${EASE.out} forwards`,
         'muse-content-out': `muse-content-out ${DUR.fast} ${EASE.out} forwards`,
         'muse-fab-catch': `muse-fab-catch ${DUR.mid} ${EASE.out} 40ms backwards`,
       },
