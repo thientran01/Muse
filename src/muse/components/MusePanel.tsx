@@ -51,11 +51,17 @@ export function MusePanel({
           )}
         </div>
         <div className="flex items-center gap-0.5">
-          {onToggleHistory && (archivedCount > 0 || showingHistory) && (
+          {onToggleHistory && (
             <HeaderIconBtn
               onClick={onToggleHistory}
               disabled={false}
-              label={showingHistory ? 'Back to conversation' : 'Closed proposals'}
+              label={
+                showingHistory
+                  ? 'Back to conversation'
+                  : archivedCount > 0
+                    ? `Closed proposals (${archivedCount})`
+                    : 'Closed proposals'
+              }
               icon={<ClockCounterClockwise size={15} />}
               active={showingHistory}
             />
