@@ -54,6 +54,59 @@ const fxElement2: SelectedElement = {
   key: 'src/demo/CTA.tsx:12:6:button',
 }
 
+// A single animation tile, rendered on the dark surface color so the icon's
+// eyes (filled with --muse-surface) read as true cut-outs, the way they do on
+// the real FAB — not as dark dots on a light card.
+function AnimCell({ label, sub, children }: { label: string; sub?: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-[140px] items-center justify-center rounded-2xl bg-[#141210] p-6 ring-1 ring-black/5">
+        {children}
+      </div>
+      <div>
+        <p className="text-xs font-medium text-slate-600">{label}</p>
+        {sub ? <p className="text-[11px] text-slate-400">{sub}</p> : null}
+      </div>
+    </div>
+  )
+}
+
+// Showcase of the mark's motion profiles (see UfoIcon's PROFILE). `idle`
+// settles to rest by design, so the loop stops after ~2.6s — the Replay button
+// remounts the icons (via the `gen` key) to restart idle and resync swim.
+function IconAnimations() {
+  const [gen, setGen] = useState(0)
+  return (
+    <section className="mx-auto mb-10 max-w-6xl">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          The mark — animation states
+        </h2>
+        <button
+          onClick={() => setGen((g) => g + 1)}
+          className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
+        >
+          ↻ Replay
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <AnimCell label="Idle — settles to rest" sub="loading=false · decays then stops">
+          <UfoIcon key={`idle-lg-${gen}`} size={72} loading={false} className="text-accent" />
+        </AnimCell>
+        <AnimCell label="Swim — thinking" sub="loading · runs continuously">
+          <UfoIcon key={`swim-lg-${gen}`} size={72} loading className="text-accent" />
+        </AnimCell>
+        <AnimCell label="Idle @ actual size" sub="18px — as it ships">
+          <UfoIcon key={`idle-sm-${gen}`} size={18} loading={false} className="text-accent" />
+        </AnimCell>
+        <AnimCell label="Swim @ actual size" sub="18px — as it ships">
+          <UfoIcon key={`swim-sm-${gen}`} size={18} loading className="text-accent" />
+        </AnimCell>
+      </div>
+    </section>
+  )
+}
+
 function Cell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
@@ -97,6 +150,8 @@ export function MuseGallery() {
           here and in the live overlay.
         </p>
       </header>
+
+      <IconAnimations />
 
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
         <Cell title="FAB — idle">
