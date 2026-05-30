@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CaretRight } from '@phosphor-icons/react'
 import type { ProposedOption } from '../../types'
 import { DiffView } from '../DiffView'
+import { elementPreviewsForOption, matchPreviews } from '../../diffPreview'
 
 const fileShort = (p: string) => p.split(/[\\/]/).pop() ?? p
 
@@ -33,6 +34,15 @@ export function MessageOptionSet({
   const focusedOption = options[safe]
   const multi = options.length > 1
 
+  // Which options can be live-previewed on hover. A restructure (the change
+  // spans added/removed elements) can't be mapped to live nodes by className,
+  // so those preview to nothing — we say so instead of pretending. The live DOM
+  // is read here, so recompute when the options or originals change.
+  const previewable = useMemo(
+    () => options.map((opt) => matchPreviews(elementPreviewsForOption(opt, originals)).length > 0),
+    [options, originals],
+  )
+
   return (
     // Leaving the whole bubble (cards OR the diff below) ends the preview, so it
     // persists while the user moves down to read the focused option's diff.
@@ -50,11 +60,11 @@ export function MessageOptionSet({
               data-testid={`muse-option-${i}`}
               onMouseEnter={() => {
                 setFocused(i)
-                if (active && !loading) onPreview(opt)
+                if (active && !loading) (previewable[i] ? onPreview(opt) : onPreviewEnd())
               }}
               onFocus={() => {
                 setFocused(i)
-                if (active && !loading) onPreview(opt)
+                if (active && !loading) (previewable[i] ? onPreview(opt) : onPreviewEnd())
               }}
               onClick={() => {
                 if (!active || loading) return
@@ -71,7 +81,13 @@ export function MessageOptionSet({
                 <span className="text-sm font-semibold text-fg">{multi ? opt.label : 'Proposed change'}</span>
                 {active && (
                   <span className="shrink-0 text-[11px] text-fg-faint">
-                    {loading ? 'applying…' : isFocused ? 'click to apply' : 'hover to preview'}
+                    {loading
+                      ? 'applying…'
+                      : !previewable[i]
+                        ? 'apply to preview'
+                        : isFocused
+                          ? 'click to apply'
+                          : 'hover to preview'}
                   </span>
                 )}
               </div>

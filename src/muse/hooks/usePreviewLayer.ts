@@ -1,44 +1,44 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { PreviewDelta } from '../diffPreview'
+import type { PreviewMatch } from '../diffPreview'
 
-// Applies a PreviewDelta to a live DOM node on hover and restores it on leave.
+// Applies a set of PreviewMatches to live DOM nodes on hover and restores them
+// on leave. A single option can restyle several elements (the selected one
+// and/or its children, plus every looped sibling that shares a className), so
+// the snapshot is an ARRAY of nodes, each captured at its original className/
+// style.
 //
-// The snapshot is always the element's ORIGINAL state, so switching between
-// option cards (same node) just overwrites the className/style from scratch —
-// no flicker through the original, and no compounding of one option onto
-// another. restore() puts the node back; it runs on mouse-out, commit, window
-// blur, and unmount, so a preview can never get stranded on the page.
+// Every preview() restores the previous set first, so switching between option
+// cards — even ones that touch a different number of nodes — never compounds or
+// strands a style: each hover starts from a clean baseline. restore() also runs
+// on mouse-out, commit, window blur, and unmount, so a preview can never get
+// left on the page.
 export function usePreviewLayer() {
-  const snap = useRef<{ node: HTMLElement; className: string; cssText: string } | null>(null)
+  const snaps = useRef<Array<{ node: HTMLElement; className: string; cssText: string }>>([])
 
   const restore = useCallback(() => {
-    const s = snap.current
-    if (!s) return
-    // Only restore if the node is still in the document; if it was replaced by
-    // an HMR reload after commit, the new node already carries the real styles.
-    if (s.node.isConnected) {
-      s.node.className = s.className
-      s.node.style.cssText = s.cssText
+    for (const s of snaps.current) {
+      // Only restore if the node is still in the document; if it was replaced by
+      // an HMR reload after commit, the new node already carries the real styles.
+      if (s.node.isConnected) {
+        s.node.className = s.className
+        s.node.style.cssText = s.cssText
+      }
     }
-    snap.current = null
+    snaps.current = []
   }, [])
 
   const preview = useCallback(
-    (node: Element | undefined, delta: PreviewDelta) => {
-      if (!(node instanceof HTMLElement)) return
-      // Switching to a different node: restore the previous one first.
-      if (snap.current && snap.current.node !== node) restore()
-      if (!snap.current) {
-        snap.current = { node, className: node.className, cssText: node.style.cssText }
+    (matches: PreviewMatch[]) => {
+      // Clear any prior preview first so we always apply onto the true baseline —
+      // this is what keeps card-to-card switches from compounding.
+      restore()
+      const next: Array<{ node: HTMLElement; className: string; cssText: string }> = []
+      for (const { node, delta } of matches) {
+        next.push({ node, className: node.className, cssText: node.style.cssText })
+        node.className = delta.newClassName
+        Object.assign(node.style, delta.style)
       }
-      // Reset to the captured baseline before applying — so switching between
-      // option cards on the same node overwrites cleanly instead of compounding
-      // (a prop set by the previous option but absent from this one would
-      // otherwise linger, since Object.assign only sets what's in delta.style).
-      node.className = snap.current.className
-      node.style.cssText = snap.current.cssText
-      node.className = delta.newClassName
-      Object.assign(node.style, delta.style)
+      snaps.current = next
     },
     [restore],
   )
