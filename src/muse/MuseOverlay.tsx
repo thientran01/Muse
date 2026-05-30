@@ -37,7 +37,7 @@ import type {
   ToolUseBlock,
 } from './types'
 
-const EXIT_MS = 170 // keep in sync with the muse-panel-out animation
+const EXIT_MS = 240 // keep in sync with the longest close animation: muse-fab-catch (40ms delay + 200ms)
 
 // Normalize a file path the way the server keys `originals` (forward slashes, no ./).
 const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
@@ -87,6 +87,10 @@ export function MuseOverlay() {
   // A starter-chip click that needs a re-target first parks its text here; the
   // effect below fires it once `selection` has actually flipped to that element.
   const pendingChipRef = useRef<{ text: string; key: string } | null>(null)
+  // Synchronous latch for showDesign(): the thread-bubble guard there only sees
+  // a COMPLETED bubble, so during the slow /design fetch rapid clicks all slip
+  // past it and stack duplicates. This closes the window on the first click.
+  const showingDesignRef = useRef(false)
 
   useHostTheme(rootRef)
   const { preview, restore } = usePreviewLayer()
@@ -163,7 +167,21 @@ export function MuseOverlay() {
   // Archive the current live proposal first so picking an old one doesn't drop it.
   function openFromHistory(id: string) {
     museStore.archive(selection)
-    if (museStore.restoreArchived(id)) setHistoryOpen(false)
+    const entry = museStore.getState().archived.find((a) => a.id === id)
+    if (museStore.restoreArchived(id)) {
+      setHistoryOpen(false)
+      // Also restore the selection the proposal was about. `home` is keyed on an
+      // empty selection, so without this the panel bounces back to its home state
+      // instead of the restored conversation (and a later Apply would record the
+      // wrong elements). Pre-seed prevKeysRef to the same keys so the
+      // selection-change effect above sees a no-op diff and does NOT
+      // resetConversation() over the thread we just restored.
+      const els = entry?.elements ?? []
+      if (els.length > 0) {
+        prevKeysRef.current = els.map((e) => e.key)
+        setSelection(els)
+      }
+    }
   }
 
   function removeChip(key: string) {
@@ -354,8 +372,12 @@ export function MuseOverlay() {
 
   // Document icon → show the app's design brief, or offer to generate one.
   async function showDesign() {
-    // Already shown (or generating) — don't stack duplicate bubbles.
+    // Already shown, or a fetch is mid-flight from an earlier click — don't stack
+    // duplicates. The ref closes the race the bubble guard alone can't (the
+    // bubble only appears after the slow fetch resolves).
+    if (showingDesignRef.current) return
     if (museStore.getState().thread.some((m) => m.kind === 'design')) return
+    showingDesignRef.current = true
     try {
       const res = await museDesignGet()
       if (res.exists && res.content) {
@@ -365,6 +387,11 @@ export function MuseOverlay() {
       }
     } catch (e) {
       museStore.appendThread({ id: nextThreadId(), kind: 'error', text: (e as Error).message })
+    } finally {
+      // Release the latch. A successful run leaves a 'design' bubble, so the
+      // guard above now blocks re-entry; on failure (error bubble only) the
+      // latch must clear so the user can retry.
+      showingDesignRef.current = false
     }
   }
 
@@ -558,9 +585,14 @@ export function MuseOverlay() {
         </div>
       )}
 
-      {!panelOpen && (
+      {/* FAB renders while closing too (not just once the panel unmounts), so the
+          button is already in its shared bottom-right corner to "catch" the
+          collapsing panel — the close reads as one motion, not a flash-and-pop.
+          The undo bar stays hidden until the collapse finishes so it doesn't pop
+          in over the morph. */}
+      {(!panelOpen || closing) && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
-          {!active && hasHistory && (
+          {!active && hasHistory && !closing && (
             <UndoRedoBar
               canUndo={historyControls.canUndo}
               canRedo={historyControls.canRedo}
@@ -571,7 +603,12 @@ export function MuseOverlay() {
             />
           )}
           {/* Idle → open the panel onto its home state. In select mode → cancel. */}
-          <MuseFab active={active} loading={loading} onToggle={() => (active ? setActive(false) : setOpen(true))} />
+          <MuseFab
+            active={active}
+            loading={loading}
+            entering={closing}
+            onToggle={() => (active ? setActive(false) : setOpen(true))}
+          />
         </div>
       )}
 

@@ -25,14 +25,14 @@ export function ThinkingText({ className = '' }: { className?: string }) {
       setTimeout(() => {
         setIdx((i) => (i + 1) % PHRASES.length)
         setFading(false)
-      }, 250)
+      }, 200) // keep in sync with the duration-200 cross-fade below
     }, 2200)
     return () => clearInterval(id)
   }, [])
 
   return (
     <span
-      className={`transition-opacity duration-[250ms] ${fading ? 'opacity-0' : 'opacity-100'} ${className}`}
+      className={`transition-opacity duration-200 ${fading ? 'opacity-0' : 'opacity-100'} ${className}`}
     >
       {PHRASES[idx]}…
     </span>

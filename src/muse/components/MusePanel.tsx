@@ -37,7 +37,9 @@ export function MusePanel({
   return (
     <div
       className={`pointer-events-auto flex max-h-[40vh] w-[380px] origin-bottom-right flex-col overflow-hidden rounded-2xl bg-surface/95 text-fg shadow-2xl shadow-black/40 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none ${
-        closing ? 'animate-muse-panel-out' : 'animate-muse-panel'
+        closing
+          ? 'animate-muse-panel-out [&>*]:animate-muse-content-out motion-reduce:[&>*]:animate-none'
+          : 'animate-muse-panel'
       }`}
     >
       <header className="flex items-center justify-between px-4 py-3">
@@ -68,6 +70,10 @@ export function MusePanel({
           )}
           {historyControls && (
             <>
+              {/* Divider only when the clock is also present — the closed-proposals
+                  view is a different category from the live undo/redo actions,
+                  mirroring the divider before the close button. */}
+              {onToggleHistory && <div className="mx-1 h-3.5 w-px bg-line/10" />}
               <HeaderIconBtn
                 onClick={historyControls.onUndo}
                 disabled={!historyControls.canUndo || historyControls.loading}
@@ -93,7 +99,7 @@ export function MusePanel({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg"
+            className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg"
           >
             <X size={15} />
           </button>
