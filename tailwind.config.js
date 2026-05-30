@@ -86,36 +86,27 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(6px) scale(0.97)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
-        // Panel exit — collapses INTO the FAB. Panel and FAB share the
-        // bottom-right corner (origin-bottom-right), so scaling down toward that
-        // origin makes the panel converge onto the button. Blur masks the morph
-        // (Emil tip #7).
-        'muse-panel-out': {
-          '0%': { opacity: '1', transform: 'translateY(0) scale(1)', filter: 'blur(0)' },
-          '100%': { opacity: '0', transform: 'translateY(4px) scale(0.45)', filter: 'blur(3px)' },
-        },
-        // Panel content empties faster than the shell, so the collapse reads as a
-        // shrinking card rather than shrinking text.
-        'muse-content-out': {
-          '0%': { opacity: '1' },
-          '100%': { opacity: '0' },
-        },
         // FAB "catches" the collapsing panel — grows in from the same corner.
+        // Kept as a keyframe (not a transition): it's a one-shot entrance on a
+        // freshly-mounted button, never interrupted mid-flight (cancelling a
+        // close just unmounts it), so the keyframe-restart caveat doesn't apply.
         'muse-fab-catch': {
           '0%': { opacity: '0', transform: 'scale(0.9)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
       },
+      // NOTE: the panel's open AND close are CSS *transitions* (muse.css
+      // `.muse-panel-surface` + `@starting-style` + `[data-closing]`), NOT
+      // keyframes — so a click during the collapse smoothly reverses from the
+      // current frame instead of restarting from zero (Emil: transitions
+      // retarget mid-flight; keyframes restart). They still use EASE.out / DUR.mid.
       animation: {
         // Entrances — all easeOut, sized by how much moves.
         'muse-panel': `muse-panel-in ${DUR.slow} ${EASE.out}`,
         'muse-step': `muse-step-in ${DUR.base} ${EASE.out}`,
         'muse-rise': `muse-rise-in ${DUR.mid} ${EASE.out}`,
-        // Collapse-into-FAB: panel scales+fades into the corner while its content
-        // empties faster, then the FAB "catches" it (40ms delay so it emerges as
-        // the panel falls in). All easeOut at ${DUR.mid} so they read as one.
-        'muse-panel-out': `muse-panel-out ${DUR.mid} ${EASE.out} forwards`,
-        'muse-content-out': `muse-content-out ${DUR.fast} ${EASE.out} forwards`,
+        // FAB "catch" on collapse — 40ms delay so it emerges as the panel falls
+        // in. (The panel collapse itself is a transition; see muse.css.)
         'muse-fab-catch': `muse-fab-catch ${DUR.mid} ${EASE.out} 40ms backwards`,
       },
     },

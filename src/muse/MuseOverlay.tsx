@@ -163,6 +163,20 @@ export function MuseOverlay() {
     }, EXIT_MS)
   }
 
+  // Abort an in-flight close (the FAB was clicked mid-collapse). `open` is still
+  // true and selection is still intact — the wipe only happens in the timer we
+  // cancel here — so clearing `closing` flips the panel's data-closing back and
+  // the CSS transition reverses it home from wherever it was. The proposal may
+  // have been archived by requestClose; that's harmless (it's still live, and
+  // archived === restorable).
+  function cancelClose() {
+    if (closeTimer.current) {
+      window.clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+    setClosing(false)
+  }
+
   // Bring a past proposal back into the live view (still applyable), close history.
   // Archive the current live proposal first so picking an old one doesn't drop it.
   function openFromHistory(id: string) {
@@ -602,12 +616,13 @@ export function MuseOverlay() {
               onRevert={historyControls.onRevert}
             />
           )}
-          {/* Idle → open the panel onto its home state. In select mode → cancel. */}
+          {/* Mid-collapse → abort the close (reverses home). Select mode →
+              cancel select. Idle → open the panel onto its home state. */}
           <MuseFab
             active={active}
             loading={loading}
             entering={closing}
-            onToggle={() => (active ? setActive(false) : setOpen(true))}
+            onToggle={() => (closing ? cancelClose() : active ? setActive(false) : setOpen(true))}
           />
         </div>
       )}

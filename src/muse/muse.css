@@ -16,6 +16,13 @@
  * html[data-theme] attribute.
  */
 [data-muse-ui] {
+  /* Motion — the CSS-side mirror of the EASE/DUR tokens in tailwind.config.js
+   * (Tailwind owns keyframe animations; CSS transitions can't read JS tokens, so
+   * the curve/durations live here as vars to avoid repeating the magic string).
+   * KEEP IN SYNC with tailwind.config.js EASE.out / DUR.{mid,fast}. */
+  --muse-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --muse-dur-mid: 200ms;
+  --muse-dur-fast: 90ms;
   --muse-accent: 127 47 47;           /* muted brick red #7F2F2F */
   --muse-accent-hover: 150 67 67;     /* slightly brighter on dark */
   --muse-surface: 20 18 16;           /* warm near-black #141210 */
@@ -79,4 +86,65 @@
 [data-muse-ui] * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--muse-line) / 0.2) transparent;
+}
+
+/* ── Overlay panel open/close ────────────────────────────────────────────────
+ * The panel's entrance AND collapse are CSS *transitions*, not keyframes, so a
+ * click during the collapse smoothly reverses from the current frame instead of
+ * restarting from zero (Emil: transitions retarget mid-flight; keyframes restart).
+ * Curve + durations come from the --muse-ease-out / --muse-dur-* vars above.
+ *
+ *   - Resting (open): full opacity/scale, no blur.
+ *   - Entrance: @starting-style grows it out of the shared bottom-right corner
+ *     on mount (the panel only mounts when opened, so this fires once per open).
+ *     Progressive enhancement: browsers without @starting-style (Chrome <117,
+ *     Safari <17.5, Firefox <129) skip the grow-in and the panel just appears —
+ *     no break, no flash (the resting style IS the default). Close is unaffected
+ *     (it's a plain [data-closing] transition, universally supported). */
+.muse-panel-surface {
+  transform-origin: bottom right;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition:
+    opacity var(--muse-dur-mid) var(--muse-ease-out),
+    transform var(--muse-dur-mid) var(--muse-ease-out),
+    filter var(--muse-dur-mid) var(--muse-ease-out);
+}
+@starting-style {
+  .muse-panel-surface {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+/* Collapse: [data-closing] scales the panel down toward the bottom-right origin,
+ * fades, and blurs to mask the morph (Emil tip #7) — a reversible STATE, so
+ * flipping data-closing back mid-collapse animates it home. */
+.muse-panel-surface[data-closing='true'] {
+  opacity: 0;
+  transform: translateY(4px) scale(0.45);
+  filter: blur(3px);
+  pointer-events: none;
+}
+/* Content empties faster than the shell, so the collapse reads as a shrinking
+ * card rather than shrinking text. */
+.muse-panel-surface > * {
+  transition: opacity var(--muse-dur-fast) var(--muse-ease-out);
+}
+.muse-panel-surface[data-closing='true'] > * {
+  opacity: 0;
+}
+/* Reduced motion: keep a gentle opacity fade (it aids comprehension of the
+ * open/close), drop only the movement/scale/blur (Emil: "fewer and gentler,
+ * not zero"). The transform/filter jump instantly; opacity still crossfades. */
+@media (prefers-reduced-motion: reduce) {
+  .muse-panel-surface {
+    transition: opacity var(--muse-dur-fast) var(--muse-ease-out);
+    transform: none;
+    filter: none;
+  }
+  .muse-panel-surface[data-closing='true'] {
+    transform: none;
+    filter: none;
+  }
 }
