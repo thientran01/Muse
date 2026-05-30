@@ -87,6 +87,10 @@ export function MuseOverlay() {
   // A starter-chip click that needs a re-target first parks its text here; the
   // effect below fires it once `selection` has actually flipped to that element.
   const pendingChipRef = useRef<{ text: string; key: string } | null>(null)
+  // Synchronous latch for showDesign(): the thread-bubble guard there only sees
+  // a COMPLETED bubble, so during the slow /design fetch rapid clicks all slip
+  // past it and stack duplicates. This closes the window on the first click.
+  const showingDesignRef = useRef(false)
 
   useHostTheme(rootRef)
   const { preview, restore } = usePreviewLayer()
@@ -368,8 +372,12 @@ export function MuseOverlay() {
 
   // Document icon → show the app's design brief, or offer to generate one.
   async function showDesign() {
-    // Already shown (or generating) — don't stack duplicate bubbles.
+    // Already shown, or a fetch is mid-flight from an earlier click — don't stack
+    // duplicates. The ref closes the race the bubble guard alone can't (the
+    // bubble only appears after the slow fetch resolves).
+    if (showingDesignRef.current) return
     if (museStore.getState().thread.some((m) => m.kind === 'design')) return
+    showingDesignRef.current = true
     try {
       const res = await museDesignGet()
       if (res.exists && res.content) {
@@ -379,6 +387,11 @@ export function MuseOverlay() {
       }
     } catch (e) {
       museStore.appendThread({ id: nextThreadId(), kind: 'error', text: (e as Error).message })
+    } finally {
+      // Release the latch. A successful run leaves a 'design' bubble, so the
+      // guard above now blocks re-entry; on failure (error bubble only) the
+      // latch must clear so the user can retry.
+      showingDesignRef.current = false
     }
   }
 
