@@ -47,11 +47,12 @@ const asSelected = (el: CanvasElement): SelectedElement => ({
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit }: { onExit: () => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected } = useCanvasMode()
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, miss } = useCanvasMode()
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hint, setHint] = useState<{ x: number; y: number } | null>(null)
   // The live inline preview: which node we've overridden and which CSS keys. Held
   // as a single object (not a bare Set) so a commit can SNAPSHOT the exact node +
   // keys to strip after HMR — even if the selection moves on first. A stale
@@ -121,6 +122,14 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
 
+  // Show a brief "can't edit this" hint at the click point on an unmappable click.
+  useEffect(() => {
+    if (!miss) return
+    setHint({ x: miss.x, y: miss.y })
+    const t = window.setTimeout(() => setHint(null), 1600)
+    return () => clearTimeout(t)
+  }, [miss?.id])
+
   // Native-feeling undo/redo on the SAME shared history stack chat writes to —
   // file-only (no chat-panel side effects), so Cmd/Ctrl+Z works in canvas too.
   useEffect(() => {
@@ -182,6 +191,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       ])
       if (warnings.length) console.warn('[muse] style-edit:', warnings.join(' · '))
       if (edits.length === 0) {
+        clearPreview() // nothing was written — don't leave a phantom inline override
         setError(warnings[0] ?? "Couldn't apply that change.")
         return
       }
@@ -224,9 +234,25 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
       {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
 
+      {/* Quiet hint when a click lands on an element with no source mapping. */}
+      {hint && (
+        <div
+          className="pointer-events-none absolute rounded-md bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
+          style={{ top: hint.y + 14, left: hint.x + 14 }}
+        >
+          Can't edit this one — no source mapping
+        </div>
+      )}
+
       {selected && values && (
         <>
-          <BoxModelOverlay node={selected.node} padding={values.padding} />
+          <BoxModelOverlay
+            node={selected.node}
+            padding={values.padding}
+            margin={values.margin}
+            onPreview={applyPreview}
+            onCommit={commit}
+          />
           {panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the

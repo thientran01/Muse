@@ -37,6 +37,12 @@ export function useCanvasMode() {
   const [hoverInfo, setHoverInfo] = useState<ElementInfo | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [selected, setSelected] = useState<CanvasElement | null>(null)
+  // A click that couldn't be mapped to source (no _debugSource — a non-React node,
+  // an SVG, etc.). Surfaced so the UI can show a quiet "can't edit this" hint
+  // instead of silently doing nothing. `id` makes each miss distinct so a repeat
+  // click on the same spot re-triggers the hint.
+  const [miss, setMiss] = useState<{ x: number; y: number; id: number } | null>(null)
+  const missId = useRef(0)
   // Read inside the listener effect via a ref so the effect only re-subscribes on
   // `active` (like useSelection) — re-attaching on every selection would leave a
   // frame with no mousemove listener and flicker the hover highlight.
@@ -76,6 +82,9 @@ export function useCanvasMode() {
         setSelected(picked)
         setHoverRect(null)
         setHoverInfo(null)
+      } else {
+        // Mappable-looking click that has no source — tell the user why nothing happened.
+        setMiss({ x: e.clientX, y: e.clientY, id: ++missId.current })
       }
     }
 
@@ -99,5 +108,5 @@ export function useCanvasMode() {
     }
   }, [active])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, clearSelected }
+  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, clearSelected, miss }
 }
