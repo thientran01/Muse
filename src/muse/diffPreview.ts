@@ -21,6 +21,7 @@
 //      class isn't in the bundle yet (it won't be until the file is written).
 // ============================================================
 import { diffLines } from './diff'
+import { FONT_WEIGHT, FONT_SIZE, TRACKING, LEADING, ROUNDED, spaceRem } from './style/tailwindScales'
 import type { ProposedOption } from './types'
 
 export type PreviewDelta = { newClassName: string; style: Record<string, string> }
@@ -73,32 +74,10 @@ function classNamePairs(original: string, newContent: string): Array<{ oldClassN
 }
 
 // --- Tailwind → inline-style resolution (focused subset) -------------------
-const FONT_WEIGHT: Record<string, string> = {
-  thin: '100', extralight: '200', light: '300', normal: '400',
-  medium: '500', semibold: '600', bold: '700', extrabold: '800', black: '900',
-}
-const FONT_SIZE: Record<string, [string, string]> = {
-  xs: ['0.75rem', '1rem'], sm: ['0.875rem', '1.25rem'], base: ['1rem', '1.5rem'],
-  lg: ['1.125rem', '1.75rem'], xl: ['1.25rem', '1.75rem'], '2xl': ['1.5rem', '2rem'],
-  '3xl': ['1.875rem', '2.25rem'], '4xl': ['2.25rem', '2.5rem'], '5xl': ['3rem', '1'],
-  '6xl': ['3.75rem', '1'], '7xl': ['4.5rem', '1'], '8xl': ['6rem', '1'], '9xl': ['8rem', '1'],
-}
-const TRACKING: Record<string, string> = {
-  tighter: '-0.05em', tight: '-0.025em', normal: '0em',
-  wide: '0.025em', wider: '0.05em', widest: '0.1em',
-}
-const LEADING: Record<string, string> = {
-  none: '1', tight: '1.25', snug: '1.375', normal: '1.5', relaxed: '1.625', loose: '2',
-}
-const ROUNDED: Record<string, string> = {
-  none: '0px', sm: '0.125rem', '': '0.25rem', md: '0.375rem', lg: '0.5rem',
-  xl: '0.75rem', '2xl': '1rem', '3xl': '1.5rem', full: '9999px',
-}
-// Tailwind spacing scale → rem (covers the steps the presets actually emit).
-const space = (n: string): string | null => {
-  const v = Number(n)
-  return Number.isFinite(v) ? `${v * 0.25}rem` : null
-}
+// The scale tables (FONT_WEIGHT / FONT_SIZE / TRACKING / LEADING / ROUNDED /
+// spaceRem) live in ./style/tailwindScales — the single source of truth shared
+// with the deterministic style editor (server/styleEdit.ts), so preview and
+// codegen can never drift apart.
 const arbitrary = (token: string, prefix: string): string | null => {
   const m = token.match(new RegExp(`^${prefix}-\\[(.+)\\]$`))
   return m ? m[1].replace(/_/g, ' ') : null
@@ -128,13 +107,13 @@ function resolveStyles(className: string): Record<string, string> {
     else if (t === 'rounded') out.borderRadius = ROUNDED['']
     else if ((m = t.match(/^rounded-(\w+)$/)) && ROUNDED[m[1]] !== undefined) out.borderRadius = ROUNDED[m[1]]
     else if ((m = t.match(/^rounded-\[(.+)\]$/))) out.borderRadius = m[1]
-    else if ((m = t.match(/^p-(\d+(?:\.5)?)$/)) && space(m[1])) out.padding = space(m[1])!
-    else if ((m = t.match(/^px-(\d+(?:\.5)?)$/)) && space(m[1])) {
-      out.paddingLeft = space(m[1])!
-      out.paddingRight = space(m[1])!
-    } else if ((m = t.match(/^py-(\d+(?:\.5)?)$/)) && space(m[1])) {
-      out.paddingTop = space(m[1])!
-      out.paddingBottom = space(m[1])!
+    else if ((m = t.match(/^p-(\d+(?:\.5)?)$/)) && spaceRem(m[1])) out.padding = spaceRem(m[1])!
+    else if ((m = t.match(/^px-(\d+(?:\.5)?)$/)) && spaceRem(m[1])) {
+      out.paddingLeft = spaceRem(m[1])!
+      out.paddingRight = spaceRem(m[1])!
+    } else if ((m = t.match(/^py-(\d+(?:\.5)?)$/)) && spaceRem(m[1])) {
+      out.paddingTop = spaceRem(m[1])!
+      out.paddingBottom = spaceRem(m[1])!
     } else {
       const a = arbitrary(t, 'p')
       if (a) out.padding = a

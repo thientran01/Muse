@@ -30,6 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
+import { computeStyleEdit, type Mutation, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -417,6 +418,71 @@ export function musePlugin(): Plugin {
           return sendJson(res, 200, { ok: true })
         } catch (err) {
           console.error('[muse] /write error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/style-edit -------------------------------------
+      // Deterministic visual edit → source edit. NO model call, NO API key. Takes
+      // elements pinpointed by their _debugSource (line/column) plus CSS-property
+      // mutations, and returns { fileName, newContent } edits — which the client
+      // feeds through the SAME approve → /write → history flow as chat proposals,
+      // so a scrubbed padding is undoable like any other change.
+      server.middlewares.use('/api/muse/style-edit', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const body = JSON.parse(await readBody(req)) as {
+            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; mutations?: unknown }>
+            strategy?: unknown
+          }
+          const rawEdits = Array.isArray(body.edits) ? body.edits : []
+          if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
+          const strategy: StyleStrategy = body.strategy === 'inline' ? 'inline' : 'tailwind-first'
+
+          // Group mutations by file so several elements in one file resolve to a
+          // single newContent (each computed off the previous result).
+          const out: Array<{ fileName: string; newContent: string }> = []
+          const warnings: string[] = []
+          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; mutations: Mutation[] }> }>()
+          for (const e of rawEdits) {
+            const abs = resolveInSrc(root, e?.fileName)
+            if (!abs) {
+              warnings.push(`skipped "${String(e?.fileName)}" — not an editable file under src/.`)
+              continue
+            }
+            const rel = relOf(root, abs)
+            const line = Number(e?.line)
+            const column = Number(e?.column)
+            const mutations = (Array.isArray(e?.mutations) ? e!.mutations : []) as Mutation[]
+            if (!Number.isFinite(line) || mutations.length === 0) {
+              warnings.push(`skipped ${rel} — missing line or mutations.`)
+              continue
+            }
+            const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
+            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, mutations })
+            byFile.set(rel, bucket)
+          }
+
+          for (const { abs, rel, items } of byFile.values()) {
+            let content = fs.readFileSync(abs, 'utf8')
+            let changed = false
+            for (const it of items) {
+              const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy)
+              if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
+              if (result.changed) {
+                content = result.newContent
+                changed = true
+              }
+            }
+            if (changed) out.push({ fileName: rel, newContent: content })
+          }
+
+          if (out.length === 0) {
+            return sendJson(res, 200, { edits: [], warnings: warnings.length ? warnings : ['no changes computed'] })
+          }
+          return sendJson(res, 200, { edits: out, warnings })
+        } catch (err) {
+          console.error('[muse] /style-edit error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
         }
       })
