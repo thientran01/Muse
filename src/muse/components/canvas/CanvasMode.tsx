@@ -3,7 +3,7 @@ import { museStyleEdit, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
-import { useCanvasMode } from '../../useCanvasMode'
+import { canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
@@ -47,7 +47,7 @@ const asSelected = (el: CanvasElement): SelectedElement => ({
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit }: { onExit: () => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, miss } = useCanvasMode()
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, miss } = useCanvasMode()
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -264,7 +264,15 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the
                   new element's values instead of carrying over the last one's. */}
-              <PropertiesPanel key={selected.key} tag={selected.tag} values={values} onPreview={applyPreview} onCommit={commit} />
+              <PropertiesPanel
+                key={selected.key}
+                values={values}
+                chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
+                selectedKey={selected.key}
+                onPick={selectElement}
+                onPreview={applyPreview}
+                onCommit={commit}
+              />
               {error && (
                 <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
                   {error}
@@ -281,7 +289,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Canvas
           <span className="text-fg-faint">
-            {selected ? '· drag a value to scrub · Esc to deselect' : '· click an element to edit · Esc to exit'}
+            {selected ? '· Alt-click or the breadcrumb selects the container · Esc to deselect' : '· click an element · Alt-click for its container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done

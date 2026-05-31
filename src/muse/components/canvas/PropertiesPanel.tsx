@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
-import type { StyleMutation, StyleProperty } from '../../types'
+import type { CanvasElement, StyleMutation, StyleProperty } from '../../types'
 import { ScrubField } from './ScrubField'
+
+// A short, devtools-style label for a breadcrumb crumb: the tag plus its first
+// simple class token (e.g. "div.flex-1"), so a column of <div>s is tellable apart.
+function crumbLabel(c: CanvasElement): string {
+  const first = (c.node.getAttribute('class') ?? '').split(/\s+/).find((t) => t && !t.includes('['))
+  return first ? `${c.tag}.${first.slice(0, 12)}` : c.tag
+}
 
 export type Sides = { top: number; right: number; bottom: number; left: number }
 export type CanvasValues = {
@@ -73,22 +80,43 @@ function SideGroup({
 }
 
 export function PropertiesPanel({
-  tag,
   values,
+  chain,
+  selectedKey,
+  onPick,
   onPreview,
   onCommit,
 }: {
-  tag: string
   values: CanvasValues
+  chain: CanvasElement[]
+  selectedKey: string
+  onPick: (c: CanvasElement) => void
   onPreview: (m: StyleMutation[]) => void
   onCommit: (m: StyleMutation[]) => void
 }) {
   const gapLinked = values.gap && values.gap.row === values.gap.column
+  // Breadcrumb runs outermost → selected (left → right), like devtools. Click any
+  // crumb to select that ancestor — the discoverable "grab the container" path.
+  const crumbs = [...chain].reverse()
   return (
     <div className="w-[208px] space-y-3 rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-fg">
-        <span className="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-accent">{tag}</span>
-        <span className="text-fg-faint">Spacing</span>
+      <div className="flex flex-wrap items-center gap-0.5 text-[10px] leading-tight">
+        {crumbs.map((c, i) => (
+          <Fragment key={c.key}>
+            {i > 0 && <span className="text-fg-faint/40">›</span>}
+            <button
+              onClick={() => onPick(c)}
+              title={c.node.getAttribute('class') || c.tag}
+              className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
+                c.key === selectedKey
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
+              }`}
+            >
+              {crumbLabel(c)}
+            </button>
+          </Fragment>
+        ))}
       </div>
 
       <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
