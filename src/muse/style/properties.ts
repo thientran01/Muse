@@ -16,11 +16,13 @@ export type StyleProperty =
   | 'margin' | 'marginX' | 'marginY'
   | 'marginTop' | 'marginRight' | 'marginBottom' | 'marginLeft'
   | 'gap' | 'columnGap' | 'rowGap'
+  | 'width' | 'height'
 
-// `kind` selects how a raw value becomes a Tailwind token. Only 'spacing' for
-// now; 'fontSize' | 'color' | 'length' etc. arrive with later phases.
+// `kind` selects how a raw value becomes a Tailwind token. 'length' (w/h) shares
+// the same spacing scale as 'spacing', so the editor treats them identically;
+// 'fontSize' | 'color' etc. arrive with later phases.
 export type PropertySpec = {
-  kind: 'spacing'
+  kind: 'spacing' | 'length'
   tw: string
   css: string[]
 }
@@ -43,6 +45,8 @@ export const PROPERTIES: Record<StyleProperty, PropertySpec> = {
   gap: { kind: 'spacing', tw: 'gap', css: ['gap'] },
   columnGap: { kind: 'spacing', tw: 'gap-x', css: ['columnGap'] },
   rowGap: { kind: 'spacing', tw: 'gap-y', css: ['rowGap'] },
+  width: { kind: 'length', tw: 'w', css: ['width'] },
+  height: { kind: 'length', tw: 'h', css: ['height'] },
 }
 
 export const isStyleProperty = (p: unknown): p is StyleProperty =>

@@ -8,6 +8,7 @@ import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
+import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 208
 const GAP = 12
@@ -30,6 +31,7 @@ function readValues(node: HTMLElement): CanvasValues {
     padding: sidesOf(cs, 'padding'),
     margin: sidesOf(cs, 'margin'),
     gap: isFlexGrid ? { row: px(cs.rowGap), column: px(cs.columnGap) } : null,
+    size: { width: Math.round(px(cs.width)), height: Math.round(px(cs.height)) },
   }
 }
 
@@ -262,6 +264,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             onCommit={commit}
           />
           {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
+          <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
           {panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the

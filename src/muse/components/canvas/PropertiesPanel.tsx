@@ -15,6 +15,7 @@ export type CanvasValues = {
   padding: Sides
   margin: Sides
   gap: { row: number; column: number } | null // null when not flex/grid
+  size: { width: number; height: number }
 }
 
 const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.bottom === s.left
@@ -125,6 +126,28 @@ export function PropertiesPanel({
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
         {values.gap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
       </div>
+
+      {/* Size — precise W/H, complements the on-canvas corner handles. */}
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-fg-muted">Size</span>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <ScrubField
+            label="W"
+            value={values.size.width}
+            min={0}
+            onPreview={(v) => onPreview([{ property: 'width', value: `${v}px` }])}
+            onCommit={(v) => onCommit([{ property: 'width', value: `${v}px` }])}
+          />
+          <ScrubField
+            label="H"
+            value={values.size.height}
+            min={0}
+            onPreview={(v) => onPreview([{ property: 'height', value: `${v}px` }])}
+            onCommit={(v) => onCommit([{ property: 'height', value: `${v}px` }])}
+          />
+        </div>
+      </div>
+      <div className="h-px bg-line/10" />
 
       <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
       <div className="h-px bg-line/10" />
