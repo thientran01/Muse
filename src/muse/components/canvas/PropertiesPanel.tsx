@@ -119,6 +119,13 @@ export function PropertiesPanel({
         ))}
       </div>
 
+      {/* Legend — maps the on-canvas band hues to what they mean. */}
+      <div className="flex items-center gap-2.5 text-[9px] text-fg-faint">
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400/70" />Padding</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
+        {values.gap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
+      </div>
+
       <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
       <div className="h-px bg-line/10" />
       <SideGroup title="Margin" base="margin" values={values.margin} minSide={-Infinity} onPreview={onPreview} onCommit={onCommit} />
