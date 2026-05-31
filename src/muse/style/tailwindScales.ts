@@ -74,10 +74,18 @@ export function spacingSuffix(value: string): string | null {
   return PX_TO_SUFFIX.get(Math.abs(px)) ?? null
 }
 
+// A value is safe to embed in an arbitrary Tailwind token `prefix-[…]` only if
+// it can't break out of the brackets or the surrounding className/JSX. Brackets,
+// quotes, braces, semicolons and angle-brackets are disqualifying — such a value
+// must go through inline style instead (the caller falls back on a null return).
+const SAFE_ARBITRARY = /^[\w.%#,()+\-*/ ]+$/
+
 // Build a spacing utility for a prefix (p, px, mt, gap-x, …) from a CSS value.
 // `auto` → `${prefix}-auto`; on-scale → named step; off-scale → arbitrary value
-// (spaces underscored, per Tailwind's arbitrary-value syntax).
-export function spacingToken(prefix: string, value: string): string {
+// (spaces underscored, per Tailwind's arbitrary-value syntax). Returns null when
+// the value can't be expressed safely as a class token — the caller then routes
+// the mutation to inline style instead of emitting a malformed className.
+export function spacingToken(prefix: string, value: string): string | null {
   const v = value.trim()
   if (v === 'auto') return `${prefix}-auto`
   const suffix = spacingSuffix(v)
@@ -85,6 +93,7 @@ export function spacingToken(prefix: string, value: string): string {
     const neg = (lengthToPx(v) ?? 0) < 0 ? '-' : ''
     return `${neg}${prefix}-${suffix}`
   }
+  if (!SAFE_ARBITRARY.test(v)) return null
   return `${prefix}-[${v.replace(/\s+/g, '_')}]`
 }
 

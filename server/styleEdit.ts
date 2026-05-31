@@ -148,11 +148,13 @@ function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
   return { editable: true, attr, object, props }
 }
 
-// Render a flat style object back to source: { key: 'value', … }. Keys are
-// camelCase CSS props (valid identifiers), values single-quoted strings.
+// Render a flat style object back to source: { key: "value", … }. Keys are
+// camelCase CSS props (valid identifiers); values go through JSON.stringify so
+// any quote/backslash in the value (e.g. a font-family fallback) is escaped and
+// the emitted JS can't be broken.
 function renderStyleObject(props: Array<[string, string]>): string {
   if (props.length === 0) return '{}'
-  return `{ ${props.map(([k, v]) => `${k}: '${v}'`).join(', ')} }`
+  return `{ ${props.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')} }`
 }
 
 export function computeStyleEdit(
@@ -196,12 +198,35 @@ export function computeStyleEdit(
     styleTouched = true
   }
 
+  // Write a mutation as inline style, stripping the dueling Tailwind class when
+  // className is editable so the two can't fight. Returns false if there's no
+  // writable style object (present-but-dynamic) — the caller warns and skips.
+  const routeInline = (m: Mutation, spec: (typeof PROPERTIES)[StyleProperty]): boolean => {
+    if (styleInfo?.editable === false) {
+      warnings.push(`skipped ${m.property}: ${styleInfo.reason}`)
+      return false
+    }
+    for (const key of spec.css) setStyleProp(key, m.value)
+    if (classEditable) {
+      const re = spacingFamilyRe(spec.tw)
+      const before = classTokens.length
+      classTokens = classTokens.filter((c) => !re.test(c))
+      if (classTokens.length !== before) classTouched = true
+    } else if (classInfo?.editable === false) {
+      warnings.push(`note: left dynamic className in place for ${m.property} (inline style overrides it)`)
+    }
+    return true
+  }
+
   for (const m of valid) {
     const spec = PROPERTIES[m.property]
     const useTailwind = strategy === 'tailwind-first' && classEditable
-    if (useTailwind) {
+    // A value that can't be expressed as a safe class token (spacingToken → null)
+    // falls back to inline even under tailwind-first, so we never emit a broken
+    // className.
+    const token = useTailwind ? spacingToken(spec.tw, m.value) : null
+    if (useTailwind && token !== null) {
       const re = spacingFamilyRe(spec.tw)
-      const token = spacingToken(spec.tw, m.value)
       // Replace the family's existing utility IN PLACE (minimal diff); append
       // only if the element didn't have one. Drop any extra duplicates.
       const idx = classTokens.findIndex((c) => re.test(c))
@@ -212,23 +237,7 @@ export function computeStyleEdit(
       }
       classTouched = true
     } else {
-      // Inline route. Needs a style object we can write — present-and-editable,
-      // or absent (we'll create one). A present-but-dynamic style blocks it.
-      if (styleInfo?.editable === false) {
-        warnings.push(`skipped ${m.property}: ${styleInfo.reason}`)
-        continue
-      }
-      for (const key of spec.css) setStyleProp(key, m.value)
-      // Inline wins by specificity, but strip the dueling Tailwind class too so
-      // the source stays honest (only possible when className is editable).
-      if (classEditable) {
-        const re = spacingFamilyRe(spec.tw)
-        const before = classTokens.length
-        classTokens = classTokens.filter((c) => !re.test(c))
-        if (classTokens.length !== before) classTouched = true
-      } else if (classInfo?.editable === false) {
-        warnings.push(`note: left dynamic className in place for ${m.property} (inline style overrides it)`)
-      }
+      routeInline(m, spec)
     }
   }
 

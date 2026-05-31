@@ -454,8 +454,8 @@ export function musePlugin(): Plugin {
             const line = Number(e?.line)
             const column = Number(e?.column)
             const mutations = (Array.isArray(e?.mutations) ? e!.mutations : []) as Mutation[]
-            if (!Number.isFinite(line) || mutations.length === 0) {
-              warnings.push(`skipped ${rel} — missing line or mutations.`)
+            if (!Number.isInteger(line) || line <= 0 || mutations.length === 0) {
+              warnings.push(`skipped ${rel} — needs a positive line and at least one mutation.`)
               continue
             }
             const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
@@ -466,6 +466,11 @@ export function musePlugin(): Plugin {
           for (const { abs, rel, items } of byFile.values()) {
             let content = fs.readFileSync(abs, 'utf8')
             let changed = false
+            // Apply bottom-up (highest line first). Today no style edit changes a
+            // file's line count, but should one ever (a wrapping insert), editing
+            // lower elements first keeps the still-original _debugSource lines of
+            // the higher ones valid.
+            items.sort((a, b) => b.line - a.line)
             for (const it of items) {
               const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy)
               if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
