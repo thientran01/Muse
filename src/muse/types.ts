@@ -1,4 +1,6 @@
 // Shared types for the Muse overlay <-> backend.
+import type { StyleProperty } from './style/properties'
+export type { StyleProperty } from './style/properties'
 
 export type SelectedElement = {
   fileName: string // absolute path from React _debugSource
@@ -8,6 +10,47 @@ export type SelectedElement = {
   text: string
   key: string // stable id for dedupe / badges (fileName:line:col:tag)
   node?: Element // client-only: live DOM node for drawing outlines/badges (never sent to backend)
+}
+
+// --- Canvas Mode (direct manipulation) ---
+// An element resolved for deterministic editing: like SelectedElement but always
+// carries the column too (the style editor disambiguates several JSX elements on
+// one line by column).
+export type CanvasElement = {
+  fileName: string
+  line: number
+  column: number
+  tag: string
+  key: string // fileName:line:col:tag
+  node: HTMLElement
+}
+
+// One deterministic style change, in the shared property vocabulary.
+export type StyleMutation = { property: StyleProperty; value: string }
+
+// How a value is written: prefer Tailwind utilities, or always inline style.
+// Mirrors StyleStrategy in server/styleEdit.ts.
+export type StyleStrategy = 'tailwind-first' | 'inline'
+
+// A request to the /api/muse/style-edit endpoint: which element, which changes.
+export type StyleEditRequest = {
+  fileName: string
+  line: number
+  column: number
+  // DOM tag + resolved class attribute of the target. The server uses them (with
+  // column) to locate the element even when a dev transform has shifted
+  // _debugSource line numbers. See locateOpening in server/styleEdit.ts.
+  tag?: string
+  classNames?: string
+  mutations: StyleMutation[]
+}
+
+// The endpoint's reply: computed file rewrites + their pre-edit contents (for
+// undo) + any non-fatal warnings (dynamic className fallbacks, skips).
+export type StyleEditResponse = {
+  edits: FileEdit[]
+  originals: Record<string, string>
+  warnings: string[]
 }
 
 // --- Tool I/O (mirrors the schemas in server/musePlugin.ts) ---

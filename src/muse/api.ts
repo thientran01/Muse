@@ -8,6 +8,9 @@ import type {
   FileEdit,
   ObserveResult,
   SelectedElement,
+  StyleEditRequest,
+  StyleEditResponse,
+  StyleStrategy,
 } from './types'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -71,6 +74,28 @@ export async function museWrite(files: FileEdit[]): Promise<void> {
   })
   const data = (await res.json()) as { ok?: boolean; error?: string }
   if (!data.ok) throw new Error(data.error ?? 'Write failed')
+}
+
+// Deterministic style edit (Canvas Mode). NO model call — the server parses the
+// AST, rewrites the targeted element's className/style, and returns the new file
+// contents plus their pre-edit originals (for undo). The caller writes them with
+// museWrite, exactly like an approved chat proposal.
+export async function museStyleEdit(
+  requests: StyleEditRequest[],
+  strategy: StyleStrategy = 'tailwind-first',
+): Promise<StyleEditResponse> {
+  const res = await fetch('/api/muse/style-edit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ edits: requests, strategy }),
+  })
+  const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
+  if (data.error) throw new Error(data.error)
+  return {
+    edits: Array.isArray(data.edits) ? data.edits : [],
+    originals: data.originals ?? {},
+    warnings: Array.isArray(data.warnings) ? data.warnings : [],
+  }
 }
 
 export type DesignGet = { exists: boolean; content?: string; path?: string }

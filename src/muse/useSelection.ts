@@ -25,9 +25,9 @@ function toSelected(el: Element): SelectedElement {
 }
 
 /**
- * Drives "select mode": hover highlights elements; a plain click selects one
- * (fast path), shift-click adds/removes elements to build a batch. Resolves
- * each element back to its source file/line. Ignores the Muse UI itself.
+ * Drives "select mode": hover highlights elements; a click selects one and
+ * commits immediately. Resolves the element back to its source file/line.
+ * Ignores the Muse UI itself.
  */
 export function useSelection() {
   const [active, setActive] = useState(false)
@@ -73,18 +73,7 @@ export function useSelection() {
       e.stopPropagation()
       const picked = toSelected(el)
 
-      if (e.shiftKey) {
-        // Build a batch — only add elements we can actually edit. Stay in select mode.
-        if (!picked.fileName) return
-        setSelection((prev) =>
-          prev.some((p) => p.key === picked.key)
-            ? prev.filter((p) => p.key !== picked.key) // toggle off
-            : [...prev, picked],
-        )
-        return
-      }
-
-      // Plain click — single fast path. Commit immediately.
+      // Single click — commit immediately and leave select mode.
       setSelection([picked])
       setActive(false)
       setHoverRect(null)
@@ -100,12 +89,10 @@ export function useSelection() {
       }
     }
 
-    document.body.classList.add('muse-selecting')
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
     document.addEventListener('keydown', onKey, true)
     return () => {
-      document.body.classList.remove('muse-selecting')
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('keydown', onKey, true)

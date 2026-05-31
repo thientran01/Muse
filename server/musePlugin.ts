@@ -30,6 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
+import { computeStyleEdit, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -225,6 +226,10 @@ export function musePlugin(): Plugin {
   let designMdOverride = '' // MUSE_DESIGN_MD, if set
   let designExclude: string[] = [] // MUSE_DESIGN_EXCLUDE — terms the generator drops from evidence
   let designGenerating = false // in-flight guard: one generation at a time
+  // The dev transform (React Fast Refresh) shifts every element's _debugSource
+  // line by a constant per-session amount; the style editor learns it once here
+  // and reuses it to locate elements exactly. See locateOpening in styleEdit.ts.
+  const lineOffsetHint: OffsetHint = { value: null }
 
   return {
     name: 'muse-backend',
@@ -417,6 +422,83 @@ export function musePlugin(): Plugin {
           return sendJson(res, 200, { ok: true })
         } catch (err) {
           console.error('[muse] /write error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/style-edit -------------------------------------
+      // Deterministic visual edit → source edit. NO model call, NO API key. Takes
+      // elements pinpointed by their _debugSource (line/column) plus CSS-property
+      // mutations, and returns { fileName, newContent } edits — which the client
+      // feeds through the SAME approve → /write → history flow as chat proposals,
+      // so a scrubbed padding is undoable like any other change.
+      server.middlewares.use('/api/muse/style-edit', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const body = JSON.parse(await readBody(req)) as {
+            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown }>
+            strategy?: unknown
+          }
+          const rawEdits = Array.isArray(body.edits) ? body.edits : []
+          if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
+          const strategy: StyleStrategy = body.strategy === 'inline' ? 'inline' : 'tailwind-first'
+
+          // Group mutations by file so several elements in one file resolve to a
+          // single newContent (each computed off the previous result).
+          const out: Array<{ fileName: string; newContent: string }> = []
+          const warnings: string[] = []
+          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[] }> }>()
+          for (const e of rawEdits) {
+            const abs = resolveInSrc(root, e?.fileName)
+            if (!abs) {
+              warnings.push(`skipped "${String(e?.fileName)}" — not an editable file under src/.`)
+              continue
+            }
+            const rel = relOf(root, abs)
+            const line = Number(e?.line)
+            const column = Number(e?.column)
+            const tag = typeof e?.tag === 'string' ? e.tag : undefined
+            const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
+            const mutations = (Array.isArray(e?.mutations) ? e!.mutations : []) as Mutation[]
+            if (!Number.isInteger(line) || line <= 0 || mutations.length === 0) {
+              warnings.push(`skipped ${rel} — needs a positive line and at least one mutation.`)
+              continue
+            }
+            const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
+            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations })
+            byFile.set(rel, bucket)
+          }
+
+          const originals: Record<string, string> = {} // rel -> pre-edit content, for undo
+          for (const { abs, rel, items } of byFile.values()) {
+            let content = fs.readFileSync(abs, 'utf8')
+            const before = content
+            let changed = false
+            // Apply bottom-up (highest line first). Today no style edit changes a
+            // file's line count, but should one ever (a wrapping insert), editing
+            // lower elements first keeps the still-original _debugSource lines of
+            // the higher ones valid.
+            items.sort((a, b) => b.line - a.line)
+            for (const it of items) {
+              const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, lineOffsetHint)
+              if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
+              if (result.changed) {
+                content = result.newContent
+                changed = true
+              }
+            }
+            if (changed) {
+              originals[rel] = before
+              out.push({ fileName: rel, newContent: content })
+            }
+          }
+
+          if (out.length === 0) {
+            return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
+          }
+          return sendJson(res, 200, { edits: out, originals, warnings })
+        } catch (err) {
+          console.error('[muse] /style-edit error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
         }
       })
