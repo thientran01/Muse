@@ -27,7 +27,7 @@ import type {
   ObjectExpression,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
-import { buildToken, familyMatcher } from '../src/muse/style/tailwindScales'
+import { buildToken, familyMatcher, isVarColorToken } from '../src/muse/style/tailwindScales'
 
 // @babel/traverse ships CJS; the default export is on `.default` under ESM.
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
@@ -331,6 +331,13 @@ export function computeStyleEdit(
 
   for (const m of valid) {
     const spec = PROPERTIES[m.property]
+    // A color themed through a CSS variable stays put — never hardcode a hex over
+    // a `text-[color:var(--x)]` token (it would break light/dark theming). Skip
+    // with a warning the client can surface.
+    if (spec.kind === 'color' && classEditable && classTokens.some((c) => isVarColorToken(spec.tw, c))) {
+      warnings.push(`${m.property}: color is themed via a CSS variable — left unchanged`)
+      continue
+    }
     const useTailwind = strategy === 'tailwind-first' && classEditable
     // A value that can't be expressed as a safe class token (buildToken → null)
     // falls back to inline even under tailwind-first, so we never emit a broken

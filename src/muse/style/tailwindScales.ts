@@ -196,6 +196,46 @@ export const isFontWeightToken = (tok: string): boolean => {
 const leadingFamilyRe = new RegExp(`^leading-(?:${LEADING_KEYS.map(esc).join('|')}|\\d+(?:\\.5)?|\\[[^\\]]+\\])$`)
 const trackingFamilyRe = new RegExp(`^tracking-(?:${TRACKING_KEYS.map(esc).join('|')}|\\[[^\\]]+\\])$`)
 
+// --- color ---
+const COLOR_NAMES =
+  'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
+const COLOR_KEYWORDS = 'white|black|transparent|current|inherit'
+
+// Normalize a color value to #rrggbb, or null if we can't (so the caller skips a
+// class write). Accepts #rgb / #rrggbb / rgb()/rgba().
+function normalizeHex(value: string): string | null {
+  const v = value.trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(v)) return v
+  if (/^#[0-9a-f]{3}$/.test(v)) return '#' + v.slice(1).split('').map((c) => c + c).join('')
+  const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  if (m) return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
+  return null
+}
+
+export function colorToken(prefix: string, value: string): string | null {
+  const hex = normalizeHex(value)
+  return hex ? `${prefix}-[${hex}]` : null
+}
+
+// Match an existing COLOR token of `prefix` (text-/bg-/border-) — a named palette
+// color, a keyword, or an arbitrary [#hex|rgb|var|color:…]. The COLOR_NAMES
+// whitelist + the color-content check naturally EXCLUDE the non-color members of
+// these overloaded prefixes (text-lg/center, bg-cover/center, border-2/solid/t).
+export function colorFamilyMatch(prefix: string, tok: string): boolean {
+  const p = esc(prefix)
+  const base = tok.replace(/\/[^/]*$/, '') // drop an /opacity modifier for the named check
+  if (new RegExp(`^${p}-(?:${COLOR_KEYWORDS})$`).test(base)) return true
+  if (new RegExp(`^${p}-(?:${COLOR_NAMES})-\\d{1,3}$`).test(base)) return true
+  const m = tok.match(new RegExp(`^${p}-\\[(.+?)\\](?:\\/\\S+)?$`))
+  return m ? isColorArbitrary(m[1]) : false
+}
+
+// True when this token paints a color via a CSS variable (e.g. text-[color:var(--x)])
+// — the engine leaves these untouched (skip + warn) rather than hardcode a hex.
+export function isVarColorToken(prefix: string, tok: string): boolean {
+  return colorFamilyMatch(prefix, tok) && /var\(/.test(tok)
+}
+
 export { isLengthArbitrary, isColorArbitrary }
 
 // --- kind-aware facade the engine calls ---------------------------------------
@@ -216,6 +256,8 @@ export function buildToken(spec: PropertySpec, value: string): string | null {
       return leadingToken(value)
     case 'letterSpacing':
       return trackingToken(value)
+    case 'color':
+      return colorToken(spec.tw, value)
     default:
       return null
   }
@@ -236,6 +278,8 @@ export function familyMatcher(spec: PropertySpec): (tok: string) => boolean {
       return (t) => leadingFamilyRe.test(t)
     case 'letterSpacing':
       return (t) => trackingFamilyRe.test(t)
+    case 'color':
+      return (t) => colorFamilyMatch(spec.tw, t)
     default:
       return () => false
   }

@@ -3,6 +3,7 @@ import { museStyleEdit, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
+import { isVarColorToken } from '../../style/tailwindScales'
 import { canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
@@ -27,6 +28,7 @@ const sidesOf = (cs: CSSStyleDeclaration, p: 'padding' | 'margin'): Sides => ({
 function readValues(node: HTMLElement): CanvasValues {
   const cs = getComputedStyle(node)
   const isFlexGrid = /(^|\s|-)(flex|grid)$/.test(cs.display)
+  const classTokens = (node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
   return {
     padding: sidesOf(cs, 'padding'),
     margin: sidesOf(cs, 'margin'),
@@ -40,7 +42,22 @@ function readValues(node: HTMLElement): CanvasValues {
     },
     // Direct text content (not just descendants) → this element styles visible text.
     rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
+    color: { text: rgbToHex(cs.color), background: rgbToHex(cs.backgroundColor), border: rgbToHex(cs.borderColor) },
+    // A var-themed channel reads its color from a CSS variable in the source class
+    // (e.g. text-[color:var(--c-on-bg)]) — Muse leaves those alone, so mark read-only.
+    colorThemed: {
+      text: classTokens.some((t) => isVarColorToken('text', t)),
+      background: classTokens.some((t) => isVarColorToken('bg', t)),
+      border: classTokens.some((t) => isVarColorToken('border', t)),
+    },
   }
+}
+
+// rgb()/rgba() → #rrggbb for the color picker's current value (alpha dropped).
+function rgbToHex(c: string): string {
+  const m = c.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  if (!m) return '#000000'
+  return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
 }
 
 const asSelected = (el: CanvasElement): SelectedElement => ({

@@ -18,9 +18,49 @@ export type CanvasValues = {
   size: { width: number; height: number }
   type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number }
   rendersText: boolean // the element directly shows text — gates the Type controls
+  color: { text: string; background: string; border: string } // current values as #hex
+  colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
 }
 
 const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.bottom === s.left
+
+// One color channel: a native swatch + hex readout, or a read-only "themed" note
+// when the source paints this channel through a CSS variable (Muse leaves those).
+function ColorRow({
+  label,
+  value,
+  themed,
+  onPreview,
+  onCommit,
+}: {
+  label: string
+  value: string
+  themed: boolean
+  onPreview: (v: string) => void
+  onCommit: (v: string) => void
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2 text-[11px]">
+      <span className="select-none text-fg-faint">{label}</span>
+      {themed ? (
+        <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable — edit the design token instead">
+          themed
+        </span>
+      ) : (
+        <span className="flex items-center gap-1.5">
+          <span className="font-mono tabular-nums text-fg-muted">{value}</span>
+          <input
+            type="color"
+            value={value}
+            onInput={(e) => onPreview((e.target as HTMLInputElement).value)}
+            onChange={(e) => onCommit((e.target as HTMLInputElement).value)}
+            className="h-5 w-5 shrink-0 cursor-pointer rounded border border-line/20 bg-transparent p-0"
+          />
+        </span>
+      )}
+    </label>
+  )
+}
 
 // A padding/margin group: one field when all sides match, four when they don't —
 // with a toggle to expand/collapse. `base` is the shorthand property name
@@ -190,6 +230,35 @@ export function PropertiesPanel({
           </div>
         </>
       )}
+
+      {/* Color — background + border on any element; text only where there's text. */}
+      <div className="h-px bg-line/10" />
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-fg-muted">Color</span>
+        {values.rendersText && (
+          <ColorRow
+            label="Text"
+            value={values.color.text}
+            themed={values.colorThemed.text}
+            onPreview={(v) => onPreview([{ property: 'color', value: v }])}
+            onCommit={(v) => onCommit([{ property: 'color', value: v }])}
+          />
+        )}
+        <ColorRow
+          label="Fill"
+          value={values.color.background}
+          themed={values.colorThemed.background}
+          onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])}
+        />
+        <ColorRow
+          label="Border"
+          value={values.color.border}
+          themed={values.colorThemed.border}
+          onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])}
+        />
+      </div>
 
       <div className="h-px bg-line/10" />
 
