@@ -1,5 +1,4 @@
 import { useEffect, useReducer } from 'react'
-import { ArrowRight } from '@phosphor-icons/react'
 import type { ElementInfo } from '../sourceLocation'
 import type { SelectedElement } from '../types'
 import type { Rect } from '../useSelection'
@@ -8,7 +7,7 @@ export function SelectBanner() {
   return (
     <div className="pointer-events-none rounded-full bg-surface/95 px-4 py-2 text-sm font-medium text-fg shadow-lg ring-1 ring-line/10 backdrop-blur">
       Click to select{' '}
-      <span className="text-fg-faint">· ⇧ Shift-click to add several · Esc to cancel</span>
+      <span className="text-fg-faint">· Esc to cancel</span>
     </div>
   )
 }
@@ -98,23 +97,5 @@ export function SelectionMarkers({ elements }: { elements: SelectedElement[] }) 
         )
       })}
     </>
-  )
-}
-
-// Floating tray shown while building a batch — commit with the button or Enter.
-export function SelectionTray({ count, onDesign }: { count: number; onDesign: () => void }) {
-  return (
-    <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-surface/95 py-2 pl-4 pr-2 text-sm shadow-xl ring-1 ring-line/10 backdrop-blur">
-      <span className="text-fg">
-        {count} element{count === 1 ? '' : 's'} selected
-      </span>
-      <button
-        data-testid="muse-design-batch"
-        onClick={onDesign}
-        className="inline-flex items-center gap-1 rounded-full bg-fg px-4 py-1.5 font-semibold text-surface transition hover:bg-fg/90 active:scale-[0.97] motion-reduce:active:scale-100"
-      >
-        Design <ArrowRight size={14} weight="bold" />
-      </button>
-    </div>
   )
 }

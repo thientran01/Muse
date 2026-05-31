@@ -4,11 +4,7 @@ import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
 import { MuseHome } from './components/MuseHome'
 import { MusePanel } from './components/MusePanel'
-import {
-  HoverHighlight,
-  SelectBanner,
-  SelectionTray,
-} from './components/SelectionOverlay'
+import { HoverHighlight, SelectBanner } from './components/SelectionOverlay'
 import { MessageApplied } from './components/messages/MessageApplied'
 import { MessageClarify } from './components/messages/MessageClarify'
 import { MessageObservation } from './components/messages/MessageObservation'
@@ -201,10 +197,6 @@ export function MuseGallery() {
             <HoverHighlight rect={{ top: 8, left: 8, width: 176, height: 80 }} />
           </div>
         </Cell>
-        <Cell title="Batch tray">
-          <SelectionTray count={3} onDesign={noop} />
-        </Cell>
-
         <Cell title="Panel — home (no target yet)">
           <MusePanel mock onClose={noop}>
             <MuseHome onSelect={noop} onShowDesign={noop} bubbles={[]} onGenerateDesign={noop} />
@@ -330,16 +322,6 @@ export function MuseGallery() {
               Muse did not return an action. Try rephrasing.
             </p>
           </ThreadFrame>
-        </Cell>
-
-        <Cell title="Active target strip — batch">
-          <div className="w-[380px] rounded-2xl bg-surface ring-1 ring-line/10">
-            <ActiveTargetStrip
-              elements={[fxElement, fxElement2, { ...fxElement, key: 'x3', tag: 'p' }]}
-              mock={false}
-              onRemove={noop}
-            />
-          </div>
         </Cell>
       </div>
     </div>

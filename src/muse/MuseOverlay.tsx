@@ -9,6 +9,7 @@ import { useHostTheme } from './hooks/useHostTheme'
 import { usePreviewLayer } from './hooks/usePreviewLayer'
 import { museStore, nextThreadId, useMuseStore } from './store'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
+import { CanvasMode } from './components/canvas/CanvasMode'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
 import { MuseHistory } from './components/MuseHistory'
@@ -17,12 +18,7 @@ import { MusePanel } from './components/MusePanel'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
 import { UndoRedoBar } from './components/UndoRedoBar'
-import {
-  HoverHighlight,
-  SelectBanner,
-  SelectionMarkers,
-  SelectionTray,
-} from './components/SelectionOverlay'
+import { HoverHighlight, SelectBanner, SelectionMarkers } from './components/SelectionOverlay'
 import type {
   AskInput,
   ChatMessage,
@@ -81,6 +77,8 @@ export function MuseOverlay() {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Canvas Mode (direct manipulation) — mutually exclusive with the chat flow.
+  const [canvas, setCanvas] = useState(false)
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
@@ -95,13 +93,11 @@ export function MuseOverlay() {
   useHostTheme(rootRef)
   const { preview, restore } = usePreviewLayer()
 
-  // When the SET of selected elements changes:
+  // When the selected target changes:
   //   - Empty selection → wipe conversation.
   //   - First-ever target this session → fresh thread (keep typed draft).
-  //   - Shrink or grow of the same focus (one set is a subset of the other)
-  //     → no handoff, keep the thread. This covers shift-click to add or
-  //     remove batch elements without "switching focus."
-  //   - Truly different selection (some elements swapped) → append handoff.
+  //   - Same target restored (e.g. from history) → no-op, keep the thread.
+  //   - A different target → append handoff and read the new element.
   const selectionKey = selection.map((s) => s.key).sort().join('|')
   useEffect(() => {
     const curKeys = selection.map((s) => s.key)
@@ -119,16 +115,15 @@ export function MuseOverlay() {
       if (selection.length === 1) openObservation(selection[0])
       return
     }
-    // Pure shrink (cur ⊆ prev) OR pure grow (prev ⊆ cur) = no handoff.
-    const curInPrev = curKeys.every((k) => prevKeys.includes(k))
-    const prevInCur = prevKeys.every((k) => curKeys.includes(k))
+    // Same set as before (history restore pre-seeds prevKeysRef) → no handoff.
+    const unchanged = curKeys.length === prevKeys.length && curKeys.every((k) => prevKeys.includes(k))
     prevKeysRef.current = curKeys
-    if (curInPrev || prevInCur) return
+    if (unchanged) return
 
     const cur = selection[0]
     if (cur) {
       museStore.appendThread({ id: nextThreadId(), kind: 'target-handoff', target: cur })
-      // New target context — open it with an observation too (single only).
+      // New target context — open it with an observation too.
       if (selection.length === 1) openObservation(cur)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,6 +181,14 @@ export function MuseOverlay() {
     setClosing(false)
   }
 
+  // Enter Canvas Mode (direct manipulation). Leave the chat flow first so the
+  // two UIs never overlap: cancel select mode and collapse an open panel.
+  function enterCanvas() {
+    if (active) setActive(false)
+    if (open && !closing) requestClose()
+    setCanvas(true)
+  }
+
   // Bring a past proposal back into the live view (still applyable), close history.
   // Archive the current live proposal first so picking an old one doesn't drop it.
   function openFromHistory(id: string) {
@@ -205,14 +208,6 @@ export function MuseOverlay() {
         setSelection(els)
       }
     }
-  }
-
-  function removeChip(key: string) {
-    if (selection.length <= 1) {
-      requestClose()
-      return
-    }
-    setSelection((prev) => prev.filter((p) => p.key !== key))
   }
 
   async function runChat(msgs: ChatMessage[]) {
@@ -597,6 +592,22 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, open, selection, closing, pending, allAnswered, loading])
 
+  // Global "L" shortcut toggles Canvas Mode (agentation's convention). Ignored
+  // while typing so it never fights a text field in the host app or composer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'l' || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      e.preventDefault()
+      if (canvas) setCanvas(false)
+      else enterCanvas()
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvas, active, open, closing])
+
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
       {active && hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
@@ -613,7 +624,7 @@ export function MuseOverlay() {
           collapsing panel — the close reads as one motion, not a flash-and-pop.
           The undo bar stays hidden until the collapse finishes so it doesn't pop
           in over the morph. */}
-      {(!panelOpen || closing) && (
+      {!canvas && (!panelOpen || closing) && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
           {!active && hasHistory && !closing && (
             <UndoRedoBar
@@ -624,6 +635,17 @@ export function MuseOverlay() {
               onRedo={historyControls.onRedo}
               onRevert={historyControls.onRevert}
             />
+          )}
+          {/* Enter direct-manipulation editing (also bound to the "L" key). */}
+          {!active && !closing && (
+            <button
+              onClick={enterCanvas}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-soft px-3.5 py-2 text-xs font-medium text-fg-muted shadow-lg ring-1 ring-line/10 transition hover:bg-surface-raised hover:text-fg active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100"
+              title="Edit spacing & layout directly on the page (L)"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              Canvas
+            </button>
           )}
           {/* Mid-collapse → abort the close (reverses home). Select mode →
               cancel select. Idle → open the panel onto its home state. */}
@@ -636,11 +658,7 @@ export function MuseOverlay() {
         </div>
       )}
 
-      {active && selection.length >= 1 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
-          <SelectionTray count={selection.length} onDesign={() => setActive(false)} />
-        </div>
-      )}
+      {canvas && <CanvasMode onExit={() => setCanvas(false)} />}
 
       {panelOpen && (
         <div className="absolute bottom-6 right-6">
@@ -676,7 +694,6 @@ export function MuseOverlay() {
             <ActiveTargetStrip
               elements={selection}
               mock={MOCK}
-              onRemove={removeChip}
               onSwapTarget={() => setActive(true)}
               onShowDesign={showDesign}
             />
