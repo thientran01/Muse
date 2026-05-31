@@ -164,10 +164,11 @@ function locateOpening(
 
     if (sig.length > 1) {
       // Calibrated → the element sits exactly `offset` below the reported line.
+      // Require a single exact hit; anything else falls through (never guess).
       const known = offsetHint?.value
       if (known != null) {
         const at = sig.filter((n) => line - n.loc!.start.line === known)
-        if (at.length) return nearestByColumn(at, column)
+        if (at.length === 1) return at[0]
       }
       // Static className uniquely identifies it (and calibrates the offset) — the
       // common bootstrap case, since Canvas targets carry static Tailwind classes.
@@ -190,10 +191,14 @@ function locateOpening(
     // DOM lower-cased). Fall through to the legacy line-based locate.
   }
 
-  // Legacy: exact line, then a multi-line opening tag spanning the line.
-  const onLine = all.filter((n) => n.loc!.start.line === line)
+  // Legacy locate (no tag, or tag+column matched nothing — e.g. an SVG camelCase
+  // tag the DOM lower-cased). Correct the reported line by any learned offset so
+  // this can't grab an unrelated element that merely lives at the shifted line
+  // under Fast Refresh. Uncalibrated → offset 0, i.e. the original behaviour.
+  const target = line - (offsetHint?.value ?? 0)
+  const onLine = all.filter((n) => n.loc!.start.line === target)
   if (onLine.length) return nearestByColumn(onLine, column)
-  const spanning = all.filter((n) => n.loc!.start.line <= line && n.loc!.end.line >= line)
+  const spanning = all.filter((n) => n.loc!.start.line <= target && n.loc!.end.line >= target)
   if (spanning.length) return nearestByColumn(spanning, column)
   return null
 }
