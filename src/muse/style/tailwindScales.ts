@@ -100,7 +100,16 @@ export function spacingToken(prefix: string, value: string): string | null {
 // Exact regex for one spacing family's utilities, so removing/replacing `p-*`
 // can't accidentally swallow `px-*`, `pt-*`, `placeholder-*`, etc. Matches the
 // optional negative prefix, named steps, `auto`, and arbitrary `[...]` values.
+//
+// The sizing families (w/h) also carry keyword + fraction values — `w-full`,
+// `w-screen`, `w-1/2`, `w-fit`, `w-min`, viewport units — which a px resize must
+// REPLACE, or the new `w-[Npx]` would sit alongside `w-full` and they'd fight.
+// Spacing families have no such tokens, so they keep the tight set.
 export function spacingFamilyRe(prefix: string): RegExp {
   const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`^-?${esc}-(?:auto|px|\\d+(?:\\.5)?|\\[[^\\]]+\\])$`)
+  const sizeExtra =
+    prefix === 'w' || prefix === 'h'
+      ? '|full|screen|svh|svw|lvh|lvw|dvh|dvw|min|max|fit|\\d+\\/\\d+'
+      : ''
+  return new RegExp(`^-?${esc}-(?:auto|px|\\d+(?:\\.5)?|\\[[^\\]]+\\]${sizeExtra})$`)
 }
