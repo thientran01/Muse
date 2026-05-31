@@ -9,6 +9,7 @@ import { useHostTheme } from './hooks/useHostTheme'
 import { usePreviewLayer } from './hooks/usePreviewLayer'
 import { museStore, nextThreadId, useMuseStore } from './store'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
+import { CanvasMode } from './components/canvas/CanvasMode'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
 import { MuseHistory } from './components/MuseHistory'
@@ -81,6 +82,8 @@ export function MuseOverlay() {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Canvas Mode (direct manipulation) — mutually exclusive with the chat flow.
+  const [canvas, setCanvas] = useState(false)
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
@@ -184,6 +187,14 @@ export function MuseOverlay() {
       closeTimer.current = null
     }
     setClosing(false)
+  }
+
+  // Enter Canvas Mode (direct manipulation). Leave the chat flow first so the
+  // two UIs never overlap: cancel select mode and collapse an open panel.
+  function enterCanvas() {
+    if (active) setActive(false)
+    if (open && !closing) requestClose()
+    setCanvas(true)
   }
 
   // Bring a past proposal back into the live view (still applyable), close history.
@@ -597,6 +608,22 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, open, selection, closing, pending, allAnswered, loading])
 
+  // Global "L" shortcut toggles Canvas Mode (agentation's convention). Ignored
+  // while typing so it never fights a text field in the host app or composer.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'l' || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      e.preventDefault()
+      if (canvas) setCanvas(false)
+      else enterCanvas()
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvas, active, open, closing])
+
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
       {active && hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
@@ -613,7 +640,7 @@ export function MuseOverlay() {
           collapsing panel — the close reads as one motion, not a flash-and-pop.
           The undo bar stays hidden until the collapse finishes so it doesn't pop
           in over the morph. */}
-      {(!panelOpen || closing) && (
+      {!canvas && (!panelOpen || closing) && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
           {!active && hasHistory && !closing && (
             <UndoRedoBar
@@ -625,6 +652,17 @@ export function MuseOverlay() {
               onRevert={historyControls.onRevert}
             />
           )}
+          {/* Enter direct-manipulation editing (also bound to the "L" key). */}
+          {!active && !closing && (
+            <button
+              onClick={enterCanvas}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-soft px-3.5 py-2 text-xs font-medium text-fg-muted shadow-lg ring-1 ring-line/10 transition hover:bg-surface-raised hover:text-fg active:scale-[0.97] motion-reduce:active:scale-100"
+              title="Edit spacing & layout directly on the page (L)"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              Canvas
+            </button>
+          )}
           {/* Mid-collapse → abort the close (reverses home). Select mode →
               cancel select. Idle → open the panel onto its home state. */}
           <MuseFab
@@ -635,6 +673,8 @@ export function MuseOverlay() {
           />
         </div>
       )}
+
+      {canvas && <CanvasMode onExit={() => setCanvas(false)} />}
 
       {active && selection.length >= 1 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2">

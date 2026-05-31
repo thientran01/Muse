@@ -463,8 +463,10 @@ export function musePlugin(): Plugin {
             byFile.set(rel, bucket)
           }
 
+          const originals: Record<string, string> = {} // rel -> pre-edit content, for undo
           for (const { abs, rel, items } of byFile.values()) {
             let content = fs.readFileSync(abs, 'utf8')
+            const before = content
             let changed = false
             // Apply bottom-up (highest line first). Today no style edit changes a
             // file's line count, but should one ever (a wrapping insert), editing
@@ -479,13 +481,16 @@ export function musePlugin(): Plugin {
                 changed = true
               }
             }
-            if (changed) out.push({ fileName: rel, newContent: content })
+            if (changed) {
+              originals[rel] = before
+              out.push({ fileName: rel, newContent: content })
+            }
           }
 
           if (out.length === 0) {
-            return sendJson(res, 200, { edits: [], warnings: warnings.length ? warnings : ['no changes computed'] })
+            return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
           }
-          return sendJson(res, 200, { edits: out, warnings })
+          return sendJson(res, 200, { edits: out, originals, warnings })
         } catch (err) {
           console.error('[muse] /style-edit error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
