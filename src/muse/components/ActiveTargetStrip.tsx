@@ -1,9 +1,9 @@
-import { Crosshair, FileText, X } from '@phosphor-icons/react'
+import { Crosshair, FileText } from '@phosphor-icons/react'
 import type { SelectedElement } from '../types'
 
 const fileOf = (e: SelectedElement) => (e.fileName ? e.fileName.split(/[\\/]/).pop() : null)
 
-// The thin strip above the thread that tells you which element(s) Muse is
+// The thin strip above the thread that tells you which element Muse is
 // currently pointed at. Without target tabs, this is the only persistent
 // indicator of focus — keep it readable.
 //
@@ -14,22 +14,20 @@ const fileOf = (e: SelectedElement) => (e.fileName ? e.fileName.split(/[\\/]/).p
 export function ActiveTargetStrip({
   elements,
   mock,
-  onRemove,
   onSwapTarget,
   onShowDesign,
 }: {
   elements: SelectedElement[]
   mock: boolean
-  onRemove?: (key: string) => void
   onSwapTarget?: () => void
   onShowDesign?: () => void
 }) {
-  const single = elements.length === 1 ? elements[0] : null
+  const single = elements[0] ?? null
 
   return (
     <div className="flex items-start justify-between gap-2 border-y border-line/[0.07] bg-line/[0.02] px-4 py-2 text-xs text-fg-faint">
       <div className="min-w-0 flex-1">
-        {single ? (
+        {single && (
           <div className="flex items-center gap-2">
             <span className="rounded bg-line/5 px-1.5 py-0.5 font-mono text-fg ring-1 ring-line/10">
               &lt;{single.tag}&gt;
@@ -41,30 +39,6 @@ export function ActiveTargetStrip({
             ) : !mock ? (
               <span className="text-amber-300/80">source not found</span>
             ) : null}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="font-medium text-fg-muted">Editing {elements.length} elements</div>
-            <div className="flex flex-wrap gap-1.5">
-              {elements.map((el) => (
-                <span
-                  key={el.key}
-                  title={`${fileOf(el)}:${el.line}`}
-                  className="inline-flex items-center gap-1 rounded bg-line/5 px-1.5 py-0.5 font-mono text-fg ring-1 ring-line/10"
-                >
-                  &lt;{el.tag}&gt;
-                  {onRemove && (
-                    <button
-                      onClick={() => onRemove(el.key)}
-                      aria-label={`Remove ${el.tag}`}
-                      className="inline-flex text-fg-faint transition hover:text-fg"
-                    >
-                      <X size={11} />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
           </div>
         )}
       </div>

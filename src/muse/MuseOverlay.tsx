@@ -18,12 +18,7 @@ import { MusePanel } from './components/MusePanel'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
 import { UndoRedoBar } from './components/UndoRedoBar'
-import {
-  HoverHighlight,
-  SelectBanner,
-  SelectionMarkers,
-  SelectionTray,
-} from './components/SelectionOverlay'
+import { HoverHighlight, SelectBanner, SelectionMarkers } from './components/SelectionOverlay'
 import type {
   AskInput,
   ChatMessage,
@@ -98,13 +93,11 @@ export function MuseOverlay() {
   useHostTheme(rootRef)
   const { preview, restore } = usePreviewLayer()
 
-  // When the SET of selected elements changes:
+  // When the selected target changes:
   //   - Empty selection → wipe conversation.
   //   - First-ever target this session → fresh thread (keep typed draft).
-  //   - Shrink or grow of the same focus (one set is a subset of the other)
-  //     → no handoff, keep the thread. This covers shift-click to add or
-  //     remove batch elements without "switching focus."
-  //   - Truly different selection (some elements swapped) → append handoff.
+  //   - Same target restored (e.g. from history) → no-op, keep the thread.
+  //   - A different target → append handoff and read the new element.
   const selectionKey = selection.map((s) => s.key).sort().join('|')
   useEffect(() => {
     const curKeys = selection.map((s) => s.key)
@@ -122,16 +115,15 @@ export function MuseOverlay() {
       if (selection.length === 1) openObservation(selection[0])
       return
     }
-    // Pure shrink (cur ⊆ prev) OR pure grow (prev ⊆ cur) = no handoff.
-    const curInPrev = curKeys.every((k) => prevKeys.includes(k))
-    const prevInCur = prevKeys.every((k) => curKeys.includes(k))
+    // Same set as before (history restore pre-seeds prevKeysRef) → no handoff.
+    const unchanged = curKeys.length === prevKeys.length && curKeys.every((k) => prevKeys.includes(k))
     prevKeysRef.current = curKeys
-    if (curInPrev || prevInCur) return
+    if (unchanged) return
 
     const cur = selection[0]
     if (cur) {
       museStore.appendThread({ id: nextThreadId(), kind: 'target-handoff', target: cur })
-      // New target context — open it with an observation too (single only).
+      // New target context — open it with an observation too.
       if (selection.length === 1) openObservation(cur)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,14 +208,6 @@ export function MuseOverlay() {
         setSelection(els)
       }
     }
-  }
-
-  function removeChip(key: string) {
-    if (selection.length <= 1) {
-      requestClose()
-      return
-    }
-    setSelection((prev) => prev.filter((p) => p.key !== key))
   }
 
   async function runChat(msgs: ChatMessage[]) {
@@ -676,12 +660,6 @@ export function MuseOverlay() {
 
       {canvas && <CanvasMode onExit={() => setCanvas(false)} />}
 
-      {active && selection.length >= 1 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
-          <SelectionTray count={selection.length} onDesign={() => setActive(false)} />
-        </div>
-      )}
-
       {panelOpen && (
         <div className="absolute bottom-6 right-6">
           <MusePanel
@@ -716,7 +694,6 @@ export function MuseOverlay() {
             <ActiveTargetStrip
               elements={selection}
               mock={MOCK}
-              onRemove={removeChip}
               onSwapTarget={() => setActive(true)}
               onShowDesign={showDesign}
             />
