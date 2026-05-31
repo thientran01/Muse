@@ -27,7 +27,7 @@ import type {
   ObjectExpression,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
-import { spacingFamilyRe, spacingToken } from '../src/muse/style/tailwindScales'
+import { buildToken, familyMatcher } from '../src/muse/style/tailwindScales'
 
 // @babel/traverse ships CJS; the default export is on `.default` under ESM.
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
@@ -319,9 +319,9 @@ export function computeStyleEdit(
     }
     for (const key of spec.css) setStyleProp(key, m.value)
     if (classEditable) {
-      const re = spacingFamilyRe(spec.tw)
+      const matches = familyMatcher(spec)
       const before = classTokens.length
-      classTokens = classTokens.filter((c) => !re.test(c))
+      classTokens = classTokens.filter((c) => !matches(c))
       if (classTokens.length !== before) classTouched = true
     } else if (classInfo?.editable === false) {
       warnings.push(`note: left dynamic className in place for ${m.property} (inline style overrides it)`)
@@ -331,20 +331,30 @@ export function computeStyleEdit(
 
   for (const m of valid) {
     const spec = PROPERTIES[m.property]
+    // A value themed through a CSS variable stays put — never hardcode a literal
+    // over a `…-[…var(--x)…]` token (it would break theming). Applies to any kind
+    // (color, tracking, leading, …); skip with a warning the client can surface.
+    if (classEditable) {
+      const matchesFamily = familyMatcher(spec)
+      if (classTokens.some((c) => matchesFamily(c) && c.includes('var('))) {
+        warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
+        continue
+      }
+    }
     const useTailwind = strategy === 'tailwind-first' && classEditable
-    // A value that can't be expressed as a safe class token (spacingToken → null)
+    // A value that can't be expressed as a safe class token (buildToken → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
     // className.
-    const token = useTailwind ? spacingToken(spec.tw, m.value) : null
+    const token = useTailwind ? buildToken(spec, m.value) : null
     if (useTailwind && token !== null) {
-      const re = spacingFamilyRe(spec.tw)
+      const matches = familyMatcher(spec)
       // Replace the family's existing utility IN PLACE (minimal diff); append
       // only if the element didn't have one. Drop any extra duplicates.
-      const idx = classTokens.findIndex((c) => re.test(c))
+      const idx = classTokens.findIndex((c) => matches(c))
       if (idx === -1) classTokens.push(token)
       else {
         classTokens[idx] = token
-        classTokens = classTokens.filter((c, i) => i === idx || !re.test(c))
+        classTokens = classTokens.filter((c, i) => i === idx || !matches(c))
       }
       classTouched = true
     } else {

@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, StyleMutation, StyleProperty } from '../../types'
 import { ScrubField } from './ScrubField'
@@ -16,9 +16,63 @@ export type CanvasValues = {
   margin: Sides
   gap: { row: number; column: number } | null // null when not flex/grid
   size: { width: number; height: number }
+  type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number }
+  rendersText: boolean // the element directly shows text — gates the Type controls
+  color: { text: string; background: string; border: string } // current values as #hex
+  colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
 }
 
 const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.bottom === s.left
+
+// One color channel: a native swatch + hex readout, or a read-only "themed" note
+// when the source paints this channel through a CSS variable (Muse leaves those).
+function ColorRow({
+  label,
+  value,
+  themed,
+  onPreview,
+  onCommit,
+}: {
+  label: string
+  value: string
+  themed: boolean
+  onPreview: (v: string) => void
+  onCommit: (v: string) => void
+}) {
+  // Native color inputs can fire `change` more than once; only write when the
+  // committed color actually differs from what we last wrote (one source edit +
+  // undo entry per pick). Re-syncs when the upstream value changes (new element).
+  const lastCommitted = useRef(value)
+  useEffect(() => {
+    lastCommitted.current = value
+  }, [value])
+  return (
+    <label className="flex items-center justify-between gap-2 text-[11px]">
+      <span className="select-none text-fg-faint">{label}</span>
+      {themed ? (
+        <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable — edit the design token instead">
+          themed
+        </span>
+      ) : (
+        <span className="flex items-center gap-1.5">
+          <span className="font-mono tabular-nums text-fg-muted">{value}</span>
+          <input
+            type="color"
+            value={value}
+            onInput={(e) => onPreview((e.target as HTMLInputElement).value)}
+            onChange={(e) => {
+              const v = (e.target as HTMLInputElement).value
+              if (v === lastCommitted.current) return
+              lastCommitted.current = v
+              onCommit(v)
+            }}
+            className="h-5 w-5 shrink-0 cursor-pointer rounded border border-line/20 bg-transparent p-0"
+          />
+        </span>
+      )}
+    </label>
+  )
+}
 
 // A padding/margin group: one field when all sides match, four when they don't —
 // with a toggle to expand/collapse. `base` is the shorthand property name
@@ -147,6 +201,77 @@ export function PropertiesPanel({
           />
         </div>
       </div>
+
+      {/* Type — only on elements that directly render text (not container divs). */}
+      {values.rendersText && (
+        <>
+          <div className="h-px bg-line/10" />
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-medium text-fg-muted">Type</span>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <ScrubField
+                label="Size"
+                value={values.type.fontSize}
+                min={1}
+                onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
+                onCommit={(v) => onCommit([{ property: 'fontSize', value: `${v}px` }])}
+              />
+              <ScrubField
+                label="Weight"
+                value={values.type.fontWeight}
+                min={100}
+                max={900}
+                unit=""
+                onPreview={(v) => onPreview([{ property: 'fontWeight', value: `${v}` }])}
+                onCommit={(v) => onCommit([{ property: 'fontWeight', value: `${v}` }])}
+              />
+              <ScrubField
+                label="Line"
+                value={values.type.lineHeight}
+                min={1}
+                onPreview={(v) => v > 0 && onPreview([{ property: 'lineHeight', value: `${v}px` }])}
+                onCommit={(v) => v > 0 && onCommit([{ property: 'lineHeight', value: `${v}px` }])}
+              />
+              <ScrubField
+                label="Letter"
+                value={values.type.letterSpacing}
+                onPreview={(v) => onPreview([{ property: 'letterSpacing', value: `${v}px` }])}
+                onCommit={(v) => onCommit([{ property: 'letterSpacing', value: `${v}px` }])}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Color — background + border on any element; text only where there's text. */}
+      <div className="h-px bg-line/10" />
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-fg-muted">Color</span>
+        {values.rendersText && (
+          <ColorRow
+            label="Text"
+            value={values.color.text}
+            themed={values.colorThemed.text}
+            onPreview={(v) => onPreview([{ property: 'color', value: v }])}
+            onCommit={(v) => onCommit([{ property: 'color', value: v }])}
+          />
+        )}
+        <ColorRow
+          label="Fill"
+          value={values.color.background}
+          themed={values.colorThemed.background}
+          onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])}
+        />
+        <ColorRow
+          label="Border"
+          value={values.color.border}
+          themed={values.colorThemed.border}
+          onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])}
+        />
+      </div>
+
       <div className="h-px bg-line/10" />
 
       <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
