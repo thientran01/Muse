@@ -37,6 +37,11 @@ export type StyleEditRequest = {
   fileName: string
   line: number
   column: number
+  // DOM tag + resolved class attribute of the target. The server uses them (with
+  // column) to locate the element even when a dev transform has shifted
+  // _debugSource line numbers. See locateOpening in server/styleEdit.ts.
+  tag?: string
+  classNames?: string
   mutations: StyleMutation[]
 }
 

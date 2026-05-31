@@ -187,7 +187,14 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     const label = mutations.map((m) => `${m.property} ${m.value}`).join(', ').slice(0, 80)
     try {
       const { edits, originals, warnings } = await museStyleEdit([
-        { fileName: selected.fileName, line: selected.line, column: selected.column, mutations },
+        {
+          fileName: selected.fileName,
+          line: selected.line,
+          column: selected.column,
+          tag: selected.tag,
+          classNames: selected.node.getAttribute('class') ?? '',
+          mutations,
+        },
       ])
       if (warnings.length) console.warn('[muse] style-edit:', warnings.join(' · '))
       if (edits.length === 0) {

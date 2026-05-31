@@ -64,23 +64,46 @@ function parseFile(source: string): File {
   })
 }
 
-// Find the JSXOpeningElement that React's _debugSource points at. Match on line
-// first; if several open on that line, disambiguate by column — tolerant of the
-// 0- vs 1-based discrepancy between Babel's loc and React's __source by taking
-// the nearest. Falls back to an element whose multi-line opening tag spans the
-// line.
-function locateOpening(ast: File, line: number, column: number): JSXOpeningElement | null {
-  const onLine: JSXOpeningElement[] = []
-  const spanning: JSXOpeningElement[] = []
-  traverse(ast, {
-    JSXOpeningElement(path) {
-      const loc = path.node.loc
-      if (!loc) return
-      if (loc.start.line === line) onLine.push(path.node)
-      else if (loc.start.line <= line && loc.end.line >= line) spanning.push(path.node)
-    },
-  })
-  const candidates = onLine.length > 0 ? onLine : spanning
+// A mutable, session-lived hint for the dev transform's line offset (see
+// locateOpening). One per dev server; shared across requests so the first
+// unambiguous locate calibrates every later one.
+export type OffsetHint = { value: number | null }
+
+// The host tag name of an opening element ("div", "h1"), or null for component /
+// member / namespaced names (which never equal a DOM tagName).
+function openingTag(node: JSXOpeningElement): string | null {
+  return node.name.type === 'JSXIdentifier' ? node.name.name : null
+}
+
+// A STATIC className string off an opening element (literal, or a `…` template
+// with no interpolations), or null. For static Tailwind classes the source
+// string equals the element's resolved DOM class attribute, so it's a reliable
+// disambiguator. Dynamic classNames (clsx/conditionals/interpolation) → null.
+function openingClassName(node: JSXOpeningElement): string | null {
+  for (const a of node.attributes) {
+    if (a.type !== 'JSXAttribute' || a.name.type !== 'JSXIdentifier' || a.name.name !== 'className') continue
+    const v = a.value
+    if (v?.type === 'StringLiteral') return v.value
+    if (v?.type === 'JSXExpressionContainer') {
+      const e = v.expression
+      if (e.type === 'TemplateLiteral' && e.expressions.length === 0 && e.quasis.length === 1) {
+        return e.quasis[0].value.cooked ?? e.quasis[0].value.raw
+      }
+    }
+    return null
+  }
+  return null
+}
+
+const normCls = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+// React's __source columnNumber is 1-based; Babel's loc.start.column is 0-based.
+// Treat both spellings as a match.
+function columnMatches(nodeCol: number, reported: number): boolean {
+  return nodeCol === reported || nodeCol === reported - 1
+}
+
+function nearestByColumn(candidates: JSXOpeningElement[], column: number): JSXOpeningElement | null {
   if (candidates.length <= 1) return candidates[0] ?? null
   let best = candidates[0]
   let bestDist = Infinity
@@ -93,6 +116,86 @@ function locateOpening(ast: File, line: number, column: number): JSXOpeningEleme
     }
   }
   return best
+}
+
+// Find the JSXOpeningElement that React's _debugSource points at.
+//
+// Dev transforms shift the line number. @vitejs/plugin-react's Fast Refresh wraps
+// each module in a fixed-size HMR preamble (~19 lines), and that shift is baked
+// into every element's _debugSource.lineNumber — by a CONSTANT amount, identical
+// for every Fast-Refresh-wrapped module in the session, while the COLUMN stays
+// exact. So the reliable signature is the host tag + column, NOT the line: a
+// shifted line can even collide with an unrelated element that really lives there.
+//
+// We locate by (tag, column) and reconcile the uniform line offset, learning it
+// once (`offsetHint`) so later edits resolve exactly. When tag+column is unique
+// it's unambiguous; once calibrated, the offset pins it; when still ambiguous a
+// static className match disambiguates (and calibrates); otherwise we trust the
+// reported line as an offset-0 reading (correct when Fast Refresh is off) and
+// fail closed rather than guess. `tag` absent → legacy line-based behaviour.
+function locateOpening(
+  ast: File,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): JSXOpeningElement | null {
+  const all: JSXOpeningElement[] = []
+  traverse(ast, {
+    JSXOpeningElement(path) {
+      if (path.node.loc) all.push(path.node)
+    },
+  })
+
+  // Learn the session offset from an unambiguous match, if it's non-negative.
+  const learn = (node: JSXOpeningElement) => {
+    const delta = line - node.loc!.start.line
+    if (offsetHint && delta >= 0) offsetHint.value = delta
+    return node
+  }
+
+  if (tag) {
+    // The (tag, column) signature — reliable across the line shift.
+    const sig = all.filter((n) => openingTag(n) === tag && columnMatches(n.loc!.start.column, column))
+
+    // Unique signature → unambiguously the element; learn the session offset.
+    if (sig.length === 1) return learn(sig[0])
+
+    if (sig.length > 1) {
+      // Calibrated → the element sits exactly `offset` below the reported line.
+      const known = offsetHint?.value
+      if (known != null) {
+        const at = sig.filter((n) => line - n.loc!.start.line === known)
+        if (at.length) return nearestByColumn(at, column)
+      }
+      // Static className uniquely identifies it (and calibrates the offset) — the
+      // common bootstrap case, since Canvas targets carry static Tailwind classes.
+      if (classNames) {
+        const want = normCls(classNames)
+        const byClass = sig.filter((n) => {
+          const c = openingClassName(n)
+          return c != null && normCls(c) === want
+        })
+        if (byClass.length === 1) return learn(byClass[0])
+      }
+      // Uncalibrated → trust the reported line as an offset-0 reading (the case
+      // when Fast Refresh is off, or this module wasn't wrapped). Only when a
+      // single signature element actually opens there; else fail closed.
+      const onLine = sig.filter((n) => n.loc!.start.line === line)
+      if (onLine.length === 1) return onLine[0]
+      return null
+    }
+    // sig.length === 0: tag+column matched nothing (e.g. an SVG camelCase tag the
+    // DOM lower-cased). Fall through to the legacy line-based locate.
+  }
+
+  // Legacy: exact line, then a multi-line opening tag spanning the line.
+  const onLine = all.filter((n) => n.loc!.start.line === line)
+  if (onLine.length) return nearestByColumn(onLine, column)
+  const spanning = all.filter((n) => n.loc!.start.line <= line && n.loc!.end.line >= line)
+  if (spanning.length) return nearestByColumn(spanning, column)
+  return null
 }
 
 function findAttr(opening: JSXOpeningElement, name: string): JSXAttribute | null {
@@ -163,6 +266,9 @@ export function computeStyleEdit(
   column: number,
   mutations: Mutation[],
   strategy: StyleStrategy = 'tailwind-first',
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
 ): StyleEditResult {
   const warnings: string[] = []
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
@@ -176,7 +282,7 @@ export function computeStyleEdit(
     // a skipped element with a warning — never a failed batch for its siblings.
     return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`] }
   }
-  const opening = locateOpening(ast, line, column)
+  const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
   if (!opening) {
     return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`] }
   }

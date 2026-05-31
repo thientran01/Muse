@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, type Mutation, type StyleStrategy } from './styleEdit'
+import { computeStyleEdit, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -226,6 +226,10 @@ export function musePlugin(): Plugin {
   let designMdOverride = '' // MUSE_DESIGN_MD, if set
   let designExclude: string[] = [] // MUSE_DESIGN_EXCLUDE — terms the generator drops from evidence
   let designGenerating = false // in-flight guard: one generation at a time
+  // The dev transform (React Fast Refresh) shifts every element's _debugSource
+  // line by a constant per-session amount; the style editor learns it once here
+  // and reuses it to locate elements exactly. See locateOpening in styleEdit.ts.
+  const lineOffsetHint: OffsetHint = { value: null }
 
   return {
     name: 'muse-backend',
@@ -432,7 +436,7 @@ export function musePlugin(): Plugin {
         if (req.method !== 'POST') return next()
         try {
           const body = JSON.parse(await readBody(req)) as {
-            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; mutations?: unknown }>
+            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown }>
             strategy?: unknown
           }
           const rawEdits = Array.isArray(body.edits) ? body.edits : []
@@ -443,7 +447,7 @@ export function musePlugin(): Plugin {
           // single newContent (each computed off the previous result).
           const out: Array<{ fileName: string; newContent: string }> = []
           const warnings: string[] = []
-          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; mutations: Mutation[] }> }>()
+          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[] }> }>()
           for (const e of rawEdits) {
             const abs = resolveInSrc(root, e?.fileName)
             if (!abs) {
@@ -453,13 +457,15 @@ export function musePlugin(): Plugin {
             const rel = relOf(root, abs)
             const line = Number(e?.line)
             const column = Number(e?.column)
+            const tag = typeof e?.tag === 'string' ? e.tag : undefined
+            const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
             const mutations = (Array.isArray(e?.mutations) ? e!.mutations : []) as Mutation[]
             if (!Number.isInteger(line) || line <= 0 || mutations.length === 0) {
               warnings.push(`skipped ${rel} — needs a positive line and at least one mutation.`)
               continue
             }
             const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
-            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, mutations })
+            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations })
             byFile.set(rel, bucket)
           }
 
@@ -474,7 +480,7 @@ export function musePlugin(): Plugin {
             // the higher ones valid.
             items.sort((a, b) => b.line - a.line)
             for (const it of items) {
-              const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy)
+              const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, lineOffsetHint)
               if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
               if (result.changed) {
                 content = result.newContent
