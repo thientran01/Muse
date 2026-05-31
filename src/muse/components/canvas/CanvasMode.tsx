@@ -54,6 +54,16 @@ function readValues(node: HTMLElement): CanvasValues {
   }
 }
 
+// The element's OWN direct text (not descendants') — what computeTextEdit actually
+// rewrites (its single JSXText child). Reading full textContent would fold in a
+// child element's text and send the wrong string to the engine.
+function directText(node: HTMLElement): string {
+  return [...node.childNodes]
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? '')
+    .join('')
+}
+
 // rgb()/rgba() → #rrggbb for the color picker's current value (alpha dropped).
 function rgbToHex(c: string): string {
   const m = c.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
@@ -289,7 +299,10 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // inline-preview strip — HMR repaints the same text. Restores the original on a
   // refusal (dynamic text) or error.
   async function commitText(el: CanvasElement, node: HTMLElement, original: string) {
-    const raw = (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const restore = () => {
+      if (node.isConnected) node.textContent = original
+    }
+    const raw = directText(node).replace(/\s+/g, ' ').trim()
     if (raw === original.replace(/\s+/g, ' ').trim()) {
       exitEditing()
       return
@@ -300,7 +313,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       ])
       if (warnings.length) console.warn('[muse] text-edit:', warnings.join(' · '))
       if (edits.length === 0) {
-        node.textContent = original // refusal (e.g. dynamic text) — put it back
+        restore() // refusal (e.g. dynamic text) — put it back
         setError(warnings[0] ?? "Couldn't edit this text.")
         exitEditing()
         return
@@ -319,7 +332,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       }
       exitEditing()
     } catch (e) {
-      node.textContent = original
+      restore()
       setError((e as Error).message)
       exitEditing()
     }
@@ -335,8 +348,14 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       exitEditing()
       return
     }
-    const original = node.textContent ?? ''
+    const original = directText(node)
     node.contentEditable = 'plaintext-only'
+    // Outline ON the node so it tracks the element as text grows / the page scrolls
+    // (a separate overlay div would drift). Inline, never written to source.
+    const prevOutline = node.style.outline
+    const prevOffset = node.style.outlineOffset
+    node.style.outline = '2px solid rgb(var(--muse-accent))'
+    node.style.outlineOffset = '2px'
     node.focus()
     const sel = window.getSelection()
     if (sel) {
@@ -347,14 +366,22 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     }
     let cancel = false
     let done = false
+    const teardown = () => {
+      node.removeEventListener('keydown', onKeyDown)
+      node.removeEventListener('blur', onBlur)
+      node.removeEventListener('paste', onPaste)
+      if (node.isConnected) {
+        if (node.isContentEditable) node.contentEditable = 'false'
+        node.style.outline = prevOutline
+        node.style.outlineOffset = prevOffset
+      }
+    }
     const finish = () => {
       if (done) return
       done = true
-      node.removeEventListener('keydown', onKeyDown)
-      node.removeEventListener('blur', onBlur)
-      node.contentEditable = 'false'
+      teardown()
       if (cancel) {
-        node.textContent = original
+        if (node.isConnected) node.textContent = original
         exitEditing()
       } else {
         void commitText(editing, node, original)
@@ -372,12 +399,17 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       }
     }
     const onBlur = () => finish() // click-away also commits
+    // Force plaintext on paste (Firefox treats plaintext-only as rich-text).
+    const onPaste = (e: ClipboardEvent) => {
+      e.preventDefault()
+      const text = (e.clipboardData?.getData('text/plain') ?? '').replace(/\s+/g, ' ')
+      document.execCommand('insertText', false, text)
+    }
     node.addEventListener('keydown', onKeyDown)
     node.addEventListener('blur', onBlur)
+    node.addEventListener('paste', onPaste)
     return () => {
-      node.removeEventListener('keydown', onKeyDown)
-      node.removeEventListener('blur', onBlur)
-      if (node.isConnected && node.isContentEditable) node.contentEditable = 'false'
+      if (!done) teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
@@ -397,17 +429,8 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
         </div>
       )}
 
-      {/* Editing-text outline — the style overlays step aside so the caret is free. */}
-      {editing && editing.node.isConnected && (
-        <div
-          className="pointer-events-none absolute rounded-[2px] ring-2 ring-accent"
-          style={(() => {
-            const r = editing.node.getBoundingClientRect()
-            return { top: r.top - 2, left: r.left - 2, width: r.width + 4, height: r.height + 4 }
-          })()}
-        />
-      )}
-
+      {/* While editing text, the style overlays step aside (the outline lives on
+          the node itself) so the caret is free. */}
       {selected && values && !editing && (
         <>
           <BoxModelOverlay

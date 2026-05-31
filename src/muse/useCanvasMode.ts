@@ -157,6 +157,7 @@ export function useCanvasMode() {
     // it actually renders editable text, so a double-click on a non-text element is
     // a no-op). The dblclick's own first click has already selected it.
     const onDblClick = (e: MouseEvent) => {
+      if (editingRef.current) return // already editing — don't start a second session
       const el = e.target as Element | null
       if (!el || isMuseUI(el) || !(el instanceof HTMLElement)) return
       const leaf = canvasChain(el)[0]

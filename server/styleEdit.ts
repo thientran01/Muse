@@ -481,6 +481,9 @@ export function computeTextEdit(
   if (texts.length > 1) return { newContent: source, changed: false, warnings: ['text is mixed static + dynamic — not editable here'] }
 
   const node = texts[0]
+  if (node.start == null || node.end == null) {
+    return { newContent: source, changed: false, warnings: ['text node has no source position'] }
+  }
   // Keep the node's own surrounding whitespace (indentation / the space after an
   // inline icon); swap only the visible middle.
   const lead = node.value.match(/^\s*/)![0]
