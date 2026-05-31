@@ -45,8 +45,11 @@ export function ResizeHandles({
     e.preventDefault()
     e.stopPropagation()
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    const w = Math.round(r.width)
-    const h = Math.round(r.height)
+    // Measure fresh at pointer-down, not from the render-time rect, so a drag that
+    // begins mid-reflow/transition starts from the element's actual current size.
+    const live = node.getBoundingClientRect()
+    const w = Math.round(live.width)
+    const h = Math.round(live.height)
     const d: Drag = { corner, startX: e.clientX, startY: e.clientY, startW: w, startH: h, w, h }
     dragRef.current = d
     setDrag(d)

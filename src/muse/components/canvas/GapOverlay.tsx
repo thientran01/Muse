@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import type { StyleMutation } from '../../types'
+import type { StyleMutation, StyleProperty } from '../../types'
 
 type Drag = { startPt: number; startVal: number; cur: number }
 
@@ -41,8 +41,14 @@ export function GapOverlay({
   const cs = getComputedStyle(node)
   if (!cs.display.includes('flex')) return null // grid → panel handles gap in v1
   const horizontal = cs.flexDirection.startsWith('row')
-  const baseGap = Math.round(parseFloat(horizontal ? cs.columnGap : cs.rowGap) || 0)
+  const rowGap = Math.round(parseFloat(cs.rowGap) || 0)
+  const colGap = Math.round(parseFloat(cs.columnGap) || 0)
+  const baseGap = horizontal ? colGap : rowGap
   const g = drag ? drag.cur : baseGap
+  // Edit the `gap` shorthand when both axes match (the common case, e.g. gap-3) so
+  // the existing utility is rewritten cleanly; when they differ, edit only this
+  // axis so dragging never clobbers the other axis's value.
+  const gapProp: StyleProperty = rowGap === colGap ? 'gap' : horizontal ? 'columnGap' : 'rowGap'
 
   const kids = ([...node.children] as Element[]).filter(
     (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
@@ -69,7 +75,7 @@ export function GapOverlay({
     const next = { ...d, cur }
     dragRef.current = next
     setDrag(next)
-    onPreview([{ property: 'gap', value: `${cur}px` }])
+    onPreview([{ property: gapProp, value: `${cur}px` }])
   }
   const endDrag = (e: ReactPointerEvent) => {
     const d = dragRef.current
@@ -77,19 +83,23 @@ export function GapOverlay({
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     dragRef.current = null
     setDrag(null)
-    onCommit([{ property: 'gap', value: `${d.cur}px` }])
+    // Only write if the gap actually moved — a tap shouldn't create a no-op edit + undo entry.
+    if (d.cur !== d.startVal) onCommit([{ property: gapProp, value: `${d.cur}px` }])
   }
 
   return (
     <div className="pointer-events-none">
       {rects.slice(0, -1).map((rect, i) => {
         const next = rects[i + 1]
-        // The inter-child band. Min 6px wide hit area even when gap is tiny/zero.
+        // The inter-child band, anchored at the gap's start so it never intrudes
+        // into the preceding child (which would swallow that child's edge clicks).
+        // Min 6px wide so a tiny/zero gap is still grabbable (extends only into the
+        // following child's edge, by at most 6px).
         const span = horizontal ? next.left - rect.right : next.top - rect.bottom
         const thick = Math.max(span, 6)
         const box = horizontal
-          ? { left: rect.right + (span - thick) / 2, top: Math.min(rect.top, next.top), width: thick, height: Math.max(rect.height, next.height) }
-          : { top: rect.bottom + (span - thick) / 2, left: Math.min(rect.left, next.left), height: thick, width: Math.max(rect.width, next.width) }
+          ? { left: rect.right, top: Math.min(rect.top, next.top), width: thick, height: Math.max(rect.height, next.height) }
+          : { top: rect.bottom, left: Math.min(rect.left, next.left), height: thick, width: Math.max(rect.width, next.width) }
         return (
           <div
             key={i}
