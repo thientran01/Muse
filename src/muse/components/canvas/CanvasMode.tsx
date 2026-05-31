@@ -6,6 +6,7 @@ import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from
 import { canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
+import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
 
 const PANEL_W = 208
@@ -260,6 +261,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             onPreview={applyPreview}
             onCommit={commit}
           />
+          {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
           {panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the
