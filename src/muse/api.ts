@@ -11,6 +11,8 @@ import type {
   StyleEditRequest,
   StyleEditResponse,
   StyleStrategy,
+  TextEditRequest,
+  TextEditResponse,
 } from './types'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -90,6 +92,24 @@ export async function museStyleEdit(
     body: JSON.stringify({ edits: requests, strategy }),
   })
   const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
+  if (data.error) throw new Error(data.error)
+  return {
+    edits: Array.isArray(data.edits) ? data.edits : [],
+    originals: data.originals ?? {},
+    warnings: Array.isArray(data.warnings) ? data.warnings : [],
+  }
+}
+
+// Deterministic text-content edit (Canvas Mode double-click). NO model call — the
+// server rewrites the element's single static JSXText and returns the new file
+// contents + originals, flowing through the SAME museWrite + history as styles.
+export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEditResponse> {
+  const res = await fetch('/api/muse/text-edit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ edits: requests }),
+  })
+  const data = (await res.json()) as Partial<TextEditResponse> & { error?: string }
   if (data.error) throw new Error(data.error)
   return {
     edits: Array.isArray(data.edits) ? data.edits : [],

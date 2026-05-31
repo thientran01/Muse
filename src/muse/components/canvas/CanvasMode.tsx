@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { museStyleEdit, museWrite } from '../../api'
+import { museStyleEdit, museTextEdit, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
@@ -92,7 +92,7 @@ const asSelected = (el: CanvasElement): SelectedElement => ({
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit }: { onExit: () => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, miss } = useCanvasMode()
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } = useCanvasMode()
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -284,6 +284,104 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     }
   }
 
+  // Write a committed text change to source (same deterministic write + history as
+  // styles). The DOM already shows the typed text (contentEditable), so there's no
+  // inline-preview strip — HMR repaints the same text. Restores the original on a
+  // refusal (dynamic text) or error.
+  async function commitText(el: CanvasElement, node: HTMLElement, original: string) {
+    const raw = (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+    if (raw === original.replace(/\s+/g, ' ').trim()) {
+      exitEditing()
+      return
+    }
+    try {
+      const { edits, originals, warnings } = await museTextEdit([
+        { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: node.getAttribute('class') ?? '', text: raw },
+      ])
+      if (warnings.length) console.warn('[muse] text-edit:', warnings.join(' · '))
+      if (edits.length === 0) {
+        node.textContent = original // refusal (e.g. dynamic text) — put it back
+        setError(warnings[0] ?? "Couldn't edit this text.")
+        exitEditing()
+        return
+      }
+      await museWrite(edits)
+      // Keep sibling instances in sync so they don't lag the HMR repaint.
+      for (const peer of peerNodes(el)) if (peer !== node) peer.textContent = raw
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(el)],
+          label: `text "${raw.slice(0, 40)}"`,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      }
+      exitEditing()
+    } catch (e) {
+      node.textContent = original
+      setError((e as Error).message)
+      exitEditing()
+    }
+  }
+
+  // Enter contentEditable when `editing` is set (double-click). Gate on the node
+  // actually rendering direct text. Enter / blur commit; Escape restores + exits.
+  useEffect(() => {
+    if (!editing) return
+    const node = editing.node
+    const rendersText = [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0)
+    if (!node.isConnected || !rendersText) {
+      exitEditing()
+      return
+    }
+    const original = node.textContent ?? ''
+    node.contentEditable = 'plaintext-only'
+    node.focus()
+    const sel = window.getSelection()
+    if (sel) {
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    let cancel = false
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      node.removeEventListener('keydown', onKeyDown)
+      node.removeEventListener('blur', onBlur)
+      node.contentEditable = 'false'
+      if (cancel) {
+        node.textContent = original
+        exitEditing()
+      } else {
+        void commitText(editing, node, original)
+      }
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault() // single line — Enter commits
+        finish()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        cancel = true
+        finish()
+      }
+    }
+    const onBlur = () => finish() // click-away also commits
+    node.addEventListener('keydown', onKeyDown)
+    node.addEventListener('blur', onBlur)
+    return () => {
+      node.removeEventListener('keydown', onKeyDown)
+      node.removeEventListener('blur', onBlur)
+      if (node.isConnected && node.isContentEditable) node.contentEditable = 'false'
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
   return (
     <div data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
@@ -299,7 +397,18 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
         </div>
       )}
 
-      {selected && values && (
+      {/* Editing-text outline — the style overlays step aside so the caret is free. */}
+      {editing && editing.node.isConnected && (
+        <div
+          className="pointer-events-none absolute rounded-[2px] ring-2 ring-accent"
+          style={(() => {
+            const r = editing.node.getBoundingClientRect()
+            return { top: r.top - 2, left: r.left - 2, width: r.width + 4, height: r.height + 4 }
+          })()}
+        />
+      )}
+
+      {selected && values && !editing && (
         <>
           <BoxModelOverlay
             node={selected.node}
@@ -339,7 +448,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Canvas
           <span className="text-fg-faint">
-            {selected ? '· Alt-click or the breadcrumb selects the container · Esc to deselect' : '· click an element · Alt-click for its container · Esc to exit'}
+            {editing
+              ? '· editing text · Enter to save · Esc to cancel'
+              : selected
+                ? '· double-click to edit text · Alt-click selects the container · Esc to deselect'
+                : '· click an element · Alt-click for its container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done

@@ -76,8 +76,14 @@ export function useCanvasMode() {
   // frame with no mousemove listener and flicker the hover highlight.
   const selectedRef = useRef<CanvasElement | null>(selected)
   selectedRef.current = selected
+  // The element being text-edited (double-click). While set, Canvas's own
+  // capture-phase handlers stand down so the contentEditable caret/typing works.
+  const [editing, setEditing] = useState<CanvasElement | null>(null)
+  const editingRef = useRef<CanvasElement | null>(editing)
+  editingRef.current = editing
 
   const clearSelected = useCallback(() => setSelected(null), [])
+  const exitEditing = useCallback(() => setEditing(null), [])
   // Select a specific element (breadcrumb crumb, or a programmatic retarget).
   const selectElement = useCallback((c: CanvasElement) => {
     setSelected(c)
@@ -94,6 +100,7 @@ export function useCanvasMode() {
     }
 
     const onMove = (e: MouseEvent) => {
+      if (editingRef.current) return // typing — leave the page alone
       setCursor({ x: e.clientX, y: e.clientY })
       const el = e.target as Element | null
       const sel = selectedRef.current
@@ -111,6 +118,9 @@ export function useCanvasMode() {
     }
 
     const onClick = (e: MouseEvent) => {
+      // While editing text, let clicks through untouched (native caret placement);
+      // clicking away just blurs+commits the editor (handled on the node).
+      if (editingRef.current) return
       const el = e.target as Element | null
       if (!el || isMuseUI(el)) return // let the controls popover handle its own clicks
       e.preventDefault()
@@ -135,6 +145,7 @@ export function useCanvasMode() {
     }
 
     const onKey = (e: KeyboardEvent) => {
+      if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
         if (selectedRef.current) setSelected(null)
@@ -142,15 +153,30 @@ export function useCanvasMode() {
       }
     }
 
+    // Double-click an element → enter text edit on it (CanvasMode gates on whether
+    // it actually renders editable text, so a double-click on a non-text element is
+    // a no-op). The dblclick's own first click has already selected it.
+    const onDblClick = (e: MouseEvent) => {
+      const el = e.target as Element | null
+      if (!el || isMuseUI(el) || !(el instanceof HTMLElement)) return
+      const leaf = canvasChain(el)[0]
+      if (!leaf) return
+      e.preventDefault()
+      e.stopPropagation()
+      setEditing(leaf)
+    }
+
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
+    document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
+      document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, miss }
+  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
 }
