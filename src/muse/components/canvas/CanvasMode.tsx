@@ -52,10 +52,12 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // CSS keys we've overridden inline on the live node for the live preview, so
-  // we can clear them once the real edit's HMR repaint lands (else a stale
-  // override would survive an undo and lie about the source).
-  const appliedKeys = useRef<Set<string>>(new Set())
+  // The live inline preview: which node we've overridden and which CSS keys. Held
+  // as a single object (not a bare Set) so a commit can SNAPSHOT the exact node +
+  // keys to strip after HMR — even if the selection moves on first. A stale
+  // override left on a node would survive an undo and lie about the source.
+  const previewRef = useRef<{ node: HTMLElement; keys: Set<string> } | null>(null)
+  const clearTimerRef = useRef<number | null>(null)
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
   const startedRef = useRef(false)
@@ -71,10 +73,16 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     else if (startedRef.current) onExit()
   }, [active, onExit])
 
+  // Remove a specific set of inline overrides from a specific node.
+  const stripInline = (node: HTMLElement, keys: Iterable<string>) => {
+    for (const k of keys) node.style.removeProperty(camelToKebab(k))
+  }
+  // Clear the CURRENTLY-live preview (whatever node it's on), no-op if none.
   const clearPreview = () => {
-    const node = selected?.node
-    if (node) for (const k of appliedKeys.current) node.style.removeProperty(camelToKebab(k))
-    appliedKeys.current.clear()
+    const p = previewRef.current
+    if (!p) return
+    stripInline(p.node, p.keys)
+    previewRef.current = null
   }
 
   // Re-read computed values + reposition when the target or revision changes.
@@ -110,6 +118,8 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
 
   // Clear any stray inline preview when the target changes or we leave.
   useEffect(() => clearPreview, [selected])
+  // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
+  useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
 
   // Native-feeling undo/redo on the SAME shared history stack chat writes to —
   // file-only (no chat-panel side effects), so Cmd/Ctrl+Z works in canvas too.
@@ -119,6 +129,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       const entry = dir === 'undo' ? s.past[s.past.length - 1] : s.future[0]
       if (!entry) return
       const side = dir === 'undo' ? 'before' : 'after'
+      clearPreview() // drop any live scrub override so it can't mask the restore
       try {
         await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f[side] })))
         museStore.setState((st) =>
@@ -145,10 +156,18 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const applyPreview = (mutations: StyleMutation[]) => {
     const node = selected?.node
     if (!node) return
+    // Start (or continue) a preview entry for THIS node. A different node means a
+    // fresh entry — the prior node's overrides are cleared by the selection-change
+    // effect, so we don't carry its keys over.
+    let p = previewRef.current
+    if (!p || p.node !== node) {
+      p = { node, keys: new Set() }
+      previewRef.current = p
+    }
     for (const m of mutations) {
       for (const key of PROPERTIES[m.property].css) {
         node.style.setProperty(camelToKebab(key), m.value)
-        appliedKeys.current.add(key)
+        p.keys.add(key)
       }
     }
   }
@@ -166,17 +185,32 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
         setError(warnings[0] ?? "Couldn't apply that change.")
         return
       }
-      const entry: HistoryEntry = {
-        files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName] ?? '', after: e.newContent })),
-        elements: [asSelected(selected)],
-        label,
-      }
       await museWrite(edits)
-      museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
-      // Let HMR repaint from the new source, then drop the inline overrides and
-      // re-read so the panel/overlay reflect source truth (and undo stays honest).
-      window.setTimeout(() => {
-        clearPreview()
+      // Build the undo entry only if every file's pre-edit content is known —
+      // an empty `before` would zero the file on undo. (Keys always align today;
+      // this guards against a future server/key drift rather than silently
+      // corrupting the undo stack.)
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(selected)],
+          label,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      } else {
+        console.warn('[muse] style-edit: missing originals, skipping undo entry')
+      }
+      // Let HMR repaint from the new source, THEN strip this commit's exact inline
+      // overrides and re-read so the panel/overlay reflect source truth (and undo
+      // stays honest). Snapshot the node+keys so a selection change in the
+      // meantime can't redirect the strip to the wrong node; detach the live ref
+      // so a fresh scrub starts clean. Cancel any prior pending strip.
+      const snap = previewRef.current
+      previewRef.current = null
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
+      clearTimerRef.current = window.setTimeout(() => {
+        if (snap) stripInline(snap.node, snap.keys)
         bump((v) => v + 1)
       }, 160)
     } catch (e) {

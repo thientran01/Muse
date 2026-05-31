@@ -656,7 +656,7 @@ export function MuseOverlay() {
           {!active && !closing && (
             <button
               onClick={enterCanvas}
-              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-soft px-3.5 py-2 text-xs font-medium text-fg-muted shadow-lg ring-1 ring-line/10 transition hover:bg-surface-raised hover:text-fg active:scale-[0.97] motion-reduce:active:scale-100"
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-soft px-3.5 py-2 text-xs font-medium text-fg-muted shadow-lg ring-1 ring-line/10 transition hover:bg-surface-raised hover:text-fg active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100"
               title="Edit spacing & layout directly on the page (L)"
             >
               <span className="h-1.5 w-1.5 rounded-full bg-accent" />

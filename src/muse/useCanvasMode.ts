@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElementInfo, getSourceLocation, type ElementInfo } from './sourceLocation'
 import type { CanvasElement } from './types'
 import type { Rect } from './useSelection'
@@ -37,6 +37,11 @@ export function useCanvasMode() {
   const [hoverInfo, setHoverInfo] = useState<ElementInfo | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [selected, setSelected] = useState<CanvasElement | null>(null)
+  // Read inside the listener effect via a ref so the effect only re-subscribes on
+  // `active` (like useSelection) — re-attaching on every selection would leave a
+  // frame with no mousemove listener and flicker the hover highlight.
+  const selectedRef = useRef<CanvasElement | null>(selected)
+  selectedRef.current = selected
 
   const clearSelected = useCallback(() => setSelected(null), [])
 
@@ -77,7 +82,7 @@ export function useCanvasMode() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
-        if (selected) setSelected(null)
+        if (selectedRef.current) setSelected(null)
         else setActive(false)
       }
     }
@@ -92,7 +97,7 @@ export function useCanvasMode() {
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('keydown', onKey, true)
     }
-  }, [active, selected])
+  }, [active])
 
   return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, clearSelected }
 }
