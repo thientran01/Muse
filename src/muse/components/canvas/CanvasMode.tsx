@@ -3,6 +3,7 @@ import { museStyleEdit, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
+import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
@@ -60,6 +61,22 @@ function rgbToHex(c: string): string {
   return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
 }
 
+// Every live DOM node that renders from the SAME source location as `el` — i.e.
+// the same JSX element instantiated N times (a component in a list). A source edit
+// changes all of them on commit, so the live preview should too, or the siblings
+// visibly lag behind the one being scrubbed.
+function peerNodes(el: CanvasElement): HTMLElement[] {
+  const peers: HTMLElement[] = [el.node]
+  document.querySelectorAll<HTMLElement>('*').forEach((n) => {
+    if (n === el.node) return
+    const loc = getSourceLocation(n)
+    if (loc && loc.fileName === el.fileName && loc.lineNumber === el.line && loc.columnNumber === el.column) {
+      peers.push(n)
+    }
+  })
+  return peers
+}
+
 const asSelected = (el: CanvasElement): SelectedElement => ({
   fileName: el.fileName,
   line: el.line,
@@ -81,11 +98,12 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hint, setHint] = useState<{ x: number; y: number } | null>(null)
-  // The live inline preview: which node we've overridden and which CSS keys. Held
-  // as a single object (not a bare Set) so a commit can SNAPSHOT the exact node +
-  // keys to strip after HMR — even if the selection moves on first. A stale
-  // override left on a node would survive an undo and lie about the source.
-  const previewRef = useRef<{ node: HTMLElement; keys: Set<string> } | null>(null)
+  // The live inline preview: the anchor node (used to detect a target change), all
+  // peer nodes we've overridden (same-source instances), and which CSS keys. Held
+  // as one object so a commit can SNAPSHOT the exact nodes + keys to strip after
+  // HMR — even if the selection moves on first. A stale override left on a node
+  // would survive an undo and lie about the source.
+  const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
@@ -102,15 +120,16 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     else if (startedRef.current) onExit()
   }, [active, onExit])
 
-  // Remove a specific set of inline overrides from a specific node.
-  const stripInline = (node: HTMLElement, keys: Iterable<string>) => {
-    for (const k of keys) node.style.removeProperty(camelToKebab(k))
+  // Remove a specific set of inline overrides from specific nodes.
+  const stripInline = (nodes: HTMLElement[], keys: Iterable<string>) => {
+    const cssKeys = [...keys].map(camelToKebab)
+    for (const node of nodes) for (const k of cssKeys) node.style.removeProperty(k)
   }
-  // Clear the CURRENTLY-live preview (whatever node it's on), no-op if none.
+  // Clear the CURRENTLY-live preview (whatever nodes it's on), no-op if none.
   const clearPreview = () => {
     const p = previewRef.current
     if (!p) return
-    stripInline(p.node, p.keys)
+    stripInline(p.nodes, p.keys)
     previewRef.current = null
   }
 
@@ -191,19 +210,20 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   }, [])
 
   const applyPreview = (mutations: StyleMutation[]) => {
-    const node = selected?.node
-    if (!node) return
-    // Start (or continue) a preview entry for THIS node. A different node means a
-    // fresh entry — the prior node's overrides are cleared by the selection-change
-    // effect, so we don't carry its keys over.
+    if (!selected) return
+    // Start (or continue) a preview entry for THIS target. A different target means
+    // a fresh entry (the prior one's overrides are cleared by the selection-change
+    // effect). Resolve the same-source peers once per entry — not per frame — so a
+    // list of N instances all preview together, matching what the commit will do.
     let p = previewRef.current
-    if (!p || p.node !== node) {
-      p = { node, keys: new Set() }
+    if (!p || p.anchor !== selected.node) {
+      p = { anchor: selected.node, nodes: peerNodes(selected), keys: new Set() }
       previewRef.current = p
     }
     for (const m of mutations) {
       for (const key of PROPERTIES[m.property].css) {
-        node.style.setProperty(camelToKebab(key), m.value)
+        const cssKey = camelToKebab(key)
+        for (const node of p.nodes) node.style.setProperty(cssKey, m.value)
         p.keys.add(key)
       }
     }
@@ -248,14 +268,14 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       }
       // Let HMR repaint from the new source, THEN strip this commit's exact inline
       // overrides and re-read so the panel/overlay reflect source truth (and undo
-      // stays honest). Snapshot the node+keys so a selection change in the
-      // meantime can't redirect the strip to the wrong node; detach the live ref
+      // stays honest). Snapshot the nodes+keys so a selection change in the
+      // meantime can't redirect the strip to the wrong nodes; detach the live ref
       // so a fresh scrub starts clean. Cancel any prior pending strip.
       const snap = previewRef.current
       previewRef.current = null
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
       clearTimerRef.current = window.setTimeout(() => {
-        if (snap) stripInline(snap.node, snap.keys)
+        if (snap) stripInline(snap.nodes, snap.keys)
         bump((v) => v + 1)
       }, 160)
     } catch (e) {
