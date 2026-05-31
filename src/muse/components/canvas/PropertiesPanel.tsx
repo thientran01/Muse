@@ -16,6 +16,8 @@ export type CanvasValues = {
   margin: Sides
   gap: { row: number; column: number } | null // null when not flex/grid
   size: { width: number; height: number }
+  type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number }
+  rendersText: boolean // the element directly shows text — gates the Type controls
 }
 
 const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.bottom === s.left
@@ -147,6 +149,48 @@ export function PropertiesPanel({
           />
         </div>
       </div>
+
+      {/* Type — only on elements that directly render text (not container divs). */}
+      {values.rendersText && (
+        <>
+          <div className="h-px bg-line/10" />
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-medium text-fg-muted">Type</span>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <ScrubField
+                label="Size"
+                value={values.type.fontSize}
+                min={1}
+                onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
+                onCommit={(v) => onCommit([{ property: 'fontSize', value: `${v}px` }])}
+              />
+              <ScrubField
+                label="Weight"
+                value={values.type.fontWeight}
+                min={100}
+                max={900}
+                unit=""
+                onPreview={(v) => onPreview([{ property: 'fontWeight', value: `${v}` }])}
+                onCommit={(v) => onCommit([{ property: 'fontWeight', value: `${v}` }])}
+              />
+              <ScrubField
+                label="Line"
+                value={values.type.lineHeight}
+                min={0}
+                onPreview={(v) => onPreview([{ property: 'lineHeight', value: `${v}px` }])}
+                onCommit={(v) => onCommit([{ property: 'lineHeight', value: `${v}px` }])}
+              />
+              <ScrubField
+                label="Letter"
+                value={values.type.letterSpacing}
+                onPreview={(v) => onPreview([{ property: 'letterSpacing', value: `${v}px` }])}
+                onCommit={(v) => onCommit([{ property: 'letterSpacing', value: `${v}px` }])}
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="h-px bg-line/10" />
 
       <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />

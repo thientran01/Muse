@@ -32,6 +32,14 @@ function readValues(node: HTMLElement): CanvasValues {
     margin: sidesOf(cs, 'margin'),
     gap: isFlexGrid ? { row: px(cs.rowGap), column: px(cs.columnGap) } : null,
     size: { width: Math.round(px(cs.width)), height: Math.round(px(cs.height)) },
+    type: {
+      fontSize: Math.round(px(cs.fontSize) * 10) / 10,
+      fontWeight: Number(cs.fontWeight) || 400,
+      lineHeight: cs.lineHeight === 'normal' ? 0 : Math.round(px(cs.lineHeight)),
+      letterSpacing: cs.letterSpacing === 'normal' ? 0 : Math.round(px(cs.letterSpacing) * 100) / 100,
+    },
+    // Direct text content (not just descendants) → this element styles visible text.
+    rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
   }
 }
 

@@ -17,12 +17,13 @@ export type StyleProperty =
   | 'marginTop' | 'marginRight' | 'marginBottom' | 'marginLeft'
   | 'gap' | 'columnGap' | 'rowGap'
   | 'width' | 'height'
+  | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing'
 
 // `kind` selects how a raw value becomes a Tailwind token. 'length' (w/h) shares
-// the same spacing scale as 'spacing', so the editor treats them identically;
-// 'fontSize' | 'color' etc. arrive with later phases.
+// the spacing scale as 'spacing'; typography kinds have their own token builders +
+// overload-safe family matchers (see buildToken/familyMatcher in tailwindScales).
 export type PropertySpec = {
-  kind: 'spacing' | 'length'
+  kind: 'spacing' | 'length' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing'
   tw: string
   css: string[]
 }
@@ -47,6 +48,10 @@ export const PROPERTIES: Record<StyleProperty, PropertySpec> = {
   rowGap: { kind: 'spacing', tw: 'gap-y', css: ['rowGap'] },
   width: { kind: 'length', tw: 'w', css: ['width'] },
   height: { kind: 'length', tw: 'h', css: ['height'] },
+  fontSize: { kind: 'fontSize', tw: 'text', css: ['fontSize'] },
+  fontWeight: { kind: 'fontWeight', tw: 'font', css: ['fontWeight'] },
+  lineHeight: { kind: 'lineHeight', tw: 'leading', css: ['lineHeight'] },
+  letterSpacing: { kind: 'letterSpacing', tw: 'tracking', css: ['letterSpacing'] },
 }
 
 export const isStyleProperty = (p: unknown): p is StyleProperty =>
