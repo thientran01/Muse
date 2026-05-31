@@ -54,13 +54,31 @@ const fxElement2: SelectedElement = {
   key: 'src/demo/CTA.tsx:12:6:button',
 }
 
-// A single animation tile, rendered on the dark surface color so the icon's
-// eyes (filled with --muse-surface) read as true cut-outs, the way they do on
-// the real FAB — not as dark dots on a light card.
-function AnimCell({ label, sub, children }: { label: string; sub?: string; children: ReactNode }) {
+// A single animation tile. The inner surface is wrapped in `data-muse-ui` +
+// `data-theme` so Muse's CSS tokens resolve (muse.css scopes --muse-accent /
+// --muse-surface to [data-muse-ui]); without that wrapper those vars are
+// undefined and the icon falls back to the browser default (the stray blue).
+// `bg-surface` + `text-accent` + `ring-line/10` are the exact tokens the real
+// FAB uses, so each tile renders the mark precisely as it ships — and the eyes
+// (filled with --muse-surface) read as true cut-outs against the tile.
+function AnimCell({
+  label,
+  sub,
+  theme,
+  children,
+}: {
+  label: string
+  sub?: string
+  theme: 'dark' | 'light'
+  children: ReactNode
+}) {
   return (
     <div className="space-y-2">
-      <div className="flex min-h-[140px] items-center justify-center rounded-2xl bg-[#141210] p-6 ring-1 ring-black/5">
+      <div
+        data-muse-ui
+        data-theme={theme}
+        className="flex min-h-[140px] items-center justify-center rounded-2xl bg-surface p-6 text-accent ring-1 ring-line/10"
+      >
         {children}
       </div>
       <div>
@@ -71,14 +89,40 @@ function AnimCell({ label, sub, children }: { label: string; sub?: string; child
   )
 }
 
-// Showcase of the mark's motion profiles (see UfoIcon's PROFILE). `idle`
-// settles to rest by design, so the loop stops after ~2.6s — the Replay button
-// remounts the icons (via the `gen` key) to restart idle and resync swim.
+// One theme's worth of the mark's motion profiles. `idle` settles to rest by
+// design (loop stops after ~2.6s), so labels note it; the parent's Replay
+// remounts everything (via the `gen` key) to restart idle and resync swim.
+function ThemeRow({ theme, gen }: { theme: 'dark' | 'light'; gen: number }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        {theme === 'dark' ? 'Dark mode' : 'Light mode'}
+      </h3>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <AnimCell theme={theme} label="Idle — settles to rest" sub="loading=false · decays then stops">
+          <UfoIcon key={`idle-lg-${theme}-${gen}`} size={72} loading={false} className="text-accent" />
+        </AnimCell>
+        <AnimCell theme={theme} label="Swim — thinking" sub="loading · runs continuously">
+          <UfoIcon key={`swim-lg-${theme}-${gen}`} size={72} loading className="text-accent" />
+        </AnimCell>
+        <AnimCell theme={theme} label="Idle @ actual size" sub="18px — as it ships">
+          <UfoIcon key={`idle-sm-${theme}-${gen}`} size={18} loading={false} className="text-accent" />
+        </AnimCell>
+        <AnimCell theme={theme} label="Swim @ actual size" sub="18px — as it ships">
+          <UfoIcon key={`swim-sm-${theme}-${gen}`} size={18} loading className="text-accent" />
+        </AnimCell>
+      </div>
+    </div>
+  )
+}
+
+// Showcase of the mark's motion profiles in both themes, styled with the real
+// Muse tokens (see UfoIcon's PROFILE).
 function IconAnimations() {
   const [gen, setGen] = useState(0)
   return (
-    <section className="mx-auto mb-10 max-w-6xl">
-      <div className="mb-3 flex items-center justify-between">
+    <section className="mx-auto mb-10 max-w-6xl space-y-6">
+      <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           The mark — animation states
         </h2>
@@ -89,20 +133,8 @@ function IconAnimations() {
           ↻ Replay
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <AnimCell label="Idle — settles to rest" sub="loading=false · decays then stops">
-          <UfoIcon key={`idle-lg-${gen}`} size={72} loading={false} className="text-accent" />
-        </AnimCell>
-        <AnimCell label="Swim — thinking" sub="loading · runs continuously">
-          <UfoIcon key={`swim-lg-${gen}`} size={72} loading className="text-accent" />
-        </AnimCell>
-        <AnimCell label="Idle @ actual size" sub="18px — as it ships">
-          <UfoIcon key={`idle-sm-${gen}`} size={18} loading={false} className="text-accent" />
-        </AnimCell>
-        <AnimCell label="Swim @ actual size" sub="18px — as it ships">
-          <UfoIcon key={`swim-sm-${gen}`} size={18} loading className="text-accent" />
-        </AnimCell>
-      </div>
+      <ThemeRow theme="dark" gen={gen} />
+      <ThemeRow theme="light" gen={gen} />
     </section>
   )
 }
