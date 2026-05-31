@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, StyleMutation, StyleProperty } from '../../types'
 import { ScrubField } from './ScrubField'
@@ -39,6 +39,13 @@ function ColorRow({
   onPreview: (v: string) => void
   onCommit: (v: string) => void
 }) {
+  // Native color inputs can fire `change` more than once; only write when the
+  // committed color actually differs from what we last wrote (one source edit +
+  // undo entry per pick). Re-syncs when the upstream value changes (new element).
+  const lastCommitted = useRef(value)
+  useEffect(() => {
+    lastCommitted.current = value
+  }, [value])
   return (
     <label className="flex items-center justify-between gap-2 text-[11px]">
       <span className="select-none text-fg-faint">{label}</span>
@@ -53,7 +60,12 @@ function ColorRow({
             type="color"
             value={value}
             onInput={(e) => onPreview((e.target as HTMLInputElement).value)}
-            onChange={(e) => onCommit((e.target as HTMLInputElement).value)}
+            onChange={(e) => {
+              const v = (e.target as HTMLInputElement).value
+              if (v === lastCommitted.current) return
+              lastCommitted.current = v
+              onCommit(v)
+            }}
             className="h-5 w-5 shrink-0 cursor-pointer rounded border border-line/20 bg-transparent p-0"
           />
         </span>
@@ -216,9 +228,9 @@ export function PropertiesPanel({
               <ScrubField
                 label="Line"
                 value={values.type.lineHeight}
-                min={0}
-                onPreview={(v) => onPreview([{ property: 'lineHeight', value: `${v}px` }])}
-                onCommit={(v) => onCommit([{ property: 'lineHeight', value: `${v}px` }])}
+                min={1}
+                onPreview={(v) => v > 0 && onPreview([{ property: 'lineHeight', value: `${v}px` }])}
+                onCommit={(v) => v > 0 && onCommit([{ property: 'lineHeight', value: `${v}px` }])}
               />
               <ScrubField
                 label="Letter"

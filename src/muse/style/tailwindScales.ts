@@ -108,12 +108,12 @@ export function spacingToken(prefix: string, value: string): string | null {
 // REPLACE, or the new `w-[Npx]` would sit alongside `w-full` and they'd fight.
 // Spacing families have no such tokens, so they keep the tight set.
 export function spacingFamilyRe(prefix: string): RegExp {
-  const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const sizeExtra =
     prefix === 'w' || prefix === 'h'
       ? '|full|screen|svh|svw|lvh|lvw|dvh|dvw|min|max|fit|\\d+\\/\\d+'
       : ''
-  return new RegExp(`^-?${esc}-(?:auto|px|\\d+(?:\\.5)?|\\[[^\\]]+\\]${sizeExtra})$`)
+  return new RegExp(`^-?${escaped}-(?:auto|px|\\d+(?:\\.5)?|\\[[^\\]]+\\]${sizeExtra})$`)
 }
 
 // ============================================================
@@ -205,6 +205,7 @@ const COLOR_KEYWORDS = 'white|black|transparent|current|inherit'
 // class write). Accepts #rgb / #rrggbb / rgb()/rgba().
 function normalizeHex(value: string): string | null {
   const v = value.trim().toLowerCase()
+  if (/^#[0-9a-f]{8}$/.test(v)) return v.slice(0, 7) // drop the alpha byte
   if (/^#[0-9a-f]{6}$/.test(v)) return v
   if (/^#[0-9a-f]{3}$/.test(v)) return '#' + v.slice(1).split('').map((c) => c + c).join('')
   const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
