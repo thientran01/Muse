@@ -1,19 +1,32 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-// Figma-style drag-to-reorder. A dedicated grip handle pinned to the selected
-// element; dragging it shows an accent INSERTION BAR at the nearest slot among its
-// siblings and, on release, commits a deterministic source reorder (no model call)
-// via the parent's onReorder → /api/muse/reorder → museWrite → history.
+const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
+
+// Figma-style drag-to-reorder, gesture = press the element body + drag.
+//
+// Listeners live on the REAL element (not an overlay surface) using POINTER
+// events, which useCanvasMode doesn't use — it drives select/drill off mouse +
+// click. So a press that never crosses THRESHOLD never calls preventDefault, the
+// normal `click` still reaches useCanvasMode, and selection/drill-in is untouched.
+// Only once the pointer crosses THRESHOLD does the drag ENGAGE: the element lifts
+// (scale + shadow + raised layer) and FOLLOWS the cursor via a CSS transform,
+// while an accent insertion bar shows the drop slot. Release commits a
+// deterministic source reorder (no model call) via onReorder → /api/muse/reorder
+// → museWrite → history.
 //
 // The engine is 1D (move child A before source-slot N); all 2D logic lives HERE:
-// we read the live sibling geometry and map a drop point to a source index. That
-// mapping is only sound because reorder is gated host-only (source order === DOM
-// order 1:1 — see computeReorderable), so the parent's element children ARE the
-// source children, in order. The dragged element's DOM index === its source index.
+// we map a drop point to a source index from sibling geometry. That mapping is
+// only sound because reorder is gated host-only (source order === DOM order 1:1 —
+// see computeReorderable), so the parent's element children ARE the source
+// children, in order, and the dragged element's DOM index === its source index.
 //
-// Gesture is deliberately isolated to this handle so it can be swapped for
-// press-hold-body later without touching the commit path.
+// Two things make follow-the-cursor safe: (1) the lift is a CSS transform, which
+// moves the element WITHOUT reflowing siblings, so the drop geometry stays stable;
+// (2) we FREEZE the other siblings' rects at pickup, EXCLUDING the dragged node —
+// otherwise its rect would move with the pointer and always match itself.
+// setPointerCapture retargets the compat mouse events to the node during a drag,
+// so useCanvasMode's hover highlight sees the node (contained) and self-clears
+// instead of flickering across siblings.
 export function ReorderOverlay({
   node,
   expectedCount,
@@ -21,8 +34,8 @@ export function ReorderOverlay({
 }: {
   node: HTMLElement
   // How many movable children the ENGINE sees in source (the probe's count).
-  // We map drop slots from live geometry, which only matches source order 1:1 if
-  // the visible movable children line up with it — so if a child is hidden
+  // Drop slots are mapped from live geometry, which only matches source order 1:1
+  // if the visible movable children line up with it — so if a child is hidden
   // (display:none → no client rect) the live count diverges and an index could
   // mis-target. We fail closed in that case rather than move the wrong element.
   expectedCount: number
@@ -30,121 +43,182 @@ export function ReorderOverlay({
   // position it lands BEFORE; siblings.length === drop at the end).
   onReorder: (toIndex: number) => void
 }) {
-  const [, force] = useReducer((x: number) => x + 1, 0)
   // The live drop target while dragging: where the bar draws + which slot commits.
   const [drop, setDrop] = useState<DropTarget | null>(null)
-  const draggingRef = useRef(false)
-  // The dragged element's dimmed opacity is an inline override we must always
-  // restore (every exit path) so it can't strand a faded element on the page.
-  const prevOpacityRef = useRef<string | null>(null)
+  // Latest props read inside the imperative listeners, so the listener effect only
+  // re-subscribes on `node` (mirrors useCanvasMode's ref pattern) — an inline
+  // onReorder identity change per render must not detach mid-press.
+  const onReorderRef = useRef(onReorder)
+  onReorderRef.current = onReorder
+  const expectedCountRef = useRef(expectedCount)
+  expectedCountRef.current = expectedCount
 
-  // Track the element through scroll / resize / reflow so the handle stays glued.
+  // A press in progress. `dragging` flips true only after THRESHOLD, so a click
+  // below threshold stays a normal select. `frozen` is the sibling geometry
+  // snapshotted at engage (excludes the dragged node). `prevStyle` saves the
+  // element's inline styles we override for the lift, to restore on every exit.
+  const press = useRef<{
+    startX: number
+    startY: number
+    pointerId: number
+    dragging: boolean
+    fromIndex: number
+    frozen: Frozen | null
+    prevStyle: SavedStyle | null
+  } | null>(null)
+
   useEffect(() => {
-    const on = () => force()
-    window.addEventListener('scroll', on, true)
-    window.addEventListener('resize', on)
-    const ro = new ResizeObserver(on)
-    if (node.isConnected) ro.observe(node)
+    if (!node.isConnected) return
+    const parent = node.parentElement
+    if (!parent) return
+
+    const teardown = () => {
+      const p = press.current
+      if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
+      press.current = null
+      setDrop(null)
+    }
+
+    const onDown = (e: PointerEvent) => {
+      if (press.current || e.button !== 0) return // primary button only
+      // Don't preventDefault/stopPropagation — a press that never crosses the
+      // threshold must remain a plain click for useCanvasMode to select/drill.
+      node.setPointerCapture(e.pointerId)
+      const nodes = movableSiblings(parent)
+      press.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        pointerId: e.pointerId,
+        dragging: false,
+        fromIndex: nodes.indexOf(node),
+        frozen: null,
+        prevStyle: null,
+      }
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const p = press.current
+      if (!p || e.pointerId !== p.pointerId) return
+      if (!p.dragging) {
+        if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) < THRESHOLD) return
+        // Engage: snapshot geometry (excluding the dragged node), lift the element.
+        const frozen = freezeSiblings(parent, node)
+        if (frozen.rects.length + 1 !== expectedCountRef.current) {
+          // Live movable children (dragged + others) don't match what the engine
+          // sees in source — fail closed: abandon, leave it a no-op.
+          node.releasePointerCapture?.(e.pointerId)
+          teardown()
+          return
+        }
+        p.frozen = frozen
+        p.dragging = true
+        p.prevStyle = applyLift(node)
+      }
+      e.preventDefault()
+      const dx = e.clientX - p.startX
+      const dy = e.clientY - p.startY
+      node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)` // follow + lift
+      setDrop(computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex))
+    }
+
+    const onUp = (e: PointerEvent) => {
+      const p = press.current
+      if (!p || e.pointerId !== p.pointerId) return
+      node.releasePointerCapture?.(e.pointerId)
+      if (!p.dragging) {
+        press.current = null // a click — let it select/drill, nothing to undo
+        return
+      }
+      e.preventDefault()
+      // A threshold-crossing drag still emits a trailing `click` at the drop point.
+      // useCanvasMode's click handler is on document (capture), so it would select
+      // whatever's under the cursor at release — wrong. Swallow that one click with
+      // a WINDOW capture listener: window capture fires before document capture, so
+      // it preempts useCanvasMode. One-shot, with a timeout in case no click comes
+      // (some browsers suppress click after a drag) so it can't eat a later click.
+      const swallowClick = (ev: Event) => {
+        ev.stopPropagation()
+        ev.preventDefault()
+        window.removeEventListener('click', swallowClick, true)
+        window.clearTimeout(killSwallow)
+      }
+      window.addEventListener('click', swallowClick, true)
+      const killSwallow = window.setTimeout(() => window.removeEventListener('click', swallowClick, true), 350)
+      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
+      teardown()
+      // Only a real move commits — a drop back into your own slot is a no-op (the
+      // engine guards this too, but skipping the round-trip is cleaner).
+      if (target && !target.noop) onReorderRef.current(target.toIndex)
+    }
+
+    const onCancel = (e: PointerEvent) => {
+      const p = press.current
+      if (!p || e.pointerId !== p.pointerId) return
+      node.releasePointerCapture?.(e.pointerId)
+      teardown()
+    }
+
+    node.addEventListener('pointerdown', onDown)
+    node.addEventListener('pointermove', onPointerMove)
+    node.addEventListener('pointerup', onUp)
+    node.addEventListener('pointercancel', onCancel)
     return () => {
-      window.removeEventListener('scroll', on, true)
-      window.removeEventListener('resize', on)
-      ro.disconnect()
+      node.removeEventListener('pointerdown', onDown)
+      node.removeEventListener('pointermove', onPointerMove)
+      node.removeEventListener('pointerup', onUp)
+      node.removeEventListener('pointercancel', onCancel)
+      teardown() // restore the lift if we unmount mid-drag (e.g. HMR)
     }
   }, [node])
 
-  // Restore the dragged element's opacity if we unmount mid-drag (e.g. HMR).
-  useEffect(
-    () => () => {
-      if (prevOpacityRef.current !== null && node.isConnected) node.style.opacity = prevOpacityRef.current
-      prevOpacityRef.current = null
-    },
-    [node],
-  )
-
-  if (!node.isConnected) return null
-  const parent = node.parentElement
-  if (!parent) return null
-  const r = node.getBoundingClientRect()
-  const layout = readLayout(parent)
-
-  const startDrag = (e: ReactPointerEvent) => {
-    if (draggingRef.current) return // ignore a second pointerdown mid-drag (would
-    // overwrite prevOpacityRef with the already-ghosted 0.4 and strand it faded)
-    e.preventDefault()
-    e.stopPropagation()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    draggingRef.current = true
-    prevOpacityRef.current = node.style.opacity
-    node.style.opacity = '0.4' // ghost the element being moved
-    setDrop(computeDrop(node, e.clientX, e.clientY, layout, expectedCount))
-  }
-  const moveDrag = (e: ReactPointerEvent) => {
-    if (!draggingRef.current) return
-    setDrop(computeDrop(node, e.clientX, e.clientY, layout, expectedCount))
-  }
-  const restoreOpacity = () => {
-    if (prevOpacityRef.current !== null) {
-      if (node.isConnected) node.style.opacity = prevOpacityRef.current
-      prevOpacityRef.current = null
-    }
-  }
-  const endDrag = (e: ReactPointerEvent) => {
-    if (!draggingRef.current) return
-    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
-    draggingRef.current = false
-    const target = computeDrop(node, e.clientX, e.clientY, layout, expectedCount)
-    restoreOpacity()
-    setDrop(null)
-    // Only a real move commits — a tap, or a drop back into your own slot, is a
-    // no-op (the engine guards this too, but skipping the round-trip is cleaner).
-    if (target && !target.noop) onReorder(target.toIndex)
-  }
-  const cancelDrag = (e: ReactPointerEvent) => {
-    if (!draggingRef.current) return
-    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
-    draggingRef.current = false
-    restoreOpacity()
-    setDrop(null)
-  }
-
+  // The dragged element follows the cursor itself; the only thing this component
+  // renders is the insertion bar (in the shared fixed overlay layer).
   return (
     <div className="pointer-events-none">
-      {/* The insertion bar — only while dragging to an actionable slot. */}
       {drop && !drop.noop && (
         <div
           className="absolute z-10 rounded-full bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
           style={drop.bar}
         />
       )}
-
-      {/* Drag handle — a quiet grip pinned just above the element's top-left.
-          Sits clear of the corner resize knobs and edge spacing handles. */}
-      <div
-        onPointerDown={startDrag}
-        onPointerMove={moveDrag}
-        onPointerUp={endDrag}
-        onPointerCancel={cancelDrag}
-        title="Drag to reorder"
-        className={`pointer-events-auto absolute z-10 flex h-5 items-center gap-1 rounded-md bg-accent px-1.5 text-surface shadow-sm ring-1 ring-surface/20 ${
-          drop ? 'cursor-grabbing' : 'cursor-grab'
-        }`}
-        style={{ top: r.top - 24, left: r.left }}
-      >
-        <GripDots />
-      </div>
     </div>
   )
 }
 
-// Six-dot grip mark (two columns), drawn inline to avoid an icon dependency.
-function GripDots() {
-  return (
-    <svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor" aria-hidden>
-      {[2, 6, 10].map((cy) =>
-        [2, 6].map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.1" />),
-      )}
-    </svg>
-  )
+// --- lift (transform + shadow + raised layer), saved/restored as one unit ---
+
+type SavedStyle = { transform: string; boxShadow: string; zIndex: string; opacity: string; transition: string; cursor: string; willChange: string }
+
+function applyLift(node: HTMLElement): SavedStyle {
+  const s = node.style
+  const prev: SavedStyle = {
+    transform: s.transform,
+    boxShadow: s.boxShadow,
+    zIndex: s.zIndex,
+    opacity: s.opacity,
+    transition: s.transition,
+    cursor: s.cursor,
+    willChange: s.willChange,
+  }
+  s.transform = 'scale(1.03)'
+  s.boxShadow = '0 12px 28px -6px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(var(--muse-accent) / 0.5)'
+  s.zIndex = '999990' // above peers, below Muse's overlay chrome
+  s.opacity = '0.95'
+  s.transition = 'none' // we drive transform per-frame; no lag
+  s.cursor = 'grabbing'
+  s.willChange = 'transform'
+  return prev
+}
+
+function restoreLift(node: HTMLElement, prev: SavedStyle) {
+  const s = node.style
+  s.transform = prev.transform
+  s.boxShadow = prev.boxShadow
+  s.zIndex = prev.zIndex
+  s.opacity = prev.opacity
+  s.transition = prev.transition
+  s.cursor = prev.cursor
+  s.willChange = prev.willChange
 }
 
 // --- drop-target geometry (the 2D → 1D mapping) ---
@@ -155,9 +229,11 @@ type DropTarget = {
   bar: { top: number; left: number; width: number; height: number }
 }
 
-// `vertical` = the insertion bar is horizontal (a stacked column / block flow);
-// otherwise the bar is vertical (a row, or a 2D grid/wrap read left-to-right).
 type Layout = { vertical: boolean }
+
+// Frozen at pickup: the OTHER movable siblings' rects (dragged node excluded) and
+// the layout axis — all immune to the dragged element's follow transform.
+type Frozen = { rects: DOMRect[]; layout: Layout }
 
 function readLayout(parent: HTMLElement): Layout {
   const cs = getComputedStyle(parent)
@@ -171,32 +247,27 @@ function readLayout(parent: HTMLElement): Layout {
   return { vertical: true } // normal block flow stacks vertically
 }
 
-// The parent's movable children, in DOM (= source) order, with a client rect.
-function siblingRects(node: HTMLElement): { nodes: HTMLElement[]; rects: DOMRect[] } {
-  const parent = node.parentElement!
-  const nodes = ([...parent.children] as Element[]).filter(
+// The parent's movable children in DOM (= source) order, with a visible rect.
+function movableSiblings(parent: HTMLElement): HTMLElement[] {
+  return ([...parent.children] as Element[]).filter(
     (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
   )
-  return { nodes, rects: nodes.map((n) => n.getBoundingClientRect()) }
 }
 
-// Map a pointer position to an insertion slot: find the nearest sibling by center
-// distance (handles 2D — a grid cell is nearest by Euclidean distance), then choose
-// the leading or trailing edge of that cell along the reading axis.
-function computeDrop(
-  node: HTMLElement,
-  px: number,
-  py: number,
-  layout: Layout,
-  expectedCount: number,
-): DropTarget | null {
-  const { nodes, rects } = siblingRects(node)
+// Snapshot the OTHER siblings' geometry at pickup (dragged node excluded), so the
+// drop search is stable while the dragged element follows the cursor.
+function freezeSiblings(parent: HTMLElement, dragged: HTMLElement): Frozen {
+  const others = movableSiblings(parent).filter((n) => n !== dragged)
+  return { rects: others.map((n) => n.getBoundingClientRect()), layout: readLayout(parent) }
+}
+
+// Map a pointer position to an insertion slot among the FROZEN (other) siblings:
+// nearest neighbor by center distance (handles 2D), then leading/trailing edge
+// along the reading axis. `slot` is an index in OTHER-sibling space (0..others);
+// lift it back into full source order using `fromIndex` (the dragged node's slot).
+function computeDrop(px: number, py: number, frozen: Frozen, fromIndex: number): DropTarget | null {
+  const { rects, layout } = frozen
   if (rects.length === 0) return null
-  // Fail closed: if the live movable children don't match what the engine sees in
-  // source (e.g. a display:none sibling has no client rect), a visible-order index
-  // would mis-target — don't reorder rather than move the wrong element.
-  if (rects.length !== expectedCount) return null
-  const fromIndex = nodes.indexOf(node)
 
   let j = 0
   let best = Infinity
@@ -212,8 +283,12 @@ function computeDrop(
 
   const rj = rects[j]
   const before = layout.vertical ? py < rj.top + rj.height / 2 : px < rj.left + rj.width / 2
-  const toIndex = before ? j : j + 1
-  const noop = fromIndex !== -1 && (toIndex === fromIndex || toIndex === fromIndex + 1)
+  const slot = before ? j : j + 1
+  // Other-sibling index i corresponds to original index i (i < fromIndex) or i+1
+  // (i ≥ fromIndex). So an insertion slot ≤ fromIndex maps straight through; past
+  // it, add one to skip the dragged node's vacated original position.
+  const toIndex = slot <= fromIndex ? slot : slot + 1
+  const noop = toIndex === fromIndex || toIndex === fromIndex + 1
 
   const BAR = 3
   const bar = layout.vertical
