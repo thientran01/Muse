@@ -27,6 +27,14 @@ const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 // setPointerCapture retargets the compat mouse events to the node during a drag,
 // so useCanvasMode's hover highlight sees the node (contained) and self-clears
 // instead of flickering across siblings.
+//
+// MAKE ROOM (Figma-style): in a genuine 1D layout (one row / one column), the
+// other siblings SLIDE in real time to open a gap where the dragged element will
+// land — so the drop is obvious and the dragged element never just stacks on top
+// of a static neighbor. The slide is purely visual (CSS transform on the
+// siblings); the commit math is unchanged, so a mis-detected axis can only cost a
+// cosmetic glitch, never a wrong edit. 2D grids / multi-row wrap and reduced-motion
+// fall back to the insertion bar.
 export function ReorderOverlay({
   node,
   expectedCount,
@@ -71,6 +79,9 @@ export function ReorderOverlay({
     fromIndex: number
     frozen: Frozen | null
     prevStyle: SavedStyle | null
+    // Make-room: the sibling transition/transform inline values we override, saved
+    // per node so we can restore exactly on teardown. Only set when oneAxis.
+    sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null
   } | null>(null)
 
   useEffect(() => {
@@ -93,6 +104,7 @@ export function ReorderOverlay({
         node.releasePointerCapture?.(p.pointerId) // capture is taken only on engage
         onDragChangeRef.current?.(false) // un-hide the other canvas chrome
       }
+      if (p?.sibPrev) restoreMakeRoom(p.sibPrev) // put the slid siblings back
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
       press.current = null
       setDrop(null)
@@ -113,6 +125,7 @@ export function ReorderOverlay({
         fromIndex: nodes.indexOf(node),
         frozen: null,
         prevStyle: null,
+        sibPrev: null,
       }
     }
 
@@ -134,6 +147,9 @@ export function ReorderOverlay({
         p.frozen = frozen
         p.dragging = true
         p.prevStyle = applyLift(node)
+        // Make-room is valid only on a true single line + with motion allowed;
+        // otherwise we fall back to the insertion bar. Prime the sibling transitions.
+        if (frozen.oneAxis && !prefersReducedMotion()) p.sibPrev = primeMakeRoom(frozen)
         onDragChangeRef.current?.(true) // hide the other canvas chrome for this drag
       }
       e.preventDefault()
@@ -142,7 +158,15 @@ export function ReorderOverlay({
       // Follow the cursor. Reduced-motion keeps the element in place (no scale/
       // translate) — the shadow + raised layer still signal "picked up".
       if (!prefersReducedMotion()) node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)`
-      setDrop(computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex))
+      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
+      // When make-room is active, the opened gap IS the affordance — slide the
+      // siblings and hide the bar. Otherwise show the bar (2D / reduced-motion).
+      if (target && p.sibPrev) {
+        applyMakeRoom(p.frozen!, target.slot)
+        setDrop({ ...target, bar: null })
+      } else {
+        setDrop(target)
+      }
     }
 
     const onUp = (e: PointerEvent) => {
@@ -202,11 +226,12 @@ export function ReorderOverlay({
     }
   }, [node])
 
-  // The dragged element follows the cursor itself; the only thing this component
-  // renders is the insertion bar (in the shared fixed overlay layer).
+  // The dragged element follows the cursor itself; siblings make room via their
+  // own transforms. The only thing this component RENDERS is the insertion bar,
+  // and only in the fallback (2D / reduced-motion) where make-room is off.
   return (
     <div className="pointer-events-none">
-      {drop && !drop.noop && (
+      {drop?.bar && !drop.noop && (
         <div
           className="absolute z-10 rounded-sm bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
           style={drop.bar}
@@ -266,16 +291,26 @@ function restoreLift(node: HTMLElement, prev: SavedStyle) {
 // --- drop-target geometry (the 2D → 1D mapping) ---
 
 type DropTarget = {
-  toIndex: number
+  toIndex: number // slot in FULL source order (what onReorder receives)
+  slot: number // slot among the OTHER siblings (0..others.length) — drives make-room
   noop: boolean
-  bar: { top: number; left: number; width: number; height: number }
+  bar: { top: number; left: number; width: number; height: number } | null
 }
 
 type Layout = { vertical: boolean }
 
-// Frozen at pickup: the OTHER movable siblings' rects (dragged node excluded) and
-// the layout axis — all immune to the dragged element's follow transform.
-type Frozen = { rects: DOMRect[]; layout: Layout }
+// Frozen at pickup, all immune to the dragged element's follow transform:
+//  • nodes/rects — the OTHER movable siblings (dragged node excluded), in source
+//    order, used for the drop search AND the make-room slide.
+//  • layout — the reading axis (which way the insertion bar / slide runs).
+//  • draggedRect — the dragged element's own rect, so the slide knows how far each
+//    sibling must move to open its gap (the gap == the dragged element's extent +
+//    the layout gap between siblings).
+//  • oneAxis — true only when every sibling shares the dragged element's row (for a
+//    horizontal axis) or column (vertical): the make-room slide is a single-axis
+//    shift, which is only correct in a true 1D line. Real 2D grids / wrapped rows
+//    set this false → insertion-bar fallback.
+type Frozen = { nodes: HTMLElement[]; rects: DOMRect[]; layout: Layout; draggedRect: DOMRect; gap: number; oneAxis: boolean }
 
 function readLayout(parent: HTMLElement): Layout {
   const cs = getComputedStyle(parent)
@@ -296,11 +331,40 @@ function movableSiblings(parent: HTMLElement): HTMLElement[] {
   )
 }
 
-// Snapshot the OTHER siblings' geometry at pickup (dragged node excluded), so the
-// drop search is stable while the dragged element follows the cursor.
+// Snapshot at pickup: the OTHER siblings (nodes + rects, dragged excluded), the
+// dragged element's own rect, the inter-sibling gap, the axis, and whether this is
+// a genuine single line (so make-room is geometrically valid).
 function freezeSiblings(parent: HTMLElement, dragged: HTMLElement): Frozen {
-  const others = movableSiblings(parent).filter((n) => n !== dragged)
-  return { rects: others.map((n) => n.getBoundingClientRect()), layout: readLayout(parent) }
+  const layout = readLayout(parent)
+  const draggedRect = dragged.getBoundingClientRect()
+  const all = movableSiblings(parent)
+  const nodes = all.filter((n) => n !== dragged)
+  const rects = nodes.map((n) => n.getBoundingClientRect())
+
+  // One line iff every element (incl. the dragged one) overlaps on the cross axis —
+  // same row for a horizontal layout, same column for a vertical one. Robust to the
+  // CSS specifics (flex vs block vs inline) since it reads actual geometry.
+  const allRects = all.map((n) => n.getBoundingClientRect())
+  const oneAxis = allRects.every((r) =>
+    layout.vertical
+      ? r.left < draggedRect.right && r.right > draggedRect.left // shares the column
+      : r.top < draggedRect.bottom && r.bottom > draggedRect.top, // shares the row
+  )
+
+  // The gap to leave between elements when sliding = the median center-to-center
+  // spacing minus element extent, floored at 0. Cheap + good enough for the slide.
+  let gap = 0
+  if (allRects.length >= 2) {
+    const sorted = [...allRects].sort((a, b) => (layout.vertical ? a.top - b.top : a.left - b.left))
+    const gaps: number[] = []
+    for (let i = 1; i < sorted.length; i++) {
+      gaps.push(layout.vertical ? sorted[i].top - sorted[i - 1].bottom : sorted[i].left - sorted[i - 1].right)
+    }
+    gaps.sort((a, b) => a - b)
+    gap = Math.max(0, gaps[gaps.length >> 1])
+  }
+
+  return { nodes, rects, layout, draggedRect, gap, oneAxis }
 }
 
 // Map a pointer position to an insertion slot among the FROZEN (other) siblings:
@@ -337,5 +401,42 @@ function computeDrop(px: number, py: number, frozen: Frozen, fromIndex: number):
     ? { left: rj.left, top: (before ? rj.top : rj.bottom) - BAR / 2, width: rj.width, height: BAR }
     : { top: rj.top, left: (before ? rj.left : rj.right) - BAR / 2, width: BAR, height: rj.height }
 
-  return { toIndex, noop, bar }
+  return { toIndex, slot, noop, bar }
+}
+
+// --- make-room: slide siblings to open the drop gap (Figma-style) ---
+
+const SLIDE_MS = 160 // matches the project's motion scale (<300ms easeOut)
+
+// Save each sibling's inline transition/transform and prime the transition so the
+// per-move shifts animate instead of snapping. Returns the saved map for restore.
+function primeMakeRoom(frozen: Frozen): Map<HTMLElement, { transition: string; transform: string }> {
+  const saved = new Map<HTMLElement, { transition: string; transform: string }>()
+  for (const n of frozen.nodes) {
+    saved.set(n, { transition: n.style.transition, transform: n.style.transform })
+    n.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
+    n.style.willChange = 'transform'
+  }
+  return saved
+}
+
+// Shift every OTHER sibling at or after `slot` forward by the dragged element's
+// extent + the inter-sibling gap, opening the gap the element will drop into; the
+// rest sit at rest. Idempotent per move (sets an absolute transform each time).
+function applyMakeRoom(frozen: Frozen, slot: number) {
+  const { nodes, layout, draggedRect, gap } = frozen
+  const shift = (layout.vertical ? draggedRect.height : draggedRect.width) + gap
+  for (let i = 0; i < nodes.length; i++) {
+    const d = i >= slot ? shift : 0
+    nodes[i].style.transform = d === 0 ? '' : layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
+  }
+}
+
+function restoreMakeRoom(saved: Map<HTMLElement, { transition: string; transform: string }>) {
+  for (const [n, prev] of saved) {
+    if (!n.isConnected) continue
+    n.style.transition = prev.transition
+    n.style.transform = prev.transform
+    n.style.willChange = ''
+  }
 }
