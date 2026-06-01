@@ -260,26 +260,20 @@ export function ColorFields({ values, onPreview, onCommit }: { values: CanvasVal
   )
 }
 
-// Gap (flex/grid only). One field when row===col, two when they differ.
+// Gap (flex/grid only). Always two half-width fields — Row (vertical) and Col
+// (horizontal) — so it matches the Size/Type 2-col rows instead of one field
+// stretching full width. Editing one writes that axis; they can still hold equal
+// values (a plain `gap` reads as both).
 export function GapFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   if (!values.gap) return null
-  const linked = values.gap.row === values.gap.column
   return (
-    <div>
-      {linked ? (
-        <ScrubField label="Gap" value={values.gap.row} min={0}
-          onPreview={(v) => onPreview([{ property: 'gap', value: `${v}px` }])}
-          onCommit={(v) => onCommit([{ property: 'gap', value: `${v}px` }])} />
-      ) : (
-        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
-          <ScrubField label="Row" value={values.gap.row} min={0}
-            onPreview={(v) => onPreview([{ property: 'rowGap', value: `${v}px` }])}
-            onCommit={(v) => onCommit([{ property: 'rowGap', value: `${v}px` }])} />
-          <ScrubField label="Col" value={values.gap.column} min={0}
-            onPreview={(v) => onPreview([{ property: 'columnGap', value: `${v}px` }])}
-            onCommit={(v) => onCommit([{ property: 'columnGap', value: `${v}px` }])} />
-        </div>
-      )}
+    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+      <ScrubField label="Row" value={values.gap.row} min={0}
+        onPreview={(v) => onPreview([{ property: 'rowGap', value: `${v}px` }])}
+        onCommit={(v) => onCommit([{ property: 'rowGap', value: `${v}px` }])} />
+      <ScrubField label="Col" value={values.gap.column} min={0}
+        onPreview={(v) => onPreview([{ property: 'columnGap', value: `${v}px` }])}
+        onCommit={(v) => onCommit([{ property: 'columnGap', value: `${v}px` }])} />
     </div>
   )
 }

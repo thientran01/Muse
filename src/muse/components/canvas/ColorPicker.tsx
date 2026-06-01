@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { Eyedropper } from '@phosphor-icons/react'
 import {
   contrastInk,
+  contrastRatio,
   hexToHsv,
   hsvToHex,
   hsvToRgb,
@@ -10,20 +12,29 @@ import {
   type Rgb,
 } from '../../style/colorMath'
 
+// The browser EyeDropper API (Chromium). Typed locally since lib.dom doesn't
+// always ship it; feature-detected at runtime before use.
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> }
+const getEyeDropper = (): EyeDropperCtor | null =>
+  typeof window !== 'undefined' && 'EyeDropper' in window ? (window as unknown as { EyeDropper: EyeDropperCtor }).EyeDropper : null
+
 // A self-contained color picker in Muse styling (no dependency): a
-// saturation/brightness square + hue slider + hex & R/G/B inputs + a row of the
-// app's brand swatches (from DESIGN.md). Drives `onPreview` live while dragging,
-// `onCommit` on release / typed entry — same contract as the native input it
-// replaces. HSV-driven internally (so the SV square stays stable while you slide
-// hue), emits #rrggbb (the engine drops alpha, so there's no alpha channel).
+// saturation/brightness square + hue slider + hex & R/G/B inputs + an eyedropper +
+// an optional WCAG contrast check + a row of the app's brand swatches (DESIGN.md).
+// Drives `onPreview` live while dragging, `onCommit` on release / typed entry —
+// same contract as the native input it replaces. HSV-driven internally (so the SV
+// square stays stable while you slide hue), emits #rrggbb (the engine drops alpha,
+// so there's no alpha channel).
 export function ColorPicker({
   value,
   swatches = [],
+  contrastAgainst,
   onPreview,
   onCommit,
 }: {
   value: string // current #rrggbb
   swatches?: string[] // brand colors (hex) from DESIGN.md
+  contrastAgainst?: string // the color this sits on/under, for the WCAG check (e.g. the fill behind text)
   onPreview: (hex: string) => void
   onCommit: (hex: string) => void
 }) {
@@ -54,19 +65,48 @@ export function ColorPicker({
     onPreview(h)
     if (commit) onCommit(h)
   }
+  const setHex = (h: string) => { const hv = hexToHsv(h); if (hv) emit(hv, true) }
+
+  // Eyedropper: sample any pixel on screen (Chromium). Hidden where unsupported.
+  const EyeDropper = getEyeDropper()
+  const pickFromScreen = async () => {
+    if (!EyeDropper) return
+    try {
+      const { sRGBHex } = await new EyeDropper().open()
+      setHex(sRGBHex)
+    } catch {
+      /* user cancelled (Esc) — no-op */
+    }
+  }
+
+  const contrast = contrastAgainst ? contrastRatio(hex, contrastAgainst) : null
 
   return (
     <div className="w-[200px] space-y-2.5">
       <SVSquare hsv={hsv} hueHex={hueHex} onChange={(s, v, commit) => emit({ ...hsv, s, v }, commit)} />
-      <HueSlider hue={hsv.h} onChange={(h, commit) => emit({ ...hsv, h }, commit)} />
 
-      {/* Current swatch + hex input */}
+      {/* Eyedropper (if supported) + hue slider on one row, so the slider doesn't
+          stretch full-width unnecessarily and the dropper sits where Figma's does. */}
       <div className="flex items-center gap-2">
-        <span className="h-6 w-6 shrink-0 rounded border border-line/20" style={{ backgroundColor: hex }} />
-        <HexInput value={hex} onCommit={(h) => { const hv = hexToHsv(h); if (hv) emit(hv, true) }} />
+        {EyeDropper && (
+          <button
+            onClick={pickFromScreen}
+            title="Sample a color from the screen"
+            aria-label="Sample a color from the screen"
+            className="shrink-0 rounded p-1 text-fg-muted transition hover:bg-line/10 hover:text-fg"
+          >
+            <Eyedropper size={15} />
+          </button>
+        )}
+        <HueSlider hue={hsv.h} onChange={(h, commit) => emit({ ...hsv, h }, commit)} />
       </div>
 
-      {/* R / G / B fields */}
+      {/* Hex (with leading swatch) + R/G/B on one compact grid. No duplicate
+          swatch/hex readout — this row IS the readout. */}
+      <div className="flex items-center gap-1.5">
+        <span className="h-6 w-6 shrink-0 rounded border border-line/20" style={{ backgroundColor: hex }} />
+        <HexInput value={hex} onCommit={setHex} />
+      </div>
       <div className="grid grid-cols-3 gap-1.5">
         {(['r', 'g', 'b'] as const).map((ch) => (
           <RgbInput
@@ -81,6 +121,25 @@ export function ColorPicker({
           />
         ))}
       </div>
+
+      {/* WCAG contrast check against the paired color (Figma-style) — only when a
+          comparison color is provided (Text vs Fill, etc.). */}
+      {contrast && (
+        <div className="flex items-center justify-between border-t border-line/10 pt-2 text-[11px]">
+          <span className="flex items-center gap-1.5 text-fg-muted">
+            <span className="font-mono tabular-nums">{contrast.ratio.toFixed(2)}:1</span>
+            <span className="text-fg-faint">contrast</span>
+          </span>
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+            contrast.aaa ? 'bg-emerald-500/15 text-emerald-400'
+            : contrast.aa ? 'bg-emerald-500/15 text-emerald-400'
+            : contrast.aaLarge ? 'bg-amber-500/15 text-amber-400'
+            : 'bg-rose-500/15 text-rose-400'
+          }`}>
+            {contrast.aaa ? 'AAA' : contrast.aa ? 'AA' : contrast.aaLarge ? 'AA Large' : 'Fail'}
+          </span>
+        </div>
+      )}
 
       {/* Brand swatches from DESIGN.md */}
       {swatches.length > 0 && (
@@ -151,7 +210,7 @@ function SVSquare({ hsv, hueHex, onChange }: { hsv: Hsv; hueHex: string; onChang
     <div
       ref={ref}
       {...handlers}
-      className="relative h-28 w-full cursor-crosshair touch-none rounded-md border border-line/15"
+      className="relative h-28 w-full cursor-crosshair touch-none rounded-md"
       style={{ backgroundColor: hueHex, backgroundImage: 'linear-gradient(to right, #fff, transparent), linear-gradient(to top, #000, transparent)' }}
     >
       <Knob left={`${hsv.s}%`} top={`${100 - hsv.v}%`} />
@@ -166,7 +225,7 @@ function HueSlider({ hue, onChange }: { hue: number; onChange: (h: number, commi
     <div
       ref={ref}
       {...handlers}
-      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full border border-line/15"
+      className="relative h-3 w-full flex-1 cursor-ew-resize touch-none rounded-full"
       style={{ backgroundImage: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
     >
       <Knob left={`${(hue / 360) * 100}%`} top="50%" />

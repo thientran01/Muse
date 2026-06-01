@@ -75,3 +75,24 @@ export function contrastInk(hex: string): '#000000' | '#ffffff' {
   const lum = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255
   return lum > 0.6 ? '#000000' : '#ffffff'
 }
+
+// WCAG relative luminance (0–1) of an sRGB color, with the standard gamma decode.
+function relLuminance({ r, g, b }: Rgb): number {
+  const lin = (c: number) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+export type ContrastResult = { ratio: number; aa: boolean; aaa: boolean; aaLarge: boolean }
+
+// WCAG contrast ratio between two colors + pass flags. AA = 4.5:1 (normal text) /
+// 3:1 (large); AAA = 7:1. Returns null if either color can't be parsed.
+export function contrastRatio(a: string, b: string): ContrastResult | null {
+  const ra = hexToRgb(a), rb = hexToRgb(b)
+  if (!ra || !rb) return null
+  const la = relLuminance(ra), lb = relLuminance(rb)
+  const ratio = (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  return { ratio, aa: ratio >= 4.5, aaa: ratio >= 7, aaLarge: ratio >= 3 }
+}
