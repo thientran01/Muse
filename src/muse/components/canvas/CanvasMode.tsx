@@ -567,22 +567,54 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           the node itself) so the caret is free. */}
       {selected && values && !editing && (
         <>
-          {/* The spacing/size/panel chrome hides while a reorder drag is in flight
-              so it can't cover the element you're dragging. ReorderOverlay (the
-              listeners + insertion bar) stays mounted so the drag keeps running. */}
-          {!reordering && (
-            <>
-              <BoxModelOverlay
-                node={selected.node}
-                padding={values.padding}
-                margin={values.margin}
-                onPreview={applyPreview}
-                onCommit={commit}
-              />
-              {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
-              <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
-            </>
-          )}
+          {/* The spacing/size/panel chrome stays MOUNTED while a reorder drag is in
+              flight but FADES out (so it doesn't cover the dragged element), then
+              fades back in on drop — a transition, not a hard mount/unmount, so it's
+              not abrupt. Uses the project's motion tokens (EASE.out / DUR scale,
+              Decision #21). pointer-events off while hidden so the fading panel can't
+              catch the drag. ReorderOverlay (listeners + bar) stays outside, always
+              live. Honors reduced-motion via motion-reduce:transition-none. */}
+          <div
+            className="transition-opacity ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+            style={{
+              opacity: reordering ? 0 : 1,
+              transitionDuration: reordering ? '120ms' : '160ms', // out a touch quicker than in
+              pointerEvents: reordering ? 'none' : undefined,
+            }}
+          >
+            <BoxModelOverlay
+              node={selected.node}
+              padding={values.padding}
+              margin={values.margin}
+              onPreview={applyPreview}
+              onCommit={commit}
+            />
+            {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
+            <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+            {panelPos && (
+              <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
+                {/* Key by element so the per-side expand state re-derives from the
+                    new element's values instead of carrying over the last one's. */}
+                <PropertiesPanel
+                  key={selected.key}
+                  values={values}
+                  chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
+                  selectedKey={selected.key}
+                  onPick={selectElement}
+                  onPreview={applyPreview}
+                  onCommit={commit}
+                />
+                {error && (
+                  <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
+                    {error}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ReorderOverlay lives OUTSIDE the fading wrapper — its listeners + the
+              insertion bar must stay fully live through the drag, never faded. */}
           {reorderable?.reorderable && (
             <ReorderOverlay
               node={selected.node}
@@ -590,26 +622,6 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
               onReorder={(toIndex) => commitReorder(selected, toIndex)}
               onDragChange={setReordering}
             />
-          )}
-          {!reordering && panelPos && (
-            <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
-              {/* Key by element so the per-side expand state re-derives from the
-                  new element's values instead of carrying over the last one's. */}
-              <PropertiesPanel
-                key={selected.key}
-                values={values}
-                chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
-                selectedKey={selected.key}
-                onPick={selectElement}
-                onPreview={applyPreview}
-                onCommit={commit}
-              />
-              {error && (
-                <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
-                  {error}
-                </p>
-              )}
-            </div>
           )}
         </>
       )}
