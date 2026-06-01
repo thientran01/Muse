@@ -162,7 +162,7 @@ export function ReorderOverlay({
       // When make-room is active, the opened gap IS the affordance — slide the
       // siblings and hide the bar. Otherwise show the bar (2D / reduced-motion).
       if (target && p.sibPrev) {
-        applyMakeRoom(p.frozen!, target.slot)
+        applyMakeRoom(p.frozen!, target.slot, p.fromIndex)
         setDrop({ ...target, bar: null })
       } else {
         setDrop(target)
@@ -420,14 +420,26 @@ function primeMakeRoom(frozen: Frozen): Map<HTMLElement, { transition: string; t
   return saved
 }
 
-// Shift every OTHER sibling at or after `slot` forward by the dragged element's
-// extent + the inter-sibling gap, opening the gap the element will drop into; the
-// rest sit at rest. Idempotent per move (sets an absolute transform each time).
-function applyMakeRoom(frozen: Frozen, slot: number) {
+// Open the drop gap by sliding only the siblings BETWEEN the dragged element's
+// original slot and the target slot — and in the correct direction.
+//
+// The dragged element moves by transform, so its layout box stays put: the frozen
+// sibling positions still contain a "hole" at fromIndex. So a sibling's shift is
+// its FINAL slot minus its FROZEN slot, in hole-units (each ±1 = one extent+gap):
+//   • frozen full-index of nodes[i] = i < fromIndex ? i : i+1
+//   • final  full-index of nodes[i] = i < slot      ? i : i+1
+// Dragging FORWARD (slot > fromIndex): siblings fromIndex≤i<slot shift -1 (back,
+// toward the vacated hole). Dragging BACKWARD (slot < fromIndex): siblings
+// slot≤i<fromIndex shift +1 (forward, away). Everything else stays at rest. (The
+// old "everything ≥ slot moves forward" was only right when dragging the LAST
+// element — hence the first-element-forward bug.)
+function applyMakeRoom(frozen: Frozen, slot: number, fromIndex: number) {
   const { nodes, layout, draggedRect, gap } = frozen
-  const shift = (layout.vertical ? draggedRect.height : draggedRect.width) + gap
+  const step = (layout.vertical ? draggedRect.height : draggedRect.width) + gap
   for (let i = 0; i < nodes.length; i++) {
-    const d = i >= slot ? shift : 0
+    const frozenK = i < fromIndex ? i : i + 1
+    const finalK = i < slot ? i : i + 1
+    const d = (finalK - frozenK) * step // ∈ {-step, 0, +step}
     nodes[i].style.transform = d === 0 ? '' : layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
   }
 }
