@@ -13,7 +13,7 @@ import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPane
 import { ReorderOverlay } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
-const PANEL_W = 208
+const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
 const GAP = 12
 
 const px = (v: string) => {

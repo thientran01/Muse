@@ -105,31 +105,41 @@ export function SideGroup({
   minSide: number
 } & EditProps) {
   const [expanded, setExpanded] = useState(!sidesEqual(values))
-  const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
   const sideProp = (side: 'Top' | 'Right' | 'Bottom' | 'Left') => `${base}${side}` as StyleProperty
+  // Single-letter side labels (T/R/B/L) so they never truncate inside the field box;
+  // the full name is the title attribute. (Figma uses the same compact convention.)
+  const sides = [
+    { key: 'Top', short: 'T' },
+    { key: 'Right', short: 'R' },
+    { key: 'Bottom', short: 'B' },
+    { key: 'Left', short: 'L' },
+  ] as const
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
+      {/* Sub-label: lighter + uppercase tracking, distinct from the bold section
+          headers (Color / Spacing) so the hierarchy reads clearly. */}
       <div className="flex items-center justify-between">
-        <SectionLabel>{title}</SectionLabel>
+        <span className="text-[10px] uppercase tracking-wide text-fg-faint">{title}</span>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
           title={expanded ? 'Link sides' : 'Edit each side'}
         >
-          {expanded ? <ArrowsInSimple size={13} /> : <ArrowsOutSimple size={13} />}
+          {expanded ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
         </button>
       </div>
       {expanded ? (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-          {(['Top', 'Right', 'Bottom', 'Left'] as const).map((side) => (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+          {sides.map(({ key, short }) => (
             <ScrubField
-              key={side}
-              label={cap(side)}
-              value={values[side.toLowerCase() as keyof Sides]}
+              key={key}
+              label={short}
+              ariaLabel={key}
+              value={values[key.toLowerCase() as keyof Sides]}
               min={minSide}
-              onPreview={(v) => onPreview([{ property: sideProp(side), value: `${v}px` }])}
-              onCommit={(v) => onCommit([{ property: sideProp(side), value: `${v}px` }])}
+              onPreview={(v) => onPreview([{ property: sideProp(key), value: `${v}px` }])}
+              onCommit={(v) => onCommit([{ property: sideProp(key), value: `${v}px` }])}
             />
           ))}
         </div>
@@ -196,9 +206,8 @@ export function Legend({ hasGap }: { hasGap: boolean }) {
 // Precise W/H — complements the on-canvas corner handles.
 export function SizeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   return (
-    <div className="space-y-1.5">
-      <SectionLabel>Size</SectionLabel>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+    <div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
         <ScrubField label="W" value={values.size.width} min={0}
           onPreview={(v) => onPreview([{ property: 'width', value: `${v}px` }])}
           onCommit={(v) => onCommit([{ property: 'width', value: `${v}px` }])} />
@@ -213,9 +222,8 @@ export function SizeFields({ values, onPreview, onCommit }: { values: CanvasValu
 // Font size / weight / line-height / letter-spacing — only where text renders.
 export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   return (
-    <div className="space-y-1.5">
-      <SectionLabel>Type</SectionLabel>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+    <div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
         <ScrubField label="Size" value={values.type.fontSize} min={1}
           onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
           onCommit={(v) => onCommit([{ property: 'fontSize', value: `${v}px` }])} />
@@ -237,7 +245,6 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
 export function ColorFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   return (
     <div className="space-y-1.5">
-      <SectionLabel>Color</SectionLabel>
       {values.rendersText && (
         <ColorRow label="Text" value={values.color.text} themed={values.colorThemed.text}
           onPreview={(v) => onPreview([{ property: 'color', value: v }])}
@@ -258,14 +265,13 @@ export function GapFields({ values, onPreview, onCommit }: { values: CanvasValue
   if (!values.gap) return null
   const linked = values.gap.row === values.gap.column
   return (
-    <div className="space-y-1.5">
-      <SectionLabel>Gap</SectionLabel>
+    <div>
       {linked ? (
         <ScrubField label="Gap" value={values.gap.row} min={0}
           onPreview={(v) => onPreview([{ property: 'gap', value: `${v}px` }])}
           onCommit={(v) => onCommit([{ property: 'gap', value: `${v}px` }])} />
       ) : (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
           <ScrubField label="Row" value={values.gap.row} min={0}
             onPreview={(v) => onPreview([{ property: 'rowGap', value: `${v}px` }])}
             onCommit={(v) => onCommit([{ property: 'rowGap', value: `${v}px` }])} />
@@ -289,17 +295,54 @@ export function SpacingFields({ values, onPreview, onCommit }: { values: CanvasV
   )
 }
 
-// The outer panel shell — same surface/ring/blur every variant sits in, with a
-// viewport cap so a tall panel scrolls inside instead of running off-screen.
+// The outer panel shell — surface/ring/blur, with a viewport cap so a tall panel
+// scrolls inside instead of running off-screen when the element sits low.
 function PanelShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex max-h-[min(70vh,520px)] w-[208px] flex-col gap-3 overflow-y-auto rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+    <div className="flex max-h-[min(70vh,520px)] w-[232px] flex-col gap-2.5 overflow-y-auto overflow-x-hidden rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
       {children}
     </div>
   )
 }
 
-// ── The current (live) panel — everything stacked. Kept as the baseline. ──
+// One collapsible section: a clickable header + (when open) its body. The chevron
+// rotates to show state. Sections toggle independently (you can open several).
+function Section({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center justify-between text-left transition hover:opacity-80"
+        aria-expanded={open}
+      >
+        <SectionLabel>{label}</SectionLabel>
+        <span className={`text-[10px] leading-none text-fg-faint transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>›</span>
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
+type SectionKey = 'size' | 'type' | 'color' | 'spacing' | 'gap'
+
+// Which sections are open — PERSISTED at module scope so it survives the panel's
+// remount on every selection (the render site keys the panel by element). This is
+// the friction-killer: open Color once and it stays open as you click through a
+// run of elements doing a color pass — one click per TASK, not per element. null
+// until the first panel initializes it from the first element's smart default.
+let persistedOpen: Set<SectionKey> | null = null
+
+// Smart default the FIRST time a panel mounts this session: a text element opens
+// Type (the likely edit), anything else opens Size. After that, the user's toggles
+// own it (persistedOpen), so we never override a deliberate choice.
+function initialOpen(values: CanvasValues): Set<SectionKey> {
+  if (persistedOpen) return new Set(persistedOpen)
+  return new Set<SectionKey>([values.rendersText ? 'type' : 'size'])
+}
+
+// The live canvas properties panel — collapsible sections (independent toggles)
+// with persistence + a smart default, so it stays concise and never clips while
+// keeping every control one click away.
 export function PropertiesPanel({
   values,
   chain,
@@ -313,25 +356,49 @@ export function PropertiesPanel({
   selectedKey: string
   onPick: (c: CanvasElement) => void
 } & EditProps) {
+  const [open, setOpen] = useState<Set<SectionKey>>(() => initialOpen(values))
+  const toggle = (k: SectionKey) =>
+    setOpen((prev) => {
+      const next = new Set(prev)
+      next.has(k) ? next.delete(k) : next.add(k)
+      persistedOpen = next // remember across selections (survives remount)
+      return next
+    })
+
   return (
     <PanelShell>
       <Breadcrumb chain={chain} selectedKey={selectedKey} onPick={onPick} />
       <Legend hasGap={!!values.gap} />
-      <SizeFields values={values} onPreview={onPreview} onCommit={onCommit} />
+
+      <Section label="Size" open={open.has('size')} onToggle={() => toggle('size')}>
+        <SizeFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      </Section>
+
       {values.rendersText && (
         <>
           {divider}
-          <TypeFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          <Section label="Type" open={open.has('type')} onToggle={() => toggle('type')}>
+            <TypeFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          </Section>
         </>
       )}
+
       {divider}
-      <ColorFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      <Section label="Color" open={open.has('color')} onToggle={() => toggle('color')}>
+        <ColorFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      </Section>
+
       {divider}
-      <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      <Section label="Spacing" open={open.has('spacing')} onToggle={() => toggle('spacing')}>
+        <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      </Section>
+
       {values.gap && (
         <>
           {divider}
-          <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          <Section label="Gap" open={open.has('gap')} onToggle={() => toggle('gap')}>
+            <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          </Section>
         </>
       )}
     </PanelShell>

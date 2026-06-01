@@ -14,7 +14,6 @@ import { MessageThinking } from './components/messages/MessageThinking'
 import { MessageUser } from './components/messages/MessageUser'
 import { UfoIcon } from './components/UfoIcon'
 import { PropertiesPanel, type CanvasValues } from './components/canvas/PropertiesPanel'
-import { PanelTabs, PanelAccordion, PanelCompact } from './components/canvas/PanelVariants'
 import type { CanvasElement } from './types'
 import { fxEdits, fxElement, fxOriginals, fxQuestions, fxRationale } from './fixtures'
 import type { ProposedOption, SelectedElement } from './types'
@@ -182,34 +181,22 @@ function PanelCell({ label, sub, theme, children }: { label: string; sub: string
   )
 }
 
-const PANEL_VARIANTS = [
-  { label: 'Current — all stacked', sub: 'baseline · the overwhelming one', Comp: PropertiesPanel },
-  { label: 'A · Segmented tabs', sub: 'one category at a time', Comp: PanelTabs },
-  { label: 'B · Collapsible sections', sub: 'accordion, smart default-open', Comp: PanelAccordion },
-  { label: 'C · Compact + More', sub: 'type/color first, spacing on demand', Comp: PanelCompact },
-] as const
-
-// Side-by-side of the current panel + 3 density prototypes, each in light + dark,
-// all fed the SAME worst-case element so heights are comparable.
+// The live properties panel (collapsible sections) in both themes, fed a
+// worst-case element (text, every section populated) so its full extent shows.
 function PanelDensity() {
   return (
     <section className="mx-auto mb-10 max-w-6xl space-y-6">
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Properties panel — density options</h2>
-        <p className="mt-1 text-sm text-slate-500">Same element (text, every section populated) through all four panels. The shell caps at 70vh and scrolls, so none clip when the element sits low on screen.</p>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Properties panel</h2>
+        <p className="mt-1 text-sm text-slate-500">Collapsible sections (independent toggles) with a smart default-open + persistence across selections. The shell caps at 70vh and scrolls, so it never clips when the element sits low on screen.</p>
       </div>
-      {(['dark', 'light'] as const).map((theme) => (
-        <div key={theme} className="space-y-3">
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</h3>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {PANEL_VARIANTS.map(({ label, sub, Comp }) => (
-              <PanelCell key={label} label={label} sub={sub} theme={theme}>
-                <Comp values={fxPanelValues} chain={fxPanelChain} selectedKey="k4" onPick={noop} onPreview={noop} onCommit={noop} />
-              </PanelCell>
-            ))}
-          </div>
-        </div>
-      ))}
+      <div className="grid grid-cols-2 gap-4">
+        {(['dark', 'light'] as const).map((theme) => (
+          <PanelCell key={theme} label={theme === 'dark' ? 'Dark mode' : 'Light mode'} sub="click a section header to expand/collapse" theme={theme}>
+            <PropertiesPanel values={fxPanelValues} chain={fxPanelChain} selectedKey="k4" onPick={noop} onPreview={noop} onCommit={noop} />
+          </PanelCell>
+        ))}
+      </div>
     </section>
   )
 }
