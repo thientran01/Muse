@@ -434,7 +434,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             if (c) selectElement(c)
           }
           bump((v) => v + 1)
-          resolve()
+          // Resolve only AFTER the re-select has re-rendered + the panel re-anchored
+          // (the useLayoutEffect on `selected` runs before the next paint). Two rAFs
+          // clears that frame, so the overlay's un-hide finds the chrome already
+          // positioned at the new location — no flash at the old slot.
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         }, 200),
       )
     } catch (e) {

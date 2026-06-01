@@ -233,26 +233,36 @@ export function ReorderOverlay({
       press.current = null // drag is over; saved styles captured in locals above
       if (frozen && prevStyle) landToDestination(node, frozen, p.fromIndex, target.toIndex, prevStyle)
 
-      let finalized = false
-      const finalize = () => {
-        if (finalized) return
-        finalized = true
+      // TWO separate moments, deliberately NOT merged:
+      //
+      // (1) CLEAR TRANSFORMS — must happen in the exact frame the content swaps, or
+      //     the held transforms briefly show the original order (the fakeout). Driven
+      //     by a MutationObserver on the container (fires after the DOM mutation,
+      //     before paint), so swap + clear are atomic.
+      let cleared = false
+      const clearTransforms = () => {
+        if (cleared) return
+        cleared = true
         obs.disconnect()
         window.clearTimeout(safety)
-        if (prevStyle && node.isConnected) restoreLift(node, prevStyle) // clears transform/shadow/z/etc.
-        if (sibPrev) restoreMakeRoom(sibPrev) // clears sibling transforms — same frame as the swap
-        onDragChangeRef.current?.(false) // un-hide AFTER the new order is on screen
+        if (prevStyle && node.isConnected) restoreLift(node, prevStyle) // transform/shadow/z/…
+        if (sibPrev) restoreMakeRoom(sibPrev) // sibling transforms — same frame as the swap
       }
-      // Primary: clear atomically with the content swap (childList/characterData on
-      // the reused nodes). The first such mutation after a drop is the reorder swap —
-      // nothing else mutates this container in the hold window.
-      const obs = new MutationObserver(finalize)
+      const obs = new MutationObserver(clearTransforms)
       obs.observe(parent, { childList: true, subtree: true, characterData: true })
-      // Safety net only: if HMR somehow produced no observable mutation, don't strand
-      // the transforms forever. Long enough (well past the ~200ms HMR settle) that it
-      // never pre-empts the observer on the normal path.
-      const safety = window.setTimeout(finalize, 1200)
-      void onReorderRef.current(target.toIndex)
+      const safety = window.setTimeout(clearTransforms, 1200) // strand-guard if no mutation
+
+      // (2) UN-HIDE THE CHROME — must wait for the RE-SELECT, not the content swap.
+      //     HMR reuses nodes positionally, so right after the swap `selected` still
+      //     points at the dragged element's ORIGINAL physical node, now showing the
+      //     other element's content at the old slot. Un-hiding then would flash the
+      //     chrome at the old location before commitReorder's re-select moves it.
+      //     onReorder resolves only AFTER that re-select, so un-hide in its finally —
+      //     the chrome fades back in already anchored to the new location.
+      void onReorderRef.current(target.toIndex).finally(() => {
+        clearTransforms() // belt-and-suspenders: ensure nothing strands if no mutation fired
+        onDragChangeRef.current?.(false)
+      })
     }
 
     const onCancel = (e: PointerEvent) => {
