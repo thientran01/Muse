@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -500,6 +500,100 @@ export function musePlugin(): Plugin {
         } catch (err) {
           console.error('[muse] /style-edit error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/text-edit --------------------------------------
+      // Deterministic text-content edit → source edit. NO model call. Takes an
+      // element pinpointed by its _debugSource plus the new text, rewrites its
+      // single static JSXText child, and returns { fileName, newContent } + the
+      // originals — same shape + flow as /style-edit (approve → /write → history).
+      server.middlewares.use('/api/muse/text-edit', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const body = JSON.parse(await readBody(req)) as {
+            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown }>
+          }
+          const rawEdits = Array.isArray(body.edits) ? body.edits : []
+          if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
+
+          const out: Array<{ fileName: string; newContent: string }> = []
+          const originals: Record<string, string> = {}
+          const warnings: string[] = []
+          // Group by file, apply highest line first (a multi-line splice can't yet
+          // happen — text is single-line — but keep parity with /style-edit).
+          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; text: string }> }>()
+          for (const e of rawEdits) {
+            const abs = resolveInSrc(root, e?.fileName)
+            if (!abs) {
+              warnings.push(`skipped "${String(e?.fileName)}" — not an editable file under src/.`)
+              continue
+            }
+            const rel = relOf(root, abs)
+            const line = Number(e?.line)
+            const column = Number(e?.column)
+            const tag = typeof e?.tag === 'string' ? e.tag : undefined
+            const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
+            const text = typeof e?.text === 'string' ? e.text : null
+            if (!Number.isInteger(line) || line <= 0 || text === null) {
+              warnings.push(`skipped ${rel} — needs a positive line and text.`)
+              continue
+            }
+            const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
+            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, text })
+            byFile.set(rel, bucket)
+          }
+
+          for (const { abs, rel, items } of byFile.values()) {
+            let content = fs.readFileSync(abs, 'utf8')
+            const before = content
+            let changed = false
+            items.sort((a, b) => b.line - a.line)
+            for (const it of items) {
+              const result = computeTextEdit(content, it.line, it.column, it.text, it.tag, it.classNames, lineOffsetHint)
+              if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
+              if (result.changed) {
+                content = result.newContent
+                changed = true
+              }
+            }
+            if (changed) {
+              originals[rel] = before
+              out.push({ fileName: rel, newContent: content })
+            }
+          }
+
+          if (out.length === 0) {
+            return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
+          }
+          return sendJson(res, 200, { edits: out, originals, warnings })
+        } catch (err) {
+          console.error('[muse] /text-edit error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/text-editable ----------------------------------
+      // Cheap probe: can this element's text be edited (single static JSXText)?
+      // The client calls it on double-click so it can show a calm hint for
+      // data-bound text instead of entering a doomed edit.
+      server.middlewares.use('/api/muse/text-editable', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+          const abs = resolveInSrc(root, b?.fileName)
+          const line = Number(b?.line)
+          if (!abs || !Number.isInteger(line) || line <= 0) {
+            return sendJson(res, 200, { editable: false, reason: 'not an editable element' })
+          }
+          const source = fs.readFileSync(abs, 'utf8')
+          const tag = typeof b?.tag === 'string' ? b.tag : undefined
+          const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
+          const result = computeTextEditable(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, lineOffsetHint)
+          return sendJson(res, 200, result)
+        } catch (err) {
+          console.error('[muse] /text-editable error:', err)
+          return sendJson(res, 200, { editable: false, reason: 'check failed' })
         }
       })
 

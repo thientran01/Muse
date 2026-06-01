@@ -53,6 +53,17 @@ export type StyleEditResponse = {
   warnings: string[]
 }
 
+// A request to /api/muse/text-edit: which element, and its new text content.
+export type TextEditRequest = {
+  fileName: string
+  line: number
+  column: number
+  tag?: string
+  classNames?: string
+  text: string // the NEW text content
+}
+export type TextEditResponse = StyleEditResponse
+
 // --- Tool I/O (mirrors the schemas in server/musePlugin.ts) ---
 export type QuestionOption = { label: string; description: string }
 export type ClarifyingQuestion = { question: string; options: QuestionOption[] }

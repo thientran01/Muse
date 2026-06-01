@@ -23,7 +23,9 @@ import _traverse from '@babel/traverse'
 import type {
   File,
   JSXAttribute,
+  JSXElement,
   JSXOpeningElement,
+  JSXText,
   ObjectExpression,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
@@ -393,4 +395,126 @@ export function computeStyleEdit(
   let out = source
   for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
   return { newContent: out, changed: true, warnings }
+}
+
+// ============================================================
+//  TEXT EDIT — rewrite an element's literal text content
+// ------------------------------------------------------------
+//  Companion to computeStyleEdit: instead of an attribute, it rewrites the single
+//  static JSXText child of the located element. Same locator (so it survives the
+//  Fast-Refresh line shift), same character-range splice, same result shape — so
+//  it flows through the existing write + undo/redo path.
+// ============================================================
+
+export type TextEditResult = { newContent: string; changed: boolean; warnings: string[] }
+
+const MAX_TEXT_LEN = 10_000
+
+// The new text is literal JSXText; entity-encode the characters that would
+// otherwise break the parse (`<` `>` open a tag, `{` `}` an expression). Encode
+// `&` first so we never double-encode. React renders these back to the literal
+// glyphs, so the visible text is unchanged.
+function encodeJsxText(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;')
+}
+
+// Locate the JSXElement (not just its opening tag) by matching the opening the
+// shared locator returns — identity match, so it's exact and self-validating.
+function locateElement(
+  ast: File,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): JSXElement | null {
+  const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
+  if (!opening) return null
+  let found: JSXElement | null = null
+  traverse(ast, {
+    JSXElement(path) {
+      if (path.node.openingElement === opening) {
+        found = path.node
+        path.stop()
+      }
+    },
+  })
+  return found
+}
+
+// Locate the single static JSXText that an element's visible text comes from, or
+// the reason it isn't editable. Shared by the editability probe and the edit, so
+// "is this editable?" and "edit it" can never disagree. The text must be exactly
+// ONE static JSXText (other children may be elements like an <Icon/>; whitespace-
+// only JSXText is insignificant). Zero → the text is dynamic ({expr}); more than
+// one → mixed static + dynamic.
+function findTextNode(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { node: JSXText } | { reason: string } {
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { reason: `parse failed: ${(e as Error).message}` }
+  }
+  const element = locateElement(ast, line, column, tag, classNames, offsetHint)
+  if (!element) return { reason: `no JSX element found at line ${line}` }
+  if (element.openingElement.selfClosing) return { reason: 'this element has no text to edit' }
+  const texts = element.children.filter((c): c is JSXText => c.type === 'JSXText' && /\S/.test(c.value))
+  if (texts.length === 0) return { reason: 'this text comes from data, not static text' }
+  if (texts.length > 1) return { reason: 'this text mixes static + data — not editable here' }
+  const node = texts[0]
+  if (node.start == null || node.end == null) return { reason: 'text node has no source position' }
+  return { node }
+}
+
+// Cheap "can this text be edited?" check (no write) — the client probes it on
+// double-click so it can show a calm hint instead of letting you type then bounce.
+export function computeTextEditable(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { editable: boolean; reason?: string } {
+  const t = findTextNode(source, line, column, tag, classNames, offsetHint)
+  return 'node' in t ? { editable: true } : { editable: false, reason: t.reason }
+}
+
+export function computeTextEdit(
+  source: string,
+  line: number,
+  column: number,
+  newText: string,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): TextEditResult {
+  if (typeof newText !== 'string') return { newContent: source, changed: false, warnings: ['no text provided'] }
+  if (newText.length > MAX_TEXT_LEN) return { newContent: source, changed: false, warnings: ['text too long'] }
+
+  const t = findTextNode(source, line, column, tag, classNames, offsetHint)
+  if ('reason' in t) return { newContent: source, changed: false, warnings: [t.reason] }
+  const node = t.node
+
+  // Keep the node's own surrounding whitespace (indentation / the space after an
+  // inline icon); swap only the visible middle.
+  const lead = node.value.match(/^\s*/)![0]
+  const trail = node.value.match(/\s*$/)![0]
+  const replacement = lead + encodeJsxText(newText.trim()) + trail
+  if (replacement === node.value) return { newContent: source, changed: false, warnings: ['nothing to change'] }
+
+  const out = source.slice(0, node.start!) + replacement + source.slice(node.end!)
+  return { newContent: out, changed: true, warnings: [] }
 }
