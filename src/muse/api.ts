@@ -118,6 +118,24 @@ export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEdi
   }
 }
 
+// Probe whether an element's text is editable (single static JSXText) BEFORE
+// entering edit mode, so data-bound text shows a calm hint instead of a bounce.
+export async function museTextEditable(
+  req: Omit<TextEditRequest, 'text'>,
+): Promise<{ editable: boolean; reason?: string }> {
+  try {
+    const res = await fetch('/api/muse/text-editable', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    const data = (await res.json()) as { editable?: boolean; reason?: string }
+    return { editable: data.editable !== false, reason: data.reason }
+  } catch {
+    return { editable: true } // probe failed — let the commit be the authority
+  }
+}
+
 export type DesignGet = { exists: boolean; content?: string; path?: string }
 
 // Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.

@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -570,6 +570,30 @@ export function musePlugin(): Plugin {
         } catch (err) {
           console.error('[muse] /text-edit error:', err)
           return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/text-editable ----------------------------------
+      // Cheap probe: can this element's text be edited (single static JSXText)?
+      // The client calls it on double-click so it can show a calm hint for
+      // data-bound text instead of entering a doomed edit.
+      server.middlewares.use('/api/muse/text-editable', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+          const abs = resolveInSrc(root, b?.fileName)
+          const line = Number(b?.line)
+          if (!abs || !Number.isInteger(line) || line <= 0) {
+            return sendJson(res, 200, { editable: false, reason: 'not an editable element' })
+          }
+          const source = fs.readFileSync(abs, 'utf8')
+          const tag = typeof b?.tag === 'string' ? b.tag : undefined
+          const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
+          const result = computeTextEditable(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, lineOffsetHint)
+          return sendJson(res, 200, result)
+        } catch (err) {
+          console.error('[muse] /text-editable error:', err)
+          return sendJson(res, 200, { editable: false, reason: 'check failed' })
         }
       })
 

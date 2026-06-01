@@ -447,6 +447,51 @@ function locateElement(
   return found
 }
 
+// Locate the single static JSXText that an element's visible text comes from, or
+// the reason it isn't editable. Shared by the editability probe and the edit, so
+// "is this editable?" and "edit it" can never disagree. The text must be exactly
+// ONE static JSXText (other children may be elements like an <Icon/>; whitespace-
+// only JSXText is insignificant). Zero → the text is dynamic ({expr}); more than
+// one → mixed static + dynamic.
+function findTextNode(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { node: JSXText } | { reason: string } {
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { reason: `parse failed: ${(e as Error).message}` }
+  }
+  const element = locateElement(ast, line, column, tag, classNames, offsetHint)
+  if (!element) return { reason: `no JSX element found at line ${line}` }
+  if (element.openingElement.selfClosing) return { reason: 'this element has no text to edit' }
+  const texts = element.children.filter((c): c is JSXText => c.type === 'JSXText' && /\S/.test(c.value))
+  if (texts.length === 0) return { reason: 'this text comes from data, not static text' }
+  if (texts.length > 1) return { reason: 'this text mixes static + data — not editable here' }
+  const node = texts[0]
+  if (node.start == null || node.end == null) return { reason: 'text node has no source position' }
+  return { node }
+}
+
+// Cheap "can this text be edited?" check (no write) — the client probes it on
+// double-click so it can show a calm hint instead of letting you type then bounce.
+export function computeTextEditable(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { editable: boolean; reason?: string } {
+  const t = findTextNode(source, line, column, tag, classNames, offsetHint)
+  return 'node' in t ? { editable: true } : { editable: false, reason: t.reason }
+}
+
 export function computeTextEdit(
   source: string,
   line: number,
@@ -459,31 +504,10 @@ export function computeTextEdit(
   if (typeof newText !== 'string') return { newContent: source, changed: false, warnings: ['no text provided'] }
   if (newText.length > MAX_TEXT_LEN) return { newContent: source, changed: false, warnings: ['text too long'] }
 
-  let ast: File
-  try {
-    ast = parseFile(source)
-  } catch (e) {
-    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`] }
-  }
+  const t = findTextNode(source, line, column, tag, classNames, offsetHint)
+  if ('reason' in t) return { newContent: source, changed: false, warnings: [t.reason] }
+  const node = t.node
 
-  const element = locateElement(ast, line, column, tag, classNames, offsetHint)
-  if (!element) return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`] }
-  if (element.openingElement.selfClosing) {
-    return { newContent: source, changed: false, warnings: ['element has no text to edit'] }
-  }
-
-  // The visible text must be exactly ONE static JSXText (other children may be
-  // elements like an <Icon/>; whitespace-only JSXText is insignificant). Zero →
-  // the text is dynamic ({expr}); more than one → mixed static + dynamic. Either
-  // way we refuse rather than guess — the client restores the typed DOM text.
-  const texts = element.children.filter((c): c is JSXText => c.type === 'JSXText' && /\S/.test(c.value))
-  if (texts.length === 0) return { newContent: source, changed: false, warnings: ['text is dynamic — not editable here'] }
-  if (texts.length > 1) return { newContent: source, changed: false, warnings: ['text is mixed static + dynamic — not editable here'] }
-
-  const node = texts[0]
-  if (node.start == null || node.end == null) {
-    return { newContent: source, changed: false, warnings: ['text node has no source position'] }
-  }
   // Keep the node's own surrounding whitespace (indentation / the space after an
   // inline icon); swap only the visible middle.
   const lead = node.value.match(/^\s*/)![0]
