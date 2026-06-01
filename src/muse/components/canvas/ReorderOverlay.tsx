@@ -323,12 +323,25 @@ function applyLift(node: HTMLElement): SavedStyle {
   // accent selection ring (BoxModelOverlay), so the lift signals depth (shadow +
   // raised layer + scale) while accent stays the language of selection + the drop
   // bar — three roles, two visual cues, no accent-halo collision.
-  s.boxShadow = '0 12px 28px -6px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3)'
   s.zIndex = '999990' // above peers, below Muse's overlay chrome
-  s.opacity = '0.95'
-  s.transition = 'none' // we drive transform per-frame; no lag
   s.cursor = 'grabbing'
   s.willChange = 'transform'
+  // Ease the DEPTH cues (shadow + fade) in over LIFT_MS so the element reads as
+  // lifting OFF the surface instead of popping — but transform is NOT in the
+  // transition list, so per-frame cursor-follow stays 1:1 with zero lag. (Reduced
+  // motion: no transition; the cues just appear.)
+  s.transition = prefersReducedMotion() ? 'none' : `box-shadow ${LIFT_MS}ms ${EASE_OUT}, opacity ${LIFT_MS}ms ${EASE_OUT}`
+  // Set the eased target props on the next frame so the transition has a from→to to
+  // animate (setting them in the same frame as the transition would snap).
+  requestAnimationFrame(() => {
+    if (node.style.zIndex !== '999990') return // lift was already torn down
+    // Neutral elevation, NOT an accent ring: the selected element already wears the
+    // accent selection ring (BoxModelOverlay), so the lift signals depth (shadow +
+    // raised layer + scale) while accent stays the language of selection + the drop
+    // bar — three roles, two visual cues, no accent-halo collision.
+    node.style.boxShadow = '0 12px 28px -6px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3)'
+    node.style.opacity = '0.95'
+  })
   return prev
 }
 
@@ -375,7 +388,7 @@ function landToDestination(node: HTMLElement, frozen: Frozen, fromIndex: number,
   if (!node.isConnected || prefersReducedMotion()) return
   const off = destOffset(frozen, fromIndex, toIndex)
   const s = node.style
-  s.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
+  s.transition = `transform ${SLIDE_MS}ms ${EASE_OUT}, box-shadow ${SLIDE_MS}ms ${EASE_OUT}, opacity ${SLIDE_MS}ms ${EASE_OUT}`
   s.transform = off === 0 ? prev.transform : frozen.layout.vertical ? `translateY(${off}px)` : `translateX(${off}px)`
   s.boxShadow = prev.boxShadow
   s.opacity = prev.opacity
@@ -499,7 +512,12 @@ function computeDrop(px: number, py: number, frozen: Frozen, fromIndex: number):
 
 // --- make-room: slide siblings to open the drop gap (Figma-style) ---
 
-const SLIDE_MS = 160 // matches the project's motion scale (<300ms easeOut)
+// The project's one motion curve (EASE.out, tailwind.config.js / Decision #21) —
+// mirrored here because these are imperative inline-style transitions, not classes.
+// Keep in sync with the token; do not invent a second curve.
+const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)'
+const SLIDE_MS = 160 // DUR.base — make-room slide + landing set-down (<300ms easeOut)
+const LIFT_MS = 140 // pickup depth cue (shadow + fade) easing in
 
 // Save each sibling's inline transition/transform and prime the transition so the
 // per-move shifts animate instead of snapping. Returns the saved map for restore.
@@ -507,7 +525,7 @@ function primeMakeRoom(frozen: Frozen): Map<HTMLElement, { transition: string; t
   const saved = new Map<HTMLElement, { transition: string; transform: string }>()
   for (const n of frozen.nodes) {
     saved.set(n, { transition: n.style.transition, transform: n.style.transform })
-    n.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
+    n.style.transition = `transform ${SLIDE_MS}ms ${EASE_OUT}`
     n.style.willChange = 'transform'
   }
   return saved
