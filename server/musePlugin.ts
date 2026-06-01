@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, computeTextEditable, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -594,6 +594,103 @@ export function musePlugin(): Plugin {
         } catch (err) {
           console.error('[muse] /text-editable error:', err)
           return sendJson(res, 200, { editable: false, reason: 'check failed' })
+        }
+      })
+
+      // --- POST /api/muse/reorder ----------------------------------------
+      // Deterministic structural edit → source edit. NO model call. Moves the
+      // element (pinpointed by its _debugSource) to insertion slot `toIndex` among
+      // its siblings, returning { fileName, newContent } + originals — same shape +
+      // flow as /style-edit (approve → /write → history), so a reorder is undoable
+      // like any other change. Single edit per request (one dragged element).
+      server.middlewares.use('/api/muse/reorder', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const body = JSON.parse(await readBody(req)) as {
+            edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; toIndex?: unknown }>
+          }
+          const rawEdits = Array.isArray(body.edits) ? body.edits : []
+          if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
+
+          const out: Array<{ fileName: string; newContent: string }> = []
+          const originals: Record<string, string> = {}
+          const warnings: string[] = []
+          // Group by file, apply highest line first — a reorder DOES change a
+          // file's line count, so editing lower elements first keeps the still-
+          // original _debugSource lines of the higher ones valid (matches the
+          // /style-edit ordering rationale).
+          const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; toIndex: number }> }>()
+          for (const e of rawEdits) {
+            const abs = resolveInSrc(root, e?.fileName)
+            if (!abs) {
+              warnings.push(`skipped "${String(e?.fileName)}" — not an editable file under src/.`)
+              continue
+            }
+            const rel = relOf(root, abs)
+            const line = Number(e?.line)
+            const column = Number(e?.column)
+            const toIndex = Number(e?.toIndex)
+            const tag = typeof e?.tag === 'string' ? e.tag : undefined
+            const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
+            if (!Number.isInteger(line) || line <= 0 || !Number.isInteger(toIndex) || toIndex < 0) {
+              warnings.push(`skipped ${rel} — needs a positive line and a target slot.`)
+              continue
+            }
+            const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
+            bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, toIndex })
+            byFile.set(rel, bucket)
+          }
+
+          for (const { abs, rel, items } of byFile.values()) {
+            let content = fs.readFileSync(abs, 'utf8')
+            const before = content
+            let changed = false
+            items.sort((a, b) => b.line - a.line)
+            for (const it of items) {
+              const result = computeReorder(content, it.line, it.column, it.toIndex, it.tag, it.classNames, lineOffsetHint)
+              if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
+              if (result.changed) {
+                content = result.newContent
+                changed = true
+              }
+            }
+            if (changed) {
+              originals[rel] = before
+              out.push({ fileName: rel, newContent: content })
+            }
+          }
+
+          if (out.length === 0) {
+            return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
+          }
+          return sendJson(res, 200, { edits: out, originals, warnings })
+        } catch (err) {
+          console.error('[muse] /reorder error:', err)
+          return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+        }
+      })
+
+      // --- POST /api/muse/reorderable ------------------------------------
+      // Cheap probe: can this element's siblings be reordered (host parent +
+      // host-only children)? The client calls it on select so it shows the drag
+      // handle only when a drop will actually commit.
+      server.middlewares.use('/api/muse/reorderable', async (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        try {
+          const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+          const abs = resolveInSrc(root, b?.fileName)
+          const line = Number(b?.line)
+          if (!abs || !Number.isInteger(line) || line <= 0) {
+            return sendJson(res, 200, { reorderable: false, reason: 'not a reorderable element' })
+          }
+          const source = fs.readFileSync(abs, 'utf8')
+          const tag = typeof b?.tag === 'string' ? b.tag : undefined
+          const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
+          const result = computeReorderable(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, lineOffsetHint)
+          return sendJson(res, 200, result)
+        } catch (err) {
+          console.error('[muse] /reorderable error:', err)
+          return sendJson(res, 200, { reorderable: false, reason: 'check failed' })
         }
       })
 

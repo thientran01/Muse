@@ -64,6 +64,29 @@ export type TextEditRequest = {
 }
 export type TextEditResponse = StyleEditResponse
 
+// --- Reorder (drag-to-reorder siblings) ---
+// One movable sibling the probe reports, so the client can confirm the live DOM
+// children line up 1:1 with the source children before trusting an index.
+export type ReorderChild = { index: number; tag: string; classNames: string | null }
+
+// The /api/muse/reorderable probe result: can this element's siblings be
+// reordered? (host parent + host-only children) — mirrors the text-editable probe.
+export type Reorderable =
+  | { reorderable: true; count: number; children: ReorderChild[] }
+  | { reorderable: false; reason: string }
+
+// A request to /api/muse/reorder: move this element to insertion slot `toIndex`
+// among its siblings (the source-order position it lands BEFORE; count === end).
+export type ReorderRequest = {
+  fileName: string
+  line: number
+  column: number
+  tag?: string
+  classNames?: string
+  toIndex: number
+}
+export type ReorderResponse = StyleEditResponse
+
 // --- Tool I/O (mirrors the schemas in server/musePlugin.ts) ---
 export type QuestionOption = { label: string; description: string }
 export type ClarifyingQuestion = { question: string; options: QuestionOption[] }
