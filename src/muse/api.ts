@@ -11,6 +11,8 @@ import type {
   StyleEditRequest,
   StyleEditResponse,
   StyleStrategy,
+  TextEditRequest,
+  TextEditResponse,
 } from './types'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -95,6 +97,42 @@ export async function museStyleEdit(
     edits: Array.isArray(data.edits) ? data.edits : [],
     originals: data.originals ?? {},
     warnings: Array.isArray(data.warnings) ? data.warnings : [],
+  }
+}
+
+// Deterministic text-content edit (Canvas Mode double-click). NO model call — the
+// server rewrites the element's single static JSXText and returns the new file
+// contents + originals, flowing through the SAME museWrite + history as styles.
+export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEditResponse> {
+  const res = await fetch('/api/muse/text-edit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ edits: requests }),
+  })
+  const data = (await res.json()) as Partial<TextEditResponse> & { error?: string }
+  if (data.error) throw new Error(data.error)
+  return {
+    edits: Array.isArray(data.edits) ? data.edits : [],
+    originals: data.originals ?? {},
+    warnings: Array.isArray(data.warnings) ? data.warnings : [],
+  }
+}
+
+// Probe whether an element's text is editable (single static JSXText) BEFORE
+// entering edit mode, so data-bound text shows a calm hint instead of a bounce.
+export async function museTextEditable(
+  req: Omit<TextEditRequest, 'text'>,
+): Promise<{ editable: boolean; reason?: string }> {
+  try {
+    const res = await fetch('/api/muse/text-editable', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    const data = (await res.json()) as { editable?: boolean; reason?: string }
+    return { editable: data.editable !== false, reason: data.reason }
+  } catch {
+    return { editable: true } // probe failed — let the commit be the authority
   }
 }
 

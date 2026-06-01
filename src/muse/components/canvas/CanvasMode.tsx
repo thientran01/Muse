@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { museStyleEdit, museWrite } from '../../api'
+import { museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
@@ -54,6 +54,16 @@ function readValues(node: HTMLElement): CanvasValues {
   }
 }
 
+// The element's OWN direct text (not descendants') — what computeTextEdit actually
+// rewrites (its single JSXText child). Reading full textContent would fold in a
+// child element's text and send the wrong string to the engine.
+function directText(node: HTMLElement): string {
+  return [...node.childNodes]
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? '')
+    .join('')
+}
+
 // rgb()/rgba() → #rrggbb for the color picker's current value (alpha dropped).
 function rgbToHex(c: string): string {
   const m = c.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
@@ -92,12 +102,19 @@ const asSelected = (el: CanvasElement): SelectedElement => ({
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit }: { onExit: () => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, miss } = useCanvasMode()
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } = useCanvasMode()
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [hint, setHint] = useState<{ x: number; y: number } | null>(null)
+  const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
+  const hintTimerRef = useRef<number | null>(null)
+  // Flash a brief, calm hint at a point (e.g. "this text comes from data").
+  const flashHint = (x: number, y: number, text: string) => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
+    setHint({ x, y, text })
+    hintTimerRef.current = window.setTimeout(() => setHint(null), 2200)
+  }
   // The live inline preview: the anchor node (used to detect a target change), all
   // peer nodes we've overridden (same-source instances), and which CSS keys. Held
   // as one object so a commit can SNAPSHOT the exact nodes + keys to strip after
@@ -172,9 +189,8 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // Show a brief "can't edit this" hint at the click point on an unmappable click.
   useEffect(() => {
     if (!miss) return
-    setHint({ x: miss.x, y: miss.y })
-    const t = window.setTimeout(() => setHint(null), 1600)
-    return () => clearTimeout(t)
+    flashHint(miss.x, miss.y, "Can't edit this one — no source mapping")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [miss?.id])
 
   // Native-feeling undo/redo on the SAME shared history stack chat writes to —
@@ -284,22 +300,174 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     }
   }
 
+  // Write a committed text change to source (same deterministic write + history as
+  // styles). The DOM already shows the typed text (contentEditable), so there's no
+  // inline-preview strip — HMR repaints the same text. Restores the original on a
+  // refusal (dynamic text) or error.
+  async function commitText(el: CanvasElement, node: HTMLElement, original: string) {
+    const restore = () => {
+      if (node.isConnected) node.textContent = original
+    }
+    const raw = directText(node).replace(/\s+/g, ' ').trim()
+    if (raw === original.replace(/\s+/g, ' ').trim()) {
+      exitEditing()
+      return
+    }
+    try {
+      const { edits, originals, warnings } = await museTextEdit([
+        { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: node.getAttribute('class') ?? '', text: raw },
+      ])
+      if (warnings.length) console.warn('[muse] text-edit:', warnings.join(' · '))
+      if (edits.length === 0) {
+        restore() // refusal (e.g. dynamic text) — put it back, calm hint (no red error)
+        const r = node.getBoundingClientRect()
+        flashHint(r.left, r.top, (warnings[0] ?? "this text can't be edited here").replace(/^[^:]*:\s*/, ''))
+        exitEditing()
+        return
+      }
+      await museWrite(edits)
+      // Keep sibling instances in sync so they don't lag the HMR repaint.
+      for (const peer of peerNodes(el)) if (peer !== node) peer.textContent = raw
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(el)],
+          label: `text "${raw.slice(0, 40)}"`,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      }
+      exitEditing()
+    } catch (e) {
+      restore()
+      setError((e as Error).message)
+      exitEditing()
+    }
+  }
+
+  // Enter contentEditable when `editing` is set (double-click). First probe the
+  // server: only static text (a single JSXText) is editable, so data-bound text
+  // gets a calm hint instead of a caret you'd type into then have bounced.
+  useEffect(() => {
+    if (!editing) return
+    const el = editing
+    const node = el.node
+    const rendersText = [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0)
+    if (!node.isConnected || !rendersText) {
+      exitEditing()
+      return
+    }
+
+    let cancelled = false
+    let teardown: (() => void) | null = null
+
+    void (async () => {
+      const { editable, reason } = await museTextEditable({
+        fileName: el.fileName,
+        line: el.line,
+        column: el.column,
+        tag: el.tag,
+        classNames: node.getAttribute('class') ?? '',
+      })
+      if (cancelled) return
+      if (!editable || !node.isConnected) {
+        const r = node.getBoundingClientRect()
+        flashHint(r.left, r.top, reason ?? "This text can't be edited here")
+        exitEditing()
+        return
+      }
+
+      const original = directText(node)
+      node.contentEditable = 'plaintext-only'
+      // Outline ON the node so it tracks the element as text grows / the page
+      // scrolls (a separate overlay div would drift). Inline, never written to source.
+      const prevOutline = node.style.outline
+      const prevOffset = node.style.outlineOffset
+      node.style.outline = '2px solid rgb(var(--muse-accent))'
+      node.style.outlineOffset = '2px'
+      node.focus()
+      const sel = window.getSelection()
+      if (sel) {
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      let cancel = false
+      let done = false
+      const teardownFn = () => {
+        node.removeEventListener('keydown', onKeyDown)
+        node.removeEventListener('blur', onBlur)
+        node.removeEventListener('paste', onPaste)
+        if (node.isConnected) {
+          if (node.isContentEditable) node.contentEditable = 'false'
+          node.style.outline = prevOutline
+          node.style.outlineOffset = prevOffset
+        }
+      }
+      const finish = () => {
+        if (done) return
+        done = true
+        teardownFn()
+        if (cancel) {
+          if (node.isConnected) node.textContent = original
+          exitEditing()
+        } else {
+          void commitText(el, node, original)
+        }
+      }
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault() // single line — Enter commits
+          finish()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          cancel = true
+          finish()
+        }
+      }
+      const onBlur = () => finish() // click-away also commits
+      // Force plaintext on paste (Firefox treats plaintext-only as rich-text).
+      const onPaste = (e: ClipboardEvent) => {
+        e.preventDefault()
+        const text = (e.clipboardData?.getData('text/plain') ?? '').replace(/\s+/g, ' ')
+        document.execCommand('insertText', false, text)
+      }
+      node.addEventListener('keydown', onKeyDown)
+      node.addEventListener('blur', onBlur)
+      node.addEventListener('paste', onPaste)
+      teardown = () => {
+        if (!done) teardownFn()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (teardown) teardown()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
   return (
     <div data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
       {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
 
-      {/* Quiet hint when a click lands on an element with no source mapping. */}
+      {/* Quiet hint — unmappable click, or text that isn't statically editable.
+          z-20 keeps it above the properties panel (same overlay container). */}
       {hint && (
         <div
-          className="pointer-events-none absolute rounded-md bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
+          className="pointer-events-none absolute z-20 max-w-[220px] rounded-md bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
           style={{ top: hint.y + 14, left: hint.x + 14 }}
         >
-          Can't edit this one — no source mapping
+          {hint.text}
         </div>
       )}
 
-      {selected && values && (
+      {/* While editing text, the style overlays step aside (the outline lives on
+          the node itself) so the caret is free. */}
+      {selected && values && !editing && (
         <>
           <BoxModelOverlay
             node={selected.node}
@@ -339,7 +507,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Canvas
           <span className="text-fg-faint">
-            {selected ? '· Alt-click or the breadcrumb selects the container · Esc to deselect' : '· click an element · Alt-click for its container · Esc to exit'}
+            {editing
+              ? '· editing text · Enter to save · Esc to cancel'
+              : selected
+                ? '· double-click to edit text · Alt-click selects the container · Esc to deselect'
+                : '· click an element · Alt-click for its container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
