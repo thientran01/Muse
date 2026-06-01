@@ -216,23 +216,43 @@ export function ReorderOverlay({
         return
       }
 
-      // COMMITTED drop. Don't snap. Ease the lifted element back DOWN to its origin
-      // and glide the made-room siblings back to rest (a soft "set down"), and hold
-      // the chrome hidden across the write + HMR repaint. HMR reuses these DOM nodes
-      // and reconciles them POSITIONALLY (content is rewritten in place, nodes don't
-      // move), so landing at the ORIGIN means the reorder shows up as content
-      // updating with NO positional jump — far smoother than animating to the
-      // destination (which would jump at the content swap). onReorder resolves after
-      // HMR repaints + re-selects; only THEN do we finalize (restore the non-eased
-      // styles, clear make-room, un-hide), so nothing flashes at the old location.
-      const { prevStyle, sibPrev } = p
+      // COMMITTED drop. HMR reuses these DOM nodes and reconciles them POSITIONALLY:
+      // the content is rewritten IN PLACE, the nodes don't move. That's the whole
+      // subtlety — our transforms are pinned to nodes, so:
+      //   • held (pre-swap content) → transforms show the FINAL order. good.
+      //   • the instant content swaps, the SAME transforms show the ORIGINAL order.
+      // So clearing the transforms must happen in the EXACT frame the content swaps,
+      // or there's a beat of original-order (the "fakeout"). A timer always lands on
+      // the wrong side of the swap; a MutationObserver fires after the DOM mutation
+      // but before paint, making swap+clear atomic → the swap is invisible.
+      //
+      // We first set the dropped element DOWN into its destination slot (eased), so
+      // during the hold it visibly settles into the gap the siblings already opened.
+      const { frozen, prevStyle, sibPrev } = p
       setDrop(null)
       press.current = null // drag is over; saved styles captured in locals above
-      settleLanding(node, prevStyle, sibPrev)
-      void onReorderRef.current(target.toIndex).finally(() => {
-        finalizeLanding(node, prevStyle, sibPrev)
+      if (frozen && prevStyle) landToDestination(node, frozen, p.fromIndex, target.toIndex, prevStyle)
+
+      let finalized = false
+      const finalize = () => {
+        if (finalized) return
+        finalized = true
+        obs.disconnect()
+        window.clearTimeout(safety)
+        if (prevStyle && node.isConnected) restoreLift(node, prevStyle) // clears transform/shadow/z/etc.
+        if (sibPrev) restoreMakeRoom(sibPrev) // clears sibling transforms — same frame as the swap
         onDragChangeRef.current?.(false) // un-hide AFTER the new order is on screen
-      })
+      }
+      // Primary: clear atomically with the content swap (childList/characterData on
+      // the reused nodes). The first such mutation after a drop is the reorder swap —
+      // nothing else mutates this container in the hold window.
+      const obs = new MutationObserver(finalize)
+      obs.observe(parent, { childList: true, subtree: true, characterData: true })
+      // Safety net only: if HMR somehow produced no observable mutation, don't strand
+      // the transforms forever. Long enough (well past the ~200ms HMR settle) that it
+      // never pre-empts the observer on the normal path.
+      const safety = window.setTimeout(finalize, 1200)
+      void onReorderRef.current(target.toIndex)
     }
 
     const onCancel = (e: PointerEvent) => {
@@ -318,28 +338,37 @@ function restoreLift(node: HTMLElement, prev: SavedStyle) {
   s.willChange = prev.willChange
 }
 
-// Soft "set down" on a committed drop: ease the lifted element back to its origin
-// (transform → its pre-drag value, shadow/scale/opacity easing out) and glide the
-// made-room siblings back to rest, all over SLIDE_MS. The element keeps zIndex
-// until finalize, so it stays above its peers during the descent. Reduced-motion
-// never lifted, so there's nothing to ease — finalize handles it.
-function settleLanding(node: HTMLElement, prev: SavedStyle | null, sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null) {
-  if (prev && node.isConnected && !prefersReducedMotion()) {
-    const s = node.style
-    s.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
-    s.transform = prev.transform // back to origin
-    s.boxShadow = prev.boxShadow
-    s.opacity = prev.opacity
-  }
-  if (sibPrev) for (const [n] of sibPrev) if (n.isConnected) n.style.transform = '' // siblings glide home (their transition is still primed)
+// The dragged node's destination offset along the layout axis: how far to translate
+// it so its CONTENT visually lands in the slot it'll occupy after the reorder. Built
+// from the frozen ORIGINAL screen-slot positions (nodes don't move — HMR reconciles
+// them positionally — so slot k's leading edge is just whatever element originally
+// sat there). With this, the made-room siblings + the dropped element together show
+// EXACTLY the final arrangement, so clearing every transform the instant the content
+// swaps is visually a no-op (see the MutationObserver in onUp).
+function destOffset(frozen: Frozen, fromIndex: number, toIndex: number): number {
+  const { rects, layout, draggedRect } = frozen
+  const newIndex = toIndex > fromIndex ? toIndex - 1 : toIndex // dragged's final index among all N
+  const lead = (r: DOMRect) => (layout.vertical ? r.top : r.left)
+  // Leading edge of the ORIGINAL element at screen-slot newIndex: others[k] for
+  // k<fromIndex, the dragged box at k===fromIndex (noop, filtered), else others[k-1].
+  const leadingAt =
+    newIndex < fromIndex ? lead(rects[newIndex]) : newIndex === fromIndex ? lead(draggedRect) : lead(rects[newIndex - 1])
+  return leadingAt - lead(draggedRect)
 }
 
-// After the new order is on screen (onReorder settled), clear the remaining
-// overrides — zIndex/willChange/cursor on the element, transitions on the siblings —
-// so nothing is stranded. Transform/shadow/opacity already eased to rest in settle.
-function finalizeLanding(node: HTMLElement, prev: SavedStyle | null, sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null) {
-  if (prev && node.isConnected) restoreLift(node, prev)
-  if (sibPrev) restoreMakeRoom(sibPrev)
+// Set the dropped element DOWN into its destination slot (not its origin): drop the
+// scale, ease the follow-transform to the destination offset, fade the shadow out —
+// a soft "click into the gap." The made-room siblings are already at their final
+// positions, so the whole arrangement now equals the post-reorder layout, held until
+// the content swaps. Reduced-motion never lifted/made-room, so it no-ops.
+function landToDestination(node: HTMLElement, frozen: Frozen, fromIndex: number, toIndex: number, prev: SavedStyle) {
+  if (!node.isConnected || prefersReducedMotion()) return
+  const off = destOffset(frozen, fromIndex, toIndex)
+  const s = node.style
+  s.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
+  s.transform = off === 0 ? prev.transform : frozen.layout.vertical ? `translateY(${off}px)` : `translateX(${off}px)`
+  s.boxShadow = prev.boxShadow
+  s.opacity = prev.opacity
 }
 
 // --- drop-target geometry (the 2D → 1D mapping) ---
