@@ -98,6 +98,7 @@ function AnimCell({
     <div className="space-y-2">
       <div
         data-muse-ui
+        data-muse-canvas-host
         data-theme={theme}
         className="flex min-h-[140px] items-center justify-center rounded-2xl bg-surface p-6 text-accent ring-1 ring-line/10"
       >
@@ -169,6 +170,7 @@ function PanelCell({ label, sub, theme, children }: { label: string; sub: string
     <div className="space-y-2">
       <div
         data-muse-ui
+        data-muse-canvas-host
         data-theme={theme}
         className={`flex min-h-[360px] items-start justify-center rounded-2xl p-5 ring-1 ring-line/10 ${theme === 'dark' ? 'bg-[#0f1f1a]' : 'bg-[#f5f1e8]'}`}
       >
@@ -209,13 +211,10 @@ const fxBrandSwatches = ['#d4ff3a', '#ff6b35', '#0f1f1a', '#f5f1e8', '#1a2e26']
 function ColorPickerCell({ theme }: { theme: 'dark' | 'light' }) {
   const [color, setColor] = useState('#ff6b35')
   return (
-    <PanelCell label={theme === 'dark' ? 'Dark mode' : 'Light mode'} sub="drag the square / hue · type hex or RGB · click a brand swatch" theme={theme}>
+    <PanelCell label={theme === 'dark' ? 'Dark mode' : 'Light mode'} sub="SV square · hue · eyedropper · hex/RGB · contrast check · brand swatches" theme={theme}>
       <div className="w-[224px] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur">
-        <ColorPicker value={color} swatches={fxBrandSwatches} onPreview={setColor} onCommit={setColor} />
-        <div className="mt-2 flex items-center gap-2 border-t border-line/10 pt-2 text-[11px] text-fg-muted">
-          <span className="h-4 w-4 rounded border border-line/20" style={{ backgroundColor: color }} />
-          <span className="font-mono tabular-nums">{color}</span>
-        </div>
+        {/* contrastAgainst demos the WCAG badge — here, the text color vs a card bg. */}
+        <ColorPicker value={color} swatches={fxBrandSwatches} contrastAgainst={theme === 'dark' ? '#0f1f1a' : '#f5f1e8'} onPreview={setColor} onCommit={setColor} />
       </div>
     </PanelCell>
   )
