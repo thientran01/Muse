@@ -68,6 +68,8 @@ export function ReorderOverlay({
   const layout = readLayout(parent)
 
   const startDrag = (e: ReactPointerEvent) => {
+    if (draggingRef.current) return // ignore a second pointerdown mid-drag (would
+    // overwrite prevOpacityRef with the already-ghosted 0.4 and strand it faded)
     e.preventDefault()
     e.stopPropagation()
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)

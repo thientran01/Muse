@@ -162,8 +162,10 @@ export async function museReorder(req: ReorderRequest): Promise<ReorderResponse>
 // Probe whether an element's siblings can be reordered (host parent + host-only
 // children) BEFORE showing the drag handle, so a non-reorderable run shows no
 // handle (or a calm hint) instead of a drag that silently does nothing. Fails
-// open on a transport error — let the commit be the authority (mirrors
-// museTextEditable).
+// CLOSED on a transport error (no handle) — unlike museTextEditable's fail-open,
+// because the handle needs the probe's `count` for its divergence guard, and a
+// re-select simply re-probes. The engine still fails closed on any commit, so a
+// missed handle is the safe failure, never a bad write.
 export async function museReorderable(
   req: Omit<ReorderRequest, 'toIndex'>,
 ): Promise<Reorderable> {

@@ -663,6 +663,11 @@ export function musePlugin(): Plugin {
           if (out.length === 0) {
             return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
           }
+          // A reorder shifts line numbers, so the learned Fast-Refresh offset can
+          // go stale for a follow-up style/text edit fired before HMR re-syncs the
+          // browser's _debugSource. Drop it so the next locate re-learns it fresh
+          // (the preamble offset is constant, so this just re-calibrates safely).
+          lineOffsetHint.value = null
           return sendJson(res, 200, { edits: out, originals, warnings })
         } catch (err) {
           console.error('[muse] /reorder error:', err)
