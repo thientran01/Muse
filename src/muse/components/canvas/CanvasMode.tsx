@@ -112,6 +112,10 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // host-only children — see computeReorderable). Gates the drag handle so it
   // only appears when a drop will actually commit. Probed per selection.
   const [reorderable, setReorderable] = useState<Reorderable | null>(null)
+  // True while a reorder drag is in flight. The other overlays + panel hide so they
+  // don't sit on top of the element being dragged (the lifted element + insertion
+  // bar are the only chrome that should show mid-drag).
+  const [reordering, setReordering] = useState(false)
   const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
@@ -557,23 +561,31 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           the node itself) so the caret is free. */}
       {selected && values && !editing && (
         <>
-          <BoxModelOverlay
-            node={selected.node}
-            padding={values.padding}
-            margin={values.margin}
-            onPreview={applyPreview}
-            onCommit={commit}
-          />
-          {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
-          <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+          {/* The spacing/size/panel chrome hides while a reorder drag is in flight
+              so it can't cover the element you're dragging. ReorderOverlay (the
+              listeners + insertion bar) stays mounted so the drag keeps running. */}
+          {!reordering && (
+            <>
+              <BoxModelOverlay
+                node={selected.node}
+                padding={values.padding}
+                margin={values.margin}
+                onPreview={applyPreview}
+                onCommit={commit}
+              />
+              {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
+              <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+            </>
+          )}
           {reorderable?.reorderable && (
             <ReorderOverlay
               node={selected.node}
               expectedCount={reorderable.count}
               onReorder={(toIndex) => void commitReorder(selected, toIndex)}
+              onDragChange={setReordering}
             />
           )}
-          {panelPos && (
+          {!reordering && panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the
                   new element's values instead of carrying over the last one's. */}

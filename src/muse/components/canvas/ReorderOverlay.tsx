@@ -31,6 +31,7 @@ export function ReorderOverlay({
   node,
   expectedCount,
   onReorder,
+  onDragChange,
 }: {
   node: HTMLElement
   // How many movable children the ENGINE sees in source (the probe's count).
@@ -42,6 +43,9 @@ export function ReorderOverlay({
   // Move the selected element to insertion slot `toIndex` (the source-order
   // position it lands BEFORE; siblings.length === drop at the end).
   onReorder: (toIndex: number) => void
+  // Reports drag engage (true) / end (false) so the parent can hide the other
+  // canvas chrome (panel, box-model, resize) that would cover the dragged element.
+  onDragChange?: (dragging: boolean) => void
 }) {
   // The live drop target while dragging: where the bar draws + which slot commits.
   const [drop, setDrop] = useState<DropTarget | null>(null)
@@ -52,6 +56,8 @@ export function ReorderOverlay({
   onReorderRef.current = onReorder
   const expectedCountRef = useRef(expectedCount)
   expectedCountRef.current = expectedCount
+  const onDragChangeRef = useRef(onDragChange)
+  onDragChangeRef.current = onDragChange
 
   // A press in progress. `dragging` flips true only after THRESHOLD, so a click
   // below threshold stays a normal select. `frozen` is the sibling geometry
@@ -83,7 +89,10 @@ export function ReorderOverlay({
 
     const teardown = () => {
       const p = press.current
-      if (p?.dragging) node.releasePointerCapture?.(p.pointerId) // capture is taken only on engage
+      if (p?.dragging) {
+        node.releasePointerCapture?.(p.pointerId) // capture is taken only on engage
+        onDragChangeRef.current?.(false) // un-hide the other canvas chrome
+      }
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
       press.current = null
       setDrop(null)
@@ -125,6 +134,7 @@ export function ReorderOverlay({
         p.frozen = frozen
         p.dragging = true
         p.prevStyle = applyLift(node)
+        onDragChangeRef.current?.(true) // hide the other canvas chrome for this drag
       }
       e.preventDefault()
       const dx = e.clientX - p.startX
