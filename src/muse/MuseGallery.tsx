@@ -13,10 +13,36 @@ import { MessageTargetHandoff } from './components/messages/MessageTargetHandoff
 import { MessageThinking } from './components/messages/MessageThinking'
 import { MessageUser } from './components/messages/MessageUser'
 import { UfoIcon } from './components/UfoIcon'
+import { PropertiesPanel, type CanvasValues } from './components/canvas/PropertiesPanel'
+import { PanelTabs, PanelAccordion, PanelCompact } from './components/canvas/PanelVariants'
+import type { CanvasElement } from './types'
 import { fxEdits, fxElement, fxOriginals, fxQuestions, fxRationale } from './fixtures'
 import type { ProposedOption, SelectedElement } from './types'
 
 const noop = () => {}
+
+// A realistic CanvasValues for the panel-density comparison: a text element with
+// every section populated (size, type, all 3 colors, asymmetric padding, margin,
+// gap) so each variant shows its FULL height — the worst case for overflow.
+const fxPanelValues: CanvasValues = {
+  padding: { top: 12, right: 20, bottom: 12, left: 20 },
+  margin: { top: 32, right: 0, bottom: 0, left: 0 },
+  gap: { row: 8, column: 8 },
+  size: { width: 1006, height: 28 },
+  type: { fontSize: 18, fontWeight: 700, lineHeight: 28, letterSpacing: 0 },
+  rendersText: true,
+  color: { text: '#0f1f1a', background: '#000000', border: '#e5e7eb' },
+  colorThemed: { text: true, background: false, border: false },
+}
+// A fake ancestor chain so the breadcrumb renders (matches the screenshot path).
+const fakeNode = (cls: string) => ({ getAttribute: () => cls }) as unknown as HTMLElement
+const fxPanelChain: CanvasElement[] = [
+  { key: 'k4', tag: 'h2', line: 1, column: 0, fileName: 'f', node: fakeNode('text-lg') },
+  { key: 'k3', tag: 'section', line: 1, column: 0, fileName: 'f', node: fakeNode('mt-8') },
+  { key: 'k2', tag: 'div', line: 1, column: 0, fileName: 'f', node: fakeNode('px-10') },
+  { key: 'k1', tag: 'main', line: 1, column: 0, fileName: 'f', node: fakeNode('flex-1') },
+  { key: 'k0', tag: 'div', line: 1, column: 0, fileName: 'f', node: fakeNode('min-h-screen') },
+]
 
 // Two design directions for the option-set demo (hover-to-preview cards).
 const fxOptions: ProposedOption[] = [
@@ -135,6 +161,59 @@ function IconAnimations() {
   )
 }
 
+// One panel variant on a themed canvas-like backdrop, so it renders with the real
+// Muse tokens (--muse-surface / --muse-accent are scoped to [data-muse-ui]) in the
+// requested theme. The backdrop mimics the host page behind the floating panel.
+function PanelCell({ label, sub, theme, children }: { label: string; sub: string; theme: 'dark' | 'light'; children: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <div
+        data-muse-ui
+        data-theme={theme}
+        className={`flex min-h-[360px] items-start justify-center rounded-2xl p-5 ring-1 ring-line/10 ${theme === 'dark' ? 'bg-[#0f1f1a]' : 'bg-[#f5f1e8]'}`}
+      >
+        {children}
+      </div>
+      <div>
+        <p className="text-xs font-medium text-slate-600">{label}</p>
+        <p className="text-[11px] text-slate-400">{sub}</p>
+      </div>
+    </div>
+  )
+}
+
+const PANEL_VARIANTS = [
+  { label: 'Current — all stacked', sub: 'baseline · the overwhelming one', Comp: PropertiesPanel },
+  { label: 'A · Segmented tabs', sub: 'one category at a time', Comp: PanelTabs },
+  { label: 'B · Collapsible sections', sub: 'accordion, smart default-open', Comp: PanelAccordion },
+  { label: 'C · Compact + More', sub: 'type/color first, spacing on demand', Comp: PanelCompact },
+] as const
+
+// Side-by-side of the current panel + 3 density prototypes, each in light + dark,
+// all fed the SAME worst-case element so heights are comparable.
+function PanelDensity() {
+  return (
+    <section className="mx-auto mb-10 max-w-6xl space-y-6">
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Properties panel — density options</h2>
+        <p className="mt-1 text-sm text-slate-500">Same element (text, every section populated) through all four panels. The shell caps at 70vh and scrolls, so none clip when the element sits low on screen.</p>
+      </div>
+      {(['dark', 'light'] as const).map((theme) => (
+        <div key={theme} className="space-y-3">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</h3>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {PANEL_VARIANTS.map(({ label, sub, Comp }) => (
+              <PanelCell key={label} label={label} sub={sub} theme={theme}>
+                <Comp values={fxPanelValues} chain={fxPanelChain} selectedKey="k4" onPick={noop} onPreview={noop} onCommit={noop} />
+              </PanelCell>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 function Cell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
@@ -178,6 +257,8 @@ export function MuseGallery() {
           here and in the live overlay.
         </p>
       </header>
+
+      <PanelDensity />
 
       <IconAnimations />
 

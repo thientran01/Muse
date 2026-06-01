@@ -22,7 +22,21 @@ export type CanvasValues = {
   colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
 }
 
+// Shared props every section atom takes — the edit pipe down to the engine.
+type EditProps = {
+  onPreview: (m: StyleMutation[]) => void
+  onCommit: (m: StyleMutation[]) => void
+}
+
 const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.bottom === s.left
+
+// A small caps label that heads each section (shared so every panel variant uses
+// the exact same heading treatment).
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <span className="text-[11px] font-medium text-fg-muted">{children}</span>
+}
+
+const divider = <div className="h-px bg-line/10" />
 
 // One color channel: a native swatch + hex readout, or a read-only "themed" note
 // when the source paints this channel through a CSS variable (Muse leaves those).
@@ -77,7 +91,7 @@ function ColorRow({
 // A padding/margin group: one field when all sides match, four when they don't —
 // with a toggle to expand/collapse. `base` is the shorthand property name
 // ('padding'/'margin'); the per-side names follow Tailwind/CSS convention.
-function SideGroup({
+export function SideGroup({
   title,
   base,
   values,
@@ -89,9 +103,7 @@ function SideGroup({
   base: 'padding' | 'margin'
   values: Sides
   minSide: number
-  onPreview: (m: StyleMutation[]) => void
-  onCommit: (m: StyleMutation[]) => void
-}) {
+} & EditProps) {
   const [expanded, setExpanded] = useState(!sidesEqual(values))
   const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
   const sideProp = (side: 'Top' | 'Right' | 'Bottom' | 'Left') => `${base}${side}` as StyleProperty
@@ -99,7 +111,7 @@ function SideGroup({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-fg-muted">{title}</span>
+        <SectionLabel>{title}</SectionLabel>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
@@ -134,6 +146,160 @@ function SideGroup({
   )
 }
 
+// ── Section atoms — the panel's content, broken into pieces every variant reuses ──
+
+// The ancestor breadcrumb: outermost → selected (left → right), like devtools.
+// Click any crumb to select that ancestor.
+export function Breadcrumb({
+  chain,
+  selectedKey,
+  onPick,
+}: {
+  chain: CanvasElement[]
+  selectedKey: string
+  onPick: (c: CanvasElement) => void
+}) {
+  const crumbs = [...chain].reverse()
+  return (
+    <div className="flex flex-wrap items-center gap-0.5 text-[10px] leading-tight">
+      {crumbs.map((c, i) => (
+        <Fragment key={c.key}>
+          {i > 0 && <span className="text-fg-faint/40">›</span>}
+          <button
+            onClick={() => onPick(c)}
+            title={c.node.getAttribute('class') || c.tag}
+            className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
+              c.key === selectedKey
+                ? 'bg-accent/15 text-accent'
+                : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
+            }`}
+          >
+            {crumbLabel(c)}
+          </button>
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+// Maps the on-canvas band hues to their meaning.
+export function Legend({ hasGap }: { hasGap: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5 text-[9px] text-fg-faint">
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400/70" />Padding</span>
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
+      {hasGap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
+    </div>
+  )
+}
+
+// Precise W/H — complements the on-canvas corner handles.
+export function SizeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  return (
+    <div className="space-y-1.5">
+      <SectionLabel>Size</SectionLabel>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+        <ScrubField label="W" value={values.size.width} min={0}
+          onPreview={(v) => onPreview([{ property: 'width', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'width', value: `${v}px` }])} />
+        <ScrubField label="H" value={values.size.height} min={0}
+          onPreview={(v) => onPreview([{ property: 'height', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'height', value: `${v}px` }])} />
+      </div>
+    </div>
+  )
+}
+
+// Font size / weight / line-height / letter-spacing — only where text renders.
+export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  return (
+    <div className="space-y-1.5">
+      <SectionLabel>Type</SectionLabel>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+        <ScrubField label="Size" value={values.type.fontSize} min={1}
+          onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'fontSize', value: `${v}px` }])} />
+        <ScrubField label="Weight" value={values.type.fontWeight} min={100} max={900} unit=""
+          onPreview={(v) => onPreview([{ property: 'fontWeight', value: `${v}` }])}
+          onCommit={(v) => onCommit([{ property: 'fontWeight', value: `${v}` }])} />
+        <ScrubField label="Line" value={values.type.lineHeight} min={1}
+          onPreview={(v) => v > 0 && onPreview([{ property: 'lineHeight', value: `${v}px` }])}
+          onCommit={(v) => v > 0 && onCommit([{ property: 'lineHeight', value: `${v}px` }])} />
+        <ScrubField label="Letter" value={values.type.letterSpacing}
+          onPreview={(v) => onPreview([{ property: 'letterSpacing', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'letterSpacing', value: `${v}px` }])} />
+      </div>
+    </div>
+  )
+}
+
+// Text / fill / border color. Text row only where the element renders text.
+export function ColorFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  return (
+    <div className="space-y-1.5">
+      <SectionLabel>Color</SectionLabel>
+      {values.rendersText && (
+        <ColorRow label="Text" value={values.color.text} themed={values.colorThemed.text}
+          onPreview={(v) => onPreview([{ property: 'color', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'color', value: v }])} />
+      )}
+      <ColorRow label="Fill" value={values.color.background} themed={values.colorThemed.background}
+        onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
+        onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])} />
+      <ColorRow label="Border" value={values.color.border} themed={values.colorThemed.border}
+        onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
+        onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])} />
+    </div>
+  )
+}
+
+// Gap (flex/grid only). One field when row===col, two when they differ.
+export function GapFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  if (!values.gap) return null
+  const linked = values.gap.row === values.gap.column
+  return (
+    <div className="space-y-1.5">
+      <SectionLabel>Gap</SectionLabel>
+      {linked ? (
+        <ScrubField label="Gap" value={values.gap.row} min={0}
+          onPreview={(v) => onPreview([{ property: 'gap', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'gap', value: `${v}px` }])} />
+      ) : (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <ScrubField label="Row" value={values.gap.row} min={0}
+            onPreview={(v) => onPreview([{ property: 'rowGap', value: `${v}px` }])}
+            onCommit={(v) => onCommit([{ property: 'rowGap', value: `${v}px` }])} />
+          <ScrubField label="Col" value={values.gap.column} min={0}
+            onPreview={(v) => onPreview([{ property: 'columnGap', value: `${v}px` }])}
+            onCommit={(v) => onCommit([{ property: 'columnGap', value: `${v}px` }])} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// The padding + margin pair (shared "spacing" block).
+export function SpacingFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  return (
+    <>
+      <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
+      {divider}
+      <SideGroup title="Margin" base="margin" values={values.margin} minSide={-Infinity} onPreview={onPreview} onCommit={onCommit} />
+    </>
+  )
+}
+
+// The outer panel shell — same surface/ring/blur every variant sits in, with a
+// viewport cap so a tall panel scrolls inside instead of running off-screen.
+function PanelShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex max-h-[min(70vh,520px)] w-[208px] flex-col gap-3 overflow-y-auto rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+      {children}
+    </div>
+  )
+}
+
+// ── The current (live) panel — everything stacked. Kept as the baseline. ──
 export function PropertiesPanel({
   values,
   chain,
@@ -146,172 +312,30 @@ export function PropertiesPanel({
   chain: CanvasElement[]
   selectedKey: string
   onPick: (c: CanvasElement) => void
-  onPreview: (m: StyleMutation[]) => void
-  onCommit: (m: StyleMutation[]) => void
-}) {
-  const gapLinked = values.gap && values.gap.row === values.gap.column
-  // Breadcrumb runs outermost → selected (left → right), like devtools. Click any
-  // crumb to select that ancestor — the discoverable "grab the container" path.
-  const crumbs = [...chain].reverse()
+} & EditProps) {
   return (
-    <div className="w-[208px] space-y-3 rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-0.5 text-[10px] leading-tight">
-        {crumbs.map((c, i) => (
-          <Fragment key={c.key}>
-            {i > 0 && <span className="text-fg-faint/40">›</span>}
-            <button
-              onClick={() => onPick(c)}
-              title={c.node.getAttribute('class') || c.tag}
-              className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
-                c.key === selectedKey
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
-              }`}
-            >
-              {crumbLabel(c)}
-            </button>
-          </Fragment>
-        ))}
-      </div>
-
-      {/* Legend — maps the on-canvas band hues to what they mean. */}
-      <div className="flex items-center gap-2.5 text-[9px] text-fg-faint">
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400/70" />Padding</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
-        {values.gap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
-      </div>
-
-      {/* Size — precise W/H, complements the on-canvas corner handles. */}
-      <div className="space-y-1.5">
-        <span className="text-[11px] font-medium text-fg-muted">Size</span>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-          <ScrubField
-            label="W"
-            value={values.size.width}
-            min={0}
-            onPreview={(v) => onPreview([{ property: 'width', value: `${v}px` }])}
-            onCommit={(v) => onCommit([{ property: 'width', value: `${v}px` }])}
-          />
-          <ScrubField
-            label="H"
-            value={values.size.height}
-            min={0}
-            onPreview={(v) => onPreview([{ property: 'height', value: `${v}px` }])}
-            onCommit={(v) => onCommit([{ property: 'height', value: `${v}px` }])}
-          />
-        </div>
-      </div>
-
-      {/* Type — only on elements that directly render text (not container divs). */}
+    <PanelShell>
+      <Breadcrumb chain={chain} selectedKey={selectedKey} onPick={onPick} />
+      <Legend hasGap={!!values.gap} />
+      <SizeFields values={values} onPreview={onPreview} onCommit={onCommit} />
       {values.rendersText && (
         <>
-          <div className="h-px bg-line/10" />
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-medium text-fg-muted">Type</span>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-              <ScrubField
-                label="Size"
-                value={values.type.fontSize}
-                min={1}
-                onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
-                onCommit={(v) => onCommit([{ property: 'fontSize', value: `${v}px` }])}
-              />
-              <ScrubField
-                label="Weight"
-                value={values.type.fontWeight}
-                min={100}
-                max={900}
-                unit=""
-                onPreview={(v) => onPreview([{ property: 'fontWeight', value: `${v}` }])}
-                onCommit={(v) => onCommit([{ property: 'fontWeight', value: `${v}` }])}
-              />
-              <ScrubField
-                label="Line"
-                value={values.type.lineHeight}
-                min={1}
-                onPreview={(v) => v > 0 && onPreview([{ property: 'lineHeight', value: `${v}px` }])}
-                onCommit={(v) => v > 0 && onCommit([{ property: 'lineHeight', value: `${v}px` }])}
-              />
-              <ScrubField
-                label="Letter"
-                value={values.type.letterSpacing}
-                onPreview={(v) => onPreview([{ property: 'letterSpacing', value: `${v}px` }])}
-                onCommit={(v) => onCommit([{ property: 'letterSpacing', value: `${v}px` }])}
-              />
-            </div>
-          </div>
+          {divider}
+          <TypeFields values={values} onPreview={onPreview} onCommit={onCommit} />
         </>
       )}
-
-      {/* Color — background + border on any element; text only where there's text. */}
-      <div className="h-px bg-line/10" />
-      <div className="space-y-1.5">
-        <span className="text-[11px] font-medium text-fg-muted">Color</span>
-        {values.rendersText && (
-          <ColorRow
-            label="Text"
-            value={values.color.text}
-            themed={values.colorThemed.text}
-            onPreview={(v) => onPreview([{ property: 'color', value: v }])}
-            onCommit={(v) => onCommit([{ property: 'color', value: v }])}
-          />
-        )}
-        <ColorRow
-          label="Fill"
-          value={values.color.background}
-          themed={values.colorThemed.background}
-          onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
-          onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])}
-        />
-        <ColorRow
-          label="Border"
-          value={values.color.border}
-          themed={values.colorThemed.border}
-          onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
-          onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])}
-        />
-      </div>
-
-      <div className="h-px bg-line/10" />
-
-      <SideGroup title="Padding" base="padding" values={values.padding} minSide={0} onPreview={onPreview} onCommit={onCommit} />
-      <div className="h-px bg-line/10" />
-      <SideGroup title="Margin" base="margin" values={values.margin} minSide={-Infinity} onPreview={onPreview} onCommit={onCommit} />
-
+      {divider}
+      <ColorFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      {divider}
+      <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
       {values.gap && (
         <>
-          <div className="h-px bg-line/10" />
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-medium text-fg-muted">Gap</span>
-            {gapLinked ? (
-              <ScrubField
-                label="Gap"
-                value={values.gap.row}
-                min={0}
-                onPreview={(v) => onPreview([{ property: 'gap', value: `${v}px` }])}
-                onCommit={(v) => onCommit([{ property: 'gap', value: `${v}px` }])}
-              />
-            ) : (
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                <ScrubField
-                  label="Row"
-                  value={values.gap.row}
-                  min={0}
-                  onPreview={(v) => onPreview([{ property: 'rowGap', value: `${v}px` }])}
-                  onCommit={(v) => onCommit([{ property: 'rowGap', value: `${v}px` }])}
-                />
-                <ScrubField
-                  label="Col"
-                  value={values.gap.column}
-                  min={0}
-                  onPreview={(v) => onPreview([{ property: 'columnGap', value: `${v}px` }])}
-                  onCommit={(v) => onCommit([{ property: 'columnGap', value: `${v}px` }])}
-                />
-              </div>
-            )}
-          </div>
+          {divider}
+          <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
         </>
       )}
-    </div>
+    </PanelShell>
   )
 }
+
+export { PanelShell, divider, SectionLabel }
