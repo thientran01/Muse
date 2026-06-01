@@ -14,6 +14,7 @@ import { MessageThinking } from './components/messages/MessageThinking'
 import { MessageUser } from './components/messages/MessageUser'
 import { UfoIcon } from './components/UfoIcon'
 import { PropertiesPanel, type CanvasValues } from './components/canvas/PropertiesPanel'
+import { ColorPicker } from './components/canvas/ColorPicker'
 import type { CanvasElement } from './types'
 import { fxEdits, fxElement, fxOriginals, fxQuestions, fxRationale } from './fixtures'
 import type { ProposedOption, SelectedElement } from './types'
@@ -201,6 +202,40 @@ function PanelDensity() {
   )
 }
 
+// The custom color picker, both themes, in a Muse-styled popover-ish card with a
+// live preview swatch so you can see preview/commit firing. Brand swatches are the
+// demo's DESIGN.md palette.
+const fxBrandSwatches = ['#d4ff3a', '#ff6b35', '#0f1f1a', '#f5f1e8', '#1a2e26']
+function ColorPickerCell({ theme }: { theme: 'dark' | 'light' }) {
+  const [color, setColor] = useState('#ff6b35')
+  return (
+    <PanelCell label={theme === 'dark' ? 'Dark mode' : 'Light mode'} sub="drag the square / hue · type hex or RGB · click a brand swatch" theme={theme}>
+      <div className="w-[224px] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur">
+        <ColorPicker value={color} swatches={fxBrandSwatches} onPreview={setColor} onCommit={setColor} />
+        <div className="mt-2 flex items-center gap-2 border-t border-line/10 pt-2 text-[11px] text-fg-muted">
+          <span className="h-4 w-4 rounded border border-line/20" style={{ backgroundColor: color }} />
+          <span className="font-mono tabular-nums">{color}</span>
+        </div>
+      </div>
+    </PanelCell>
+  )
+}
+
+function ColorPickerSection() {
+  return (
+    <section className="mx-auto mb-10 max-w-6xl space-y-6">
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Color picker (custom)</h2>
+        <p className="mt-1 text-sm text-slate-500">Replaces the native OS color input — SV square + hue slider + hex/RGB fields + DESIGN.md brand swatches, all in Muse styling.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <ColorPickerCell theme="dark" />
+        <ColorPickerCell theme="light" />
+      </div>
+    </section>
+  )
+}
+
 function Cell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
@@ -246,6 +281,8 @@ export function MuseGallery() {
       </header>
 
       <PanelDensity />
+
+      <ColorPickerSection />
 
       <IconAnimations />
 
