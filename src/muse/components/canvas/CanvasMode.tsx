@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
+import { museReorder, museReorderable, museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
+import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -10,6 +10,7 @@ import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
+import { ReorderOverlay } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 208
@@ -107,6 +108,10 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Whether the selected element's siblings can be reordered (host parent +
+  // host-only children — see computeReorderable). Gates the drag handle so it
+  // only appears when a drop will actually commit. Probed per selection.
+  const [reorderable, setReorderable] = useState<Reorderable | null>(null)
   const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
@@ -183,6 +188,30 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
 
   // Clear any stray inline preview when the target changes or we leave.
   useEffect(() => clearPreview, [selected])
+
+  // Probe whether the selected element's siblings can be reordered, so the drag
+  // handle only shows when a drop will commit. Cancel-guarded so a fast reselect
+  // can't apply a stale verdict to the current target.
+  useEffect(() => {
+    if (!selected) {
+      setReorderable(null)
+      return
+    }
+    let cancelled = false
+    setReorderable(null)
+    void museReorderable({
+      fileName: selected.fileName,
+      line: selected.line,
+      column: selected.column,
+      tag: selected.tag,
+      classNames: selected.node.getAttribute('class') ?? '',
+    }).then((r) => {
+      if (!cancelled) setReorderable(r)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selected])
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
 
@@ -345,6 +374,65 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     }
   }
 
+  // Move the selected element to source slot `toIndex` among its siblings, then
+  // write + record history on the SAME shared stack as styles/text. A reorder
+  // changes structure, so after HMR repaints we re-select the element at its new
+  // index (best-effort) to keep the panel anchored to what the user just moved.
+  async function commitReorder(el: CanvasElement, toIndex: number) {
+    const parent = el.node.parentElement
+    // The dragged element's index among its movable siblings (DOM order === source
+    // order under the host-only gate) — used to land selection back on it post-HMR.
+    const siblings = parent
+      ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+      : []
+    const fromIndex = siblings.indexOf(el.node)
+    const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
+    try {
+      const { edits, originals, warnings } = await museReorder({
+        fileName: el.fileName,
+        line: el.line,
+        column: el.column,
+        tag: el.tag,
+        classNames: el.node.getAttribute('class') ?? '',
+        toIndex,
+      })
+      if (warnings.length) console.warn('[muse] reorder:', warnings.join(' · '))
+      if (edits.length === 0) {
+        const r = el.node.getBoundingClientRect()
+        flashHint(r.left, r.top, (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, ''))
+        return
+      }
+      await museWrite(edits)
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(el)],
+          label: `reorder ${el.tag}`,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      } else {
+        console.warn('[muse] reorder: missing originals, skipping undo entry')
+      }
+      // After HMR re-renders the parent in the new order, re-select the moved
+      // element by its new index. Best-effort: if the DOM isn't ready or diverged,
+      // just refresh the panel — never throw on a stale node.
+      window.setTimeout(() => {
+        const kids = parent?.isConnected
+          ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+          : []
+        const moved = kids[newIndex]
+        if (moved instanceof HTMLElement) {
+          const c = canvasChain(moved)[0]
+          if (c) selectElement(c)
+        }
+        bump((v) => v + 1)
+      }, 200)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   // Enter contentEditable when `editing` is set (double-click). First probe the
   // server: only static text (a single JSXText) is editable, so data-bound text
   // gets a calm hint instead of a caret you'd type into then have bounced.
@@ -478,6 +566,9 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           />
           {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
           <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+          {reorderable?.reorderable && (
+            <ReorderOverlay node={selected.node} onReorder={(toIndex) => void commitReorder(selected, toIndex)} />
+          )}
           {panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
               {/* Key by element so the per-side expand state re-derives from the
