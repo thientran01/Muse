@@ -72,8 +72,18 @@ export function ReorderOverlay({
     const parent = node.parentElement
     if (!parent) return
 
+    // A pending one-shot click-swallower (set on drop), tracked so teardown can
+    // cancel it if the component unmounts in the gap before the trailing click.
+    let cancelSwallow: (() => void) | null = null
+
+    // Advertise the body as draggable BEFORE any press (siblings set their cursor
+    // unconditionally too); saved/restored so we don't clobber a host cursor.
+    const prevCursor = node.style.cursor
+    node.style.cursor = 'grab'
+
     const teardown = () => {
       const p = press.current
+      if (p?.dragging) node.releasePointerCapture?.(p.pointerId) // capture is taken only on engage
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
       press.current = null
       setDrop(null)
@@ -81,9 +91,10 @@ export function ReorderOverlay({
 
     const onDown = (e: PointerEvent) => {
       if (press.current || e.button !== 0) return // primary button only
-      // Don't preventDefault/stopPropagation — a press that never crosses the
-      // threshold must remain a plain click for useCanvasMode to select/drill.
-      node.setPointerCapture(e.pointerId)
+      // Don't preventDefault/stopPropagation OR capture yet — a press that never
+      // crosses the threshold must remain a plain click for useCanvasMode to
+      // select/drill, and capturing early can suppress touch-scroll + muddy click
+      // routing. Capture is deferred to engage (below).
       const nodes = movableSiblings(parent)
       press.current = {
         startX: e.clientX,
@@ -103,13 +114,14 @@ export function ReorderOverlay({
         if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) < THRESHOLD) return
         // Engage: snapshot geometry (excluding the dragged node), lift the element.
         const frozen = freezeSiblings(parent, node)
-        if (frozen.rects.length + 1 !== expectedCountRef.current) {
-          // Live movable children (dragged + others) don't match what the engine
-          // sees in source — fail closed: abandon, leave it a no-op.
-          node.releasePointerCapture?.(e.pointerId)
+        // Fail closed: the dragged node must be a known movable sibling, and the
+        // live movable count (others + dragged) must match what the engine sees in
+        // source — else an index could mis-target. Abandon, leave it a no-op.
+        if (p.fromIndex < 0 || frozen.rects.length + 1 !== expectedCountRef.current) {
           teardown()
           return
         }
+        node.setPointerCapture(e.pointerId) // now retarget the stream to the node
         p.frozen = frozen
         p.dragging = true
         p.prevStyle = applyLift(node)
@@ -117,33 +129,41 @@ export function ReorderOverlay({
       e.preventDefault()
       const dx = e.clientX - p.startX
       const dy = e.clientY - p.startY
-      node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)` // follow + lift
+      // Follow the cursor. Reduced-motion keeps the element in place (no scale/
+      // translate) — the shadow + raised layer still signal "picked up".
+      if (!prefersReducedMotion()) node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)`
       setDrop(computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex))
     }
 
     const onUp = (e: PointerEvent) => {
       const p = press.current
       if (!p || e.pointerId !== p.pointerId) return
-      node.releasePointerCapture?.(e.pointerId)
       if (!p.dragging) {
         press.current = null // a click — let it select/drill, nothing to undo
         return
       }
+      node.releasePointerCapture?.(e.pointerId)
       e.preventDefault()
       // A threshold-crossing drag still emits a trailing `click` at the drop point.
       // useCanvasMode's click handler is on document (capture), so it would select
       // whatever's under the cursor at release — wrong. Swallow that one click with
-      // a WINDOW capture listener: window capture fires before document capture, so
-      // it preempts useCanvasMode. One-shot, with a timeout in case no click comes
-      // (some browsers suppress click after a drag) so it can't eat a later click.
+      // a WINDOW capture listener (window capture fires before document capture, so
+      // it preempts useCanvasMode). One-shot + a timeout in case no click comes
+      // (some browsers suppress click after a drag). Tracked via cancelSwallow so
+      // teardown can clear it if we unmount before the click lands.
       const swallowClick = (ev: Event) => {
         ev.stopPropagation()
         ev.preventDefault()
+        cleanupSwallow()
+      }
+      const killSwallow = window.setTimeout(() => cleanupSwallow(), 350)
+      const cleanupSwallow = () => {
         window.removeEventListener('click', swallowClick, true)
         window.clearTimeout(killSwallow)
+        cancelSwallow = null
       }
       window.addEventListener('click', swallowClick, true)
-      const killSwallow = window.setTimeout(() => window.removeEventListener('click', swallowClick, true), 350)
+      cancelSwallow = cleanupSwallow
       const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
       teardown()
       // Only a real move commits — a drop back into your own slot is a no-op (the
@@ -154,7 +174,6 @@ export function ReorderOverlay({
     const onCancel = (e: PointerEvent) => {
       const p = press.current
       if (!p || e.pointerId !== p.pointerId) return
-      node.releasePointerCapture?.(e.pointerId)
       teardown()
     }
 
@@ -167,7 +186,9 @@ export function ReorderOverlay({
       node.removeEventListener('pointermove', onPointerMove)
       node.removeEventListener('pointerup', onUp)
       node.removeEventListener('pointercancel', onCancel)
+      cancelSwallow?.() // don't leave a window click-swallower alive past unmount
       teardown() // restore the lift if we unmount mid-drag (e.g. HMR)
+      if (node.isConnected) node.style.cursor = prevCursor
     }
   }, [node])
 
@@ -177,7 +198,7 @@ export function ReorderOverlay({
     <div className="pointer-events-none">
       {drop && !drop.noop && (
         <div
-          className="absolute z-10 rounded-full bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
+          className="absolute z-10 rounded-sm bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
           style={drop.bar}
         />
       )}
@@ -200,14 +221,25 @@ function applyLift(node: HTMLElement): SavedStyle {
     cursor: s.cursor,
     willChange: s.willChange,
   }
-  s.transform = 'scale(1.03)'
-  s.boxShadow = '0 12px 28px -6px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(var(--muse-accent) / 0.5)'
+  // Reduced-motion keeps the element in place (onPointerMove skips the follow
+  // transform); the shadow + raised layer + fade still read as "picked up".
+  if (!prefersReducedMotion()) s.transform = 'scale(1.03)'
+  // Neutral elevation, NOT an accent ring: the selected element already wears the
+  // accent selection ring (BoxModelOverlay), so the lift signals depth (shadow +
+  // raised layer + scale) while accent stays the language of selection + the drop
+  // bar — three roles, two visual cues, no accent-halo collision.
+  s.boxShadow = '0 12px 28px -6px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3)'
   s.zIndex = '999990' // above peers, below Muse's overlay chrome
   s.opacity = '0.95'
   s.transition = 'none' // we drive transform per-frame; no lag
   s.cursor = 'grabbing'
   s.willChange = 'transform'
   return prev
+}
+
+// Honor the OS reduce-motion setting for the lift's movement cues (scale + follow).
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 }
 
 function restoreLift(node: HTMLElement, prev: SavedStyle) {
