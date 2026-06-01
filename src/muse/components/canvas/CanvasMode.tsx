@@ -567,7 +567,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
           <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
           {reorderable?.reorderable && (
-            <ReorderOverlay node={selected.node} onReorder={(toIndex) => void commitReorder(selected, toIndex)} />
+            <ReorderOverlay
+              node={selected.node}
+              expectedCount={reorderable.count}
+              onReorder={(toIndex) => void commitReorder(selected, toIndex)}
+            />
           )}
           {panelPos && (
             <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>

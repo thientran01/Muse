@@ -16,9 +16,16 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 // press-hold-body later without touching the commit path.
 export function ReorderOverlay({
   node,
+  expectedCount,
   onReorder,
 }: {
   node: HTMLElement
+  // How many movable children the ENGINE sees in source (the probe's count).
+  // We map drop slots from live geometry, which only matches source order 1:1 if
+  // the visible movable children line up with it — so if a child is hidden
+  // (display:none → no client rect) the live count diverges and an index could
+  // mis-target. We fail closed in that case rather than move the wrong element.
+  expectedCount: number
   // Move the selected element to insertion slot `toIndex` (the source-order
   // position it lands BEFORE; siblings.length === drop at the end).
   onReorder: (toIndex: number) => void
@@ -67,11 +74,11 @@ export function ReorderOverlay({
     draggingRef.current = true
     prevOpacityRef.current = node.style.opacity
     node.style.opacity = '0.4' // ghost the element being moved
-    setDrop(computeDrop(node, e.clientX, e.clientY, layout))
+    setDrop(computeDrop(node, e.clientX, e.clientY, layout, expectedCount))
   }
   const moveDrag = (e: ReactPointerEvent) => {
     if (!draggingRef.current) return
-    setDrop(computeDrop(node, e.clientX, e.clientY, layout))
+    setDrop(computeDrop(node, e.clientX, e.clientY, layout, expectedCount))
   }
   const restoreOpacity = () => {
     if (prevOpacityRef.current !== null) {
@@ -83,7 +90,7 @@ export function ReorderOverlay({
     if (!draggingRef.current) return
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     draggingRef.current = false
-    const target = computeDrop(node, e.clientX, e.clientY, layout)
+    const target = computeDrop(node, e.clientX, e.clientY, layout, expectedCount)
     restoreOpacity()
     setDrop(null)
     // Only a real move commits — a tap, or a drop back into your own slot, is a
@@ -174,9 +181,19 @@ function siblingRects(node: HTMLElement): { nodes: HTMLElement[]; rects: DOMRect
 // Map a pointer position to an insertion slot: find the nearest sibling by center
 // distance (handles 2D — a grid cell is nearest by Euclidean distance), then choose
 // the leading or trailing edge of that cell along the reading axis.
-function computeDrop(node: HTMLElement, px: number, py: number, layout: Layout): DropTarget | null {
+function computeDrop(
+  node: HTMLElement,
+  px: number,
+  py: number,
+  layout: Layout,
+  expectedCount: number,
+): DropTarget | null {
   const { nodes, rects } = siblingRects(node)
   if (rects.length === 0) return null
+  // Fail closed: if the live movable children don't match what the engine sees in
+  // source (e.g. a display:none sibling has no client rect), a visible-order index
+  // would mis-target — don't reorder rather than move the wrong element.
+  if (rects.length !== expectedCount) return null
   const fromIndex = nodes.indexOf(node)
 
   let j = 0
