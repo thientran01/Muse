@@ -49,10 +49,15 @@ export function ReorderOverlay({
   // mis-target. We fail closed in that case rather than move the wrong element.
   expectedCount: number
   // Move the selected element to insertion slot `toIndex` (the source-order
-  // position it lands BEFORE; siblings.length === drop at the end).
-  onReorder: (toIndex: number) => void
+  // position it lands BEFORE; siblings.length === drop at the end). Returns a
+  // promise that resolves once the edit is written AND HMR has repainted +
+  // re-selected, so the overlay can hold its lift/make-room until then and clear
+  // it on the settled frame (no old-location flash, no double-jump).
+  onReorder: (toIndex: number) => Promise<void>
   // Reports drag engage (true) / end (false) so the parent can hide the other
   // canvas chrome (panel, box-model, resize) that would cover the dragged element.
+  // On a COMMITTED drop the overlay leaves it hidden and lets onReorder's caller
+  // un-hide after the re-select settles; only cancel/no-op paths call (false) here.
   onDragChange?: (dragging: boolean) => void
 }) {
   // The live drop target while dragging: where the bar draws + which slot commits.
@@ -98,11 +103,15 @@ export function ReorderOverlay({
     const prevCursor = node.style.cursor
     node.style.cursor = 'grab'
 
-    const teardown = () => {
+    // Restore lift + siblings immediately and un-hide the chrome. For cancel / no-op
+    // (nothing was written), this is the whole story. A COMMITTED drop instead
+    // routes through settleLanding → finalizeLanding (below), which holds the
+    // made-room arrangement across the write + HMR repaint and un-hides itself.
+    const teardown = (unhide = true) => {
       const p = press.current
       if (p?.dragging) {
         node.releasePointerCapture?.(p.pointerId) // capture is taken only on engage
-        onDragChangeRef.current?.(false) // un-hide the other canvas chrome
+        if (unhide) onDragChangeRef.current?.(false)
       }
       if (p?.sibPrev) restoreMakeRoom(p.sibPrev) // put the slid siblings back
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
@@ -198,11 +207,32 @@ export function ReorderOverlay({
       }
       window.addEventListener('click', swallowClick, true)
       cancelSwallow = cleanupSwallow
+      node.releasePointerCapture?.(e.pointerId)
       const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
-      teardown()
-      // Only a real move commits — a drop back into your own slot is a no-op (the
-      // engine guards this too, but skipping the round-trip is cleaner).
-      if (target && !target.noop) onReorderRef.current(target.toIndex)
+
+      // A drop back into your own slot is a no-op — restore + un-hide now.
+      if (!target || target.noop) {
+        teardown()
+        return
+      }
+
+      // COMMITTED drop. Don't snap. Ease the lifted element back DOWN to its origin
+      // and glide the made-room siblings back to rest (a soft "set down"), and hold
+      // the chrome hidden across the write + HMR repaint. HMR reuses these DOM nodes
+      // and reconciles them POSITIONALLY (content is rewritten in place, nodes don't
+      // move), so landing at the ORIGIN means the reorder shows up as content
+      // updating with NO positional jump — far smoother than animating to the
+      // destination (which would jump at the content swap). onReorder resolves after
+      // HMR repaints + re-selects; only THEN do we finalize (restore the non-eased
+      // styles, clear make-room, un-hide), so nothing flashes at the old location.
+      const { prevStyle, sibPrev } = p
+      setDrop(null)
+      press.current = null // drag is over; saved styles captured in locals above
+      settleLanding(node, prevStyle, sibPrev)
+      void onReorderRef.current(target.toIndex).finally(() => {
+        finalizeLanding(node, prevStyle, sibPrev)
+        onDragChangeRef.current?.(false) // un-hide AFTER the new order is on screen
+      })
     }
 
     const onCancel = (e: PointerEvent) => {
@@ -286,6 +316,30 @@ function restoreLift(node: HTMLElement, prev: SavedStyle) {
   s.transition = prev.transition
   s.cursor = prev.cursor
   s.willChange = prev.willChange
+}
+
+// Soft "set down" on a committed drop: ease the lifted element back to its origin
+// (transform → its pre-drag value, shadow/scale/opacity easing out) and glide the
+// made-room siblings back to rest, all over SLIDE_MS. The element keeps zIndex
+// until finalize, so it stays above its peers during the descent. Reduced-motion
+// never lifted, so there's nothing to ease — finalize handles it.
+function settleLanding(node: HTMLElement, prev: SavedStyle | null, sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null) {
+  if (prev && node.isConnected && !prefersReducedMotion()) {
+    const s = node.style
+    s.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${SLIDE_MS}ms cubic-bezier(0.16,1,0.3,1)`
+    s.transform = prev.transform // back to origin
+    s.boxShadow = prev.boxShadow
+    s.opacity = prev.opacity
+  }
+  if (sibPrev) for (const [n] of sibPrev) if (n.isConnected) n.style.transform = '' // siblings glide home (their transition is still primed)
+}
+
+// After the new order is on screen (onReorder settled), clear the remaining
+// overrides — zIndex/willChange/cursor on the element, transitions on the siblings —
+// so nothing is stranded. Transform/shadow/opacity already eased to rest in settle.
+function finalizeLanding(node: HTMLElement, prev: SavedStyle | null, sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null) {
+  if (prev && node.isConnected) restoreLift(node, prev)
+  if (sibPrev) restoreMakeRoom(sibPrev)
 }
 
 // --- drop-target geometry (the 2D → 1D mapping) ---

@@ -404,7 +404,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       if (edits.length === 0) {
         const r = el.node.getBoundingClientRect()
         flashHint(r.left, r.top, (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, ''))
-        return
+        return // ReorderOverlay's no-op/cancel teardown already un-hid the chrome
       }
       await museWrite(edits)
       const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
@@ -418,22 +418,28 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       } else {
         console.warn('[muse] reorder: missing originals, skipping undo entry')
       }
-      // After HMR re-renders the parent in the new order, re-select the moved
-      // element by its new index. Best-effort: if the DOM isn't ready or diverged,
-      // just refresh the panel — never throw on a stale node.
-      window.setTimeout(() => {
-        const kids = parent?.isConnected
-          ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
-          : []
-        const moved = kids[newIndex]
-        if (moved instanceof HTMLElement) {
-          const c = canvasChain(moved)[0]
-          if (c) selectElement(c)
-        }
-        bump((v) => v + 1)
-      }, 200)
+      // Wait for HMR to repaint the parent in the new order, THEN re-select the
+      // moved element at its new index and resolve — so ReorderOverlay holds its
+      // eased set-down + the hidden chrome until the new order is actually on
+      // screen, then finalizes (no flash at the old location). Best-effort
+      // re-select: never throw on a stale/ready-diverged node.
+      await new Promise<void>((resolve) =>
+        window.setTimeout(() => {
+          const kids = parent?.isConnected
+            ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+            : []
+          const moved = kids[newIndex]
+          if (moved instanceof HTMLElement) {
+            const c = canvasChain(moved)[0]
+            if (c) selectElement(c)
+          }
+          bump((v) => v + 1)
+          resolve()
+        }, 200),
+      )
     } catch (e) {
       setError((e as Error).message)
+      setReordering(false) // an error path won't reach the overlay's finalize — un-hide here
     }
   }
 
@@ -581,7 +587,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             <ReorderOverlay
               node={selected.node}
               expectedCount={reorderable.count}
-              onReorder={(toIndex) => void commitReorder(selected, toIndex)}
+              onReorder={(toIndex) => commitReorder(selected, toIndex)}
               onDragChange={setReordering}
             />
           )}
