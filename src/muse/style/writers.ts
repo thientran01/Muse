@@ -13,7 +13,7 @@
 //    • build   — author a class token for a property+value, or null when it
 //                can't be expressed safely (→ engine falls back to inline)
 //    • match   — recognize this property's existing class token, so an edit
-//                REPLACES it in place (and an inline write strips the duel)
+//                REPLACES it in place (and an inline write strips the dueling class)
 //    • themed  — flag a token whose value comes from a CSS variable, so the
 //                engine leaves it alone rather than hardcoding over a theme token
 //
