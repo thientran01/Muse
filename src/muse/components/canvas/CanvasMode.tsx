@@ -216,6 +216,43 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       cancelled = true
     }
   }, [selected])
+  // Keyboard reorder (a11y) — a keyboard-only equivalent of the drag, since the
+  // pointer path isn't reachable without a mouse/touch. When a reorderable element
+  // is selected, Cmd/Ctrl + arrow moves it one slot: Up/Left = back, Down/Right =
+  // forward (accepts both axes so it works in a row OR a column without the user
+  // having to know which). Per Emil's rule, a keyboard-initiated action does NOT
+  // animate — it commits straight through commitReorder (write → HMR → re-select),
+  // the same deterministic path the drag uses. Matches the undo handler's modifier
+  // + input-guard convention.
+  useEffect(() => {
+    if (!selected || !reorderable?.reorderable) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const dir = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : 0
+      if (dir === 0) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const parent = selected.node.parentElement
+      if (!parent) return
+      const kids = ([...parent.children] as Element[]).filter(
+        (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
+      )
+      const from = kids.indexOf(selected.node)
+      if (from < 0) return
+      // toIndex is an insertion slot in SOURCE order (lands BEFORE the child there).
+      // back one = from-1; forward one = from+2 (skip self + the next sibling). Out of
+      // range = already at an end → no-op, and DON'T preventDefault so the key passes
+      // through normally.
+      const toIndex = dir < 0 ? from - 1 : from + 2
+      if (toIndex < 0 || toIndex > kids.length) return
+      e.preventDefault()
+      void commitReorder(selected, toIndex)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, reorderable])
+
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
 
@@ -639,7 +676,9 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             {editing
               ? '· editing text · Enter to save · Esc to cancel'
               : selected
-                ? '· double-click to edit text · Alt-click selects the container · Esc to deselect'
+                ? reorderable?.reorderable
+                  ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · Esc to deselect'
+                  : '· double-click to edit text · Alt-click selects the container · Esc to deselect'
                 : '· click an element · Alt-click for its container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
