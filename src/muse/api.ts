@@ -201,7 +201,7 @@ export type DesignGet = { exists: boolean; content?: string; path?: string }
 
 // Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.
 export async function museDesignGet(): Promise<DesignGet> {
-  if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'src/demo/DESIGN.md' }
+  if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
   const res = await fetch('/api/muse/design')
   const data = (await res.json()) as DesignGet & { error?: string }
   if (data.error) throw new Error(data.error) // surface server errors, not a false "no brief"
@@ -213,7 +213,7 @@ export async function museDesignGet(): Promise<DesignGet> {
 export async function museDesignGenerate(): Promise<{ content: string; path?: string }> {
   if (MOCK) {
     await delay(1200)
-    return { content: MOCK_DESIGN_MD, path: 'src/demo/DESIGN.md' }
+    return { content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
   }
   const res = await fetch('/api/muse/design/generate', { method: 'POST' })
   const data = (await res.json()) as { content?: string; path?: string; error?: string }
@@ -223,19 +223,18 @@ export async function museDesignGenerate(): Promise<{ content: string; path?: st
 
 // A small sample brief for mock mode so the card renders without a backend.
 const MOCK_DESIGN_MD = `---
-name: Dink Den Design System
+name: Muse Design System
 colors:
-  energy: "#d4ff3a"   # var(--c-energy)
-  pop: "#ff6b35"      # var(--c-pop)
-  bg: "#0f1f1a"       # var(--c-bg)
-  card: "#f5f1e8"     # var(--c-card)
+  brand: "#7f2f2f"
+  paper: "#f7f4ee"
+  ink: "#1c1917"
 typography:
-  display: { fontFamily: "Bricolage Grotesque" }
-  body: { fontFamily: "Schibsted Grotesk" }
+  display: { fontFamily: "Inter" }
+  body: { fontFamily: "Inter" }
 ---
 
 ## Brand & Style
-Warm, editorial, high-energy — a boutique sports feel with electric lime and orange accents.`
+Warm and tool-like. One deep brick accent on a warm paper canvas, Inter throughout, fast easeOut motion.`
 
 // =============================================================================
 // Mock mode — credit-free dev iteration on the thread shell.
