@@ -31,7 +31,7 @@
   --muse-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --muse-dur-mid: 200ms;
   --muse-dur-fast: 90ms;
-  --muse-dur-morph: 300ms; /* a touch longer for the dock stretch (at the <=300ms ceiling) */
+  --muse-dur-morph: 180ms; /* the dock stretch — snappy (Emil: small popovers 125-200ms) */
   /* Allow transitioning to/from height:auto so the panel can smoothly reshape
    * between views of different heights (home ⇄ proposals). Progressive
    * enhancement: browsers without it (Safari/Firefox as of 2026-05) snap the
@@ -176,13 +176,19 @@
  * (a real width animation — Tailwind arbitrary max-w-[..]/transition-[..,..] was
  * unreliable here). Reduced motion: snap the width, keep the opacity crossfade. */
 .muse-dock-trail {
-  overflow: hidden;
-  white-space: nowrap;
-  /* Width stretches on the in-out curve (smooth both ends, no lurch); the content
-   * crossfades a little faster so it's settled before the stretch finishes. */
+  display: grid;
+  /* grid-template-columns 0fr<->1fr animates to the EXACT content width, so the
+   * pill grows monotonically — unlike a max-width target wider than the content,
+   * which finished early and let the label keep collapsing, overshooting the final
+   * width then settling back (the "bounce off an invisible edge"). In-out curve. */
   transition:
-    max-width var(--muse-dur-morph) var(--muse-ease-in-out),
-    opacity var(--muse-dur-mid) var(--muse-ease-out);
+    grid-template-columns var(--muse-dur-morph) var(--muse-ease-in-out),
+    opacity var(--muse-dur-morph) var(--muse-ease-out);
+}
+.muse-dock-trail > * {
+  overflow: hidden;
+  min-width: 0;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   .muse-dock-trail {

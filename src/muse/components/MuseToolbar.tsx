@@ -152,17 +152,16 @@ export function MuseToolbar({
           <span className="flex h-8 w-8 shrink-0 items-center justify-center">
             <UfoIcon size={18} className="text-accent" />
           </span>
-          <span className="muse-dock-trail" style={{ maxWidth: expanded ? 0 : '3.5rem', opacity: expanded ? 0 : 1 }}>
+          <span className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '0fr' : '1fr', opacity: expanded ? 0 : 1 }}>
             <span className="pl-1 pr-2.5 text-sm font-medium text-fg">Muse</span>
           </span>
         </button>
 
-        {/* Trailing: the toolbar icons. Reveal by growing their max-width as the
-            label collapses, so the pill widens leftward — the FAB expanding. */}
-        <div
-          className="muse-dock-trail flex items-center"
-          style={{ maxWidth: expanded ? '12rem' : 0, opacity: expanded ? 1 : 0 }}
-        >
+        {/* Trailing: the toolbar icons. Their grid column grows 0fr->1fr to the
+            EXACT content width as the label collapses, so the pill widens leftward
+            monotonically — the FAB expanding, no overshoot. */}
+        <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
+          <div className="flex items-center">
           <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>
             <ClockCounterClockwise size={17} weight="bold" />
           </IconBtn>
@@ -173,6 +172,7 @@ export function MuseToolbar({
           <IconBtn label="Close Muse" onClick={onClose}>
             <X size={16} weight="bold" />
           </IconBtn>
+          </div>
         </div>
       </div>
     </div>
