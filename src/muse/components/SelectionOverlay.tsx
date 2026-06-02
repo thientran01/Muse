@@ -47,12 +47,14 @@ export function HoverHighlight({
       {info && cursor && (
         shiftHeld ? (
           <div
-            className="pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-md bg-surface/95 px-2 py-1 text-[11px] font-medium text-accent shadow-lg ring-1 ring-accent/30 backdrop-blur"
+            className="pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-md bg-surface/95 px-2 py-1 text-[11px] font-medium text-fg shadow-lg ring-1 ring-line/10 backdrop-blur"
             style={{ top: tipTop, left: tipLeft }}
           >
+            {/* Manta in accent is the single flourish; the label stays text-fg so it
+                reads at AA on the dark default surface (brick-on-near-black fails). */}
             <UfoIcon size={13} className="text-accent" />
             <span className="whitespace-nowrap">
-              Ask Muse about this <span className="font-mono">&lt;{info.tag}&gt;</span>
+              Ask Muse about this <span className="font-mono text-fg-faint">&lt;{info.tag}&gt;</span>
             </span>
           </div>
         ) : (
