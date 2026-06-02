@@ -2,39 +2,32 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ClockCounterClockwise, FileText, X } from '@phosphor-icons/react'
 import { museDesignGenerate, museDesignGet } from '../api'
 import type { ArchivedThread } from '../store'
+import type { HistoryControls } from '../MuseOverlay'
 import { UfoIcon } from './UfoIcon'
+import { UndoRedoBar } from './UndoRedoBar'
 import { MuseHistory } from './MuseHistory'
 import { MessageDesign } from './messages/MessageDesign'
 
-// Muse's idle "home" — a compact icon toolbar, NOT a panel. The top banner
-// already teaches the gesture (Shift-click hands an element to the agent), so the
-// home explains nothing: it's pure utility. The FAB grows into this bar (decision
-// 2A); history + the design brief open as a POPOVER above it, the bar staying put
-// (decision 1B). Shift-clicking an element on the page is what opens the full
-// agent panel — this is only the resting state.
+// Muse's idle dock — ONE persistent pill that morphs between the FAB and the
+// toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
+// (manta + past-proposals · design · X). The transition is a real expand: the
+// trailing label and the icon group animate their max-width, so the same pill
+// physically widens leftward out of the FAB (and shrinks back on close) instead
+// of one element scale-popping in over another. The top banner already teaches
+// the Shift-click gesture, so the dock is pure utility; history + the design
+// brief open as a popover above it (the bar stays put). Shift-clicking a page
+// element opens the full agent panel — this is only the resting state.
 
 type Pop = 'none' | 'history' | 'design'
 type DesignState = { status: 'offer' | 'generating' | 'view'; content?: string; path?: string }
 
-function IconBtn({
-  label,
-  accent = false,
-  onClick,
-  children,
-}: {
-  label: string
-  accent?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
+function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`flex h-8 w-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
-        accent ? 'text-accent hover:bg-accent/10' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
-      }`}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-faint transition hover:bg-line/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100"
     >
       {children}
     </button>
@@ -42,32 +35,33 @@ function IconBtn({
 }
 
 export function MuseToolbar({
+  expanded,
+  onOpen,
+  onClose,
   archived,
   onPickHistory,
-  onClose,
-  closing = false,
+  hasHistory,
+  historyControls,
 }: {
+  // True = toolbar form (Muse open, idle); false = FAB form (Muse closed/collapsing).
+  expanded: boolean
+  onOpen: () => void
+  onClose: () => void
   archived: ArchivedThread[]
   onPickHistory: (id: string) => void
-  onClose: () => void
-  // True while Muse is collapsing back to the FAB — the bar shrinks toward the
-  // corner so the close reads as the toolbar folding into the FAB (mirrors 2A's
-  // grow, in reverse).
-  closing?: boolean
+  hasHistory: boolean
+  historyControls: HistoryControls
 }) {
   const [pop, setPop] = useState<Pop>('none')
   const [design, setDesign] = useState<DesignState | null>(null)
   // Guards for the lazy design fetch: `fetching` blocks a concurrent GET (a
-  // double-click on the design icon), `mounted` drops a late setState if the
-  // toolbar unmounted mid-fetch (Shift-click escalates → home flips false). Mirror
-  // of the parent's showingDesignRef pattern.
+  // double-click), `mounted` drops a late setState if the dock unmounts mid-fetch.
   const fetchingRef = useRef(false)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
+  // Any time the pill collapses back to the FAB, dismiss an open popover.
+  useEffect(() => { if (!expanded) setPop('none') }, [expanded])
 
-  // The design brief is fetched lazily the first time its popover opens (then
-  // cached for the session). Self-contained here — the idle toolbar has no thread
-  // to append a bubble to, unlike the agent panel's design flow.
   const openDesign = async () => {
     setPop((p) => (p === 'design' ? 'none' : 'design'))
     if (design || fetchingRef.current) return
@@ -94,14 +88,22 @@ export function MuseToolbar({
   }
 
   return (
-    <div
-      data-closing={closing ? 'true' : undefined}
-      className="muse-panel-surface pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-2"
-    >
-      {/* 1B popover — opens above the bar; the bar below stays put. */}
-      {pop !== 'none' && !closing && (
-        // Origin-aware entrance — scales up from the bar/FAB corner below it
-        // (Emil: popovers grow from their trigger), reusing the panel keyframe.
+    <div className="pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-3">
+      {/* Undo/redo lives above the FAB when collapsed (with history) — same as the
+          old idle corner; hidden once expanded (the agent panel carries its own). */}
+      {!expanded && hasHistory && (
+        <UndoRedoBar
+          canUndo={historyControls.canUndo}
+          canRedo={historyControls.canRedo}
+          loading={historyControls.loading}
+          onUndo={historyControls.onUndo}
+          onRedo={historyControls.onRedo}
+          onRevert={historyControls.onRevert}
+        />
+      )}
+
+      {/* Popover — only when expanded; scales up from the bar/FAB corner below it. */}
+      {expanded && pop !== 'none' && (
         <div className="w-72 origin-bottom-right animate-muse-panel overflow-hidden rounded-2xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none">
           <header className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
@@ -134,21 +136,44 @@ export function MuseToolbar({
         </div>
       )}
 
-      {/* The bar: manta (identity) · past proposals · design system · X. */}
-      <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10">
-        <span className="flex h-8 w-8 items-center justify-center" aria-hidden="true">
-          <UfoIcon size={18} className="text-accent" />
-        </span>
-        <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>
-          <ClockCounterClockwise size={17} weight="bold" />
-        </IconBtn>
-        <IconBtn label="Design system" onClick={openDesign}>
-          <FileText size={17} />
-        </IconBtn>
-        <span className="mx-0.5 h-5 w-px bg-line/15" />
-        <IconBtn label="Close Muse" onClick={onClose}>
-          <X size={16} weight="bold" />
-        </IconBtn>
+      {/* The morphing pill. mounts with the FAB "catch" (only fires on a fresh
+          mount — e.g. after the agent panel closes — never on the in-place
+          FAB↔toolbar morph, since the element persists across it). */}
+      <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10 animate-muse-fab-catch motion-reduce:animate-none">
+        {/* Leading: manta + "Muse" label. Collapsed, the whole thing is the FAB
+            (click to open). Expanded, the label collapses to 0 and this is just
+            the manta (identity). */}
+        <button
+          type="button"
+          onClick={() => { if (!expanded) onOpen() }}
+          aria-label={expanded ? 'Muse' : 'Open Muse'}
+          className={`flex shrink-0 items-center rounded-full ${expanded ? 'cursor-default' : ''}`}
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <UfoIcon size={18} className="text-accent" />
+          </span>
+          <span className="muse-dock-trail" style={{ maxWidth: expanded ? 0 : '3.5rem', opacity: expanded ? 0 : 1 }}>
+            <span className="pl-1 pr-2.5 text-sm font-medium text-fg">Muse</span>
+          </span>
+        </button>
+
+        {/* Trailing: the toolbar icons. Reveal by growing their max-width as the
+            label collapses, so the pill widens leftward — the FAB expanding. */}
+        <div
+          className="muse-dock-trail flex items-center"
+          style={{ maxWidth: expanded ? '12rem' : 0, opacity: expanded ? 1 : 0 }}
+        >
+          <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>
+            <ClockCounterClockwise size={17} weight="bold" />
+          </IconBtn>
+          <IconBtn label="Design system" onClick={openDesign}>
+            <FileText size={17} />
+          </IconBtn>
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
+          <IconBtn label="Close Muse" onClick={onClose}>
+            <X size={16} weight="bold" />
+          </IconBtn>
+        </div>
       </div>
     </div>
   )

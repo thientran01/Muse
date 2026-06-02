@@ -25,8 +25,13 @@
    * the curve/durations live here as vars to avoid repeating the magic string).
    * KEEP IN SYNC with tailwind.config.js EASE.out / DUR.{mid,fast}. */
   --muse-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* In-out for ON-SCREEN MORPHS (the dock FAB<->toolbar width stretch). easeOut's
+   * fast start lurches a morph ("shoved open"); a symmetric in-out eases both ends
+   * so the pill stretches smoothly. (Enter/exit still use easeOut — Decision #21.) */
+  --muse-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --muse-dur-mid: 200ms;
   --muse-dur-fast: 90ms;
+  --muse-dur-morph: 300ms; /* a touch longer for the dock stretch (at the <=300ms ceiling) */
   /* Allow transitioning to/from height:auto so the panel can smoothly reshape
    * between views of different heights (home ⇄ proposals). Progressive
    * enhancement: browsers without it (Safari/Firefox as of 2026-05) snap the
@@ -161,5 +166,26 @@
   .muse-panel-surface[data-closing='true'] {
     transform: none;
     filter: none;
+  }
+}
+
+/* The dock's morph (FAB <-> toolbar): the trailing "Muse" label and the icon
+ * group clip + animate their max-width so the SAME pill physically widens out of
+ * the FAB into the toolbar (and shrinks back). The open/closed max-width VALUES
+ * are set inline per element; this class carries the clip + the eased transition
+ * (a real width animation — Tailwind arbitrary max-w-[..]/transition-[..,..] was
+ * unreliable here). Reduced motion: snap the width, keep the opacity crossfade. */
+.muse-dock-trail {
+  overflow: hidden;
+  white-space: nowrap;
+  /* Width stretches on the in-out curve (smooth both ends, no lurch); the content
+   * crossfades a little faster so it's settled before the stretch finishes. */
+  transition:
+    max-width var(--muse-dur-morph) var(--muse-ease-in-out),
+    opacity var(--muse-dur-mid) var(--muse-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .muse-dock-trail {
+    transition: opacity var(--muse-dur-fast) var(--muse-ease-out);
   }
 }

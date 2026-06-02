@@ -10,13 +10,11 @@ import { museStore, nextThreadId, useMuseStore } from './store'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { CanvasMode } from './components/canvas/CanvasMode'
 import { Composer } from './components/Composer'
-import { MuseFab } from './components/MuseFab'
 import { MuseHistory } from './components/MuseHistory'
 import { MusePanel } from './components/MusePanel'
 import { MuseToolbar } from './components/MuseToolbar'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
-import { UndoRedoBar } from './components/UndoRedoBar'
 import type {
   AskInput,
   ChatMessage,
@@ -614,6 +612,14 @@ export function MuseOverlay() {
     if (home) setHistoryOpen(false)
   }, [home])
 
+  // Bottom-right surface: the agent panel when an element is engaged, otherwise the
+  // dock (the one pill that morphs between the FAB and the idle toolbar). The dock
+  // also renders DURING a close so it can "catch" the collapsing agent panel.
+  // `dockExpanded` = toolbar form (Muse open, idle) vs FAB form (closed/collapsing).
+  const agentOpen = panelOpen && !home
+  const showDock = !agentOpen || closing
+  const dockExpanded = panelOpen && home && !closing
+
   // Enter submits a completed clarify (when focus isn't in a text field). Page
   // gestures — hover, plain/Shift/Alt click, Esc-to-deselect-then-exit — are
   // owned by Canvas's selection (useCanvasMode) while the panel is open, so there's
@@ -636,57 +642,32 @@ export function MuseOverlay() {
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
-      {/* FAB renders while closing too (not just once the panel unmounts), so the
-          button is already in its shared bottom-right corner to "catch" the
-          collapsing panel — the close reads as one motion, not a flash-and-pop.
-          The undo bar stays hidden until the collapse finishes so it doesn't pop
-          in over the morph. No separate Canvas button or select-mode crosshair:
-          opening Muse makes the page selectable, and the gesture (plain vs Shift
-          click) picks the surface. */}
-      {(!panelOpen || closing) && (
-        <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
-          {hasHistory && !closing && (
-            <UndoRedoBar
-              canUndo={historyControls.canUndo}
-              canRedo={historyControls.canRedo}
-              loading={historyControls.loading}
-              onUndo={historyControls.onUndo}
-              onRedo={historyControls.onRedo}
-              onRevert={historyControls.onRevert}
-            />
-          )}
-          {/* Mid-collapse → abort the close (reverses home). Idle → open Muse onto
-              its home state (which also makes the page selectable). */}
-          <MuseFab
-            active={false}
-            loading={loading}
-            entering={closing}
-            onToggle={() => (closing ? cancelClose() : setOpen(true))}
-          />
-        </div>
-      )}
-
       {/* The single selection surface, live whenever Muse is open: hover
           highlight + on-canvas chrome. Plain-click edits directly; Shift-click
           escalates the element to the agent panel below (firing the observe read).
           Unmounts at the start of the close so the chrome clears before the panel
-          morphs into the FAB. */}
+          collapses. */}
       {open && !closing && <CanvasMode onExit={requestClose} onEscalate={(el) => setSelection([el])} />}
 
-      {/* Idle home = the compact icon toolbar (manta · past proposals · design ·
-          X), grown from the FAB (2A). History + the design brief open as a popover
-          above the bar (1B). Shift-clicking a page element is what opens the agent
-          panel below — this is just the resting state. */}
-      {panelOpen && home && (
+      {/* The dock — one pill that morphs between the FAB (closed) and the idle
+          toolbar (manta · past proposals · design · X). Opening expands the FAB in
+          place into the toolbar (2A); history + the design brief open as a popover
+          above the bar (1B). Also rendered during a close so it catches the
+          collapsing agent panel. Shift-clicking a page element opens the agent
+          panel below — the dock is just the resting state. */}
+      {showDock && (
         <MuseToolbar
+          expanded={dockExpanded}
+          onOpen={() => (closing ? cancelClose() : setOpen(true))}
+          onClose={requestClose}
           archived={archived}
           onPickHistory={openFromHistory}
-          onClose={requestClose}
-          closing={closing}
+          hasHistory={hasHistory}
+          historyControls={historyControls}
         />
       )}
 
-      {panelOpen && !home && (
+      {agentOpen && (
         <div className="absolute bottom-6 right-6">
           <MusePanel
             mock={MOCK}
