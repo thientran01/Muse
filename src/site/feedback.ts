@@ -27,7 +27,10 @@ export async function submitFeedback(input: FeedbackInput): Promise<void> {
     }),
   })
   if (!res.ok) {
+    // Log the raw server detail for debugging, but show testers a clean message
+    // (Supabase returns a JSON error body that's noise in the UI).
     const detail = await res.text().catch(() => '')
-    throw new Error(`Couldn’t send feedback (${res.status}). ${detail}`.trim())
+    console.error('[muse] feedback submit failed:', res.status, detail)
+    throw new Error('Couldn’t send feedback just now — please try again.')
   }
 }

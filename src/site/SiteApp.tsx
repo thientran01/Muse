@@ -35,6 +35,28 @@ export default function SiteApp() {
 
   return (
     <div className="min-h-screen bg-[#faf9f7] text-zinc-900 antialiased">
+      {/* Mobile top bar — the sidebar is desktop-only, so phones navigate here. */}
+      <header className="sticky top-0 z-30 border-b border-zinc-200/80 bg-[#faf9f7]/95 px-4 py-3 backdrop-blur md:hidden">
+        <a href="#/overview" className="flex items-center gap-2">
+          <MuseMark />
+          <span className="text-base font-semibold tracking-tight">Muse</span>
+        </a>
+        <nav className="-mx-1 mt-2 flex gap-1.5 overflow-x-auto pb-1" aria-label="Sections">
+          {NAV.map((n) => (
+            <a
+              key={n.id}
+              href={`#/${n.id}`}
+              aria-current={page === n.id ? 'page' : undefined}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                page === n.id ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'
+              }`}
+            >
+              {n.label}
+            </a>
+          ))}
+        </nav>
+      </header>
+
       <div className="mx-auto flex max-w-6xl">
         {/* Sidebar */}
         <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-zinc-200/80 px-6 py-7 md:flex">
@@ -71,7 +93,7 @@ export default function SiteApp() {
         <main className="min-w-0 flex-1 px-6 py-10 md:px-12 md:py-14">
           <div className="mx-auto max-w-2xl">
             <Page />
-            <footer className="mt-20 border-t border-zinc-200 pt-6 text-[13px] text-zinc-400">
+            <footer className="mt-20 border-t border-zinc-200 pt-6 text-[13px] text-zinc-500">
               Muse — point at your running app, say what you want, get real code.
             </footer>
           </div>

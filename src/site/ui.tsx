@@ -17,7 +17,7 @@ export function CodeBlock({ children, label }: { children: string; label?: strin
   return (
     <div className="my-5 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950">
       {label && (
-        <div className="border-b border-white/10 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+        <div className="border-b border-white/10 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-zinc-400">
           {label}
         </div>
       )}
@@ -77,14 +77,14 @@ export function Kbd({ children }: { children: ReactNode }) {
 // ── Buttons (also serve as editable playground elements) ────────────────────
 export function PrimaryButton({ children }: { children: ReactNode }) {
   return (
-    <button className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700">
+    <button type="button" className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700">
       {children}
     </button>
   )
 }
 export function SecondaryButton({ children }: { children: ReactNode }) {
   return (
-    <button className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50">
+    <button type="button" className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50">
       {children}
     </button>
   )

@@ -16,8 +16,14 @@ import { musePlugin } from './server/musePlugin'
 // the bundle (larger, unminified) — fine for a demo. Edits are ephemeral anyway
 // (VITE_MUSE_EPHEMERAL in .env.demo), so the absolute paths never hit disk.
 export default defineConfig(({ mode }) => {
-  if (mode === 'demo') process.env.NODE_ENV = 'development'
+  const demo = mode === 'demo'
+  // Force the dev jsx runtime two ways for robustness: set NODE_ENV before Vite
+  // computes isProduction (picks dev React + the jsxDEV transform that carries
+  // _debugSource), AND pin the client-side replacement so React's own runtime
+  // checks stay in dev even if Vite's env-timing changes across versions.
+  if (demo) process.env.NODE_ENV = 'development'
   return {
     plugins: [react(), musePlugin()],
+    ...(demo ? { define: { 'process.env.NODE_ENV': '"development"' } } : {}),
   }
 })
