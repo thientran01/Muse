@@ -196,15 +196,28 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setEditing(leaf)
     }
 
+    // Suppress the browser's native HTML5 drag while Canvas is active. Links and
+    // images are `draggable` by default, so pressing one to reorder it starts a
+    // native link/image drag (the URL ghost) that hijacks the pointer-based
+    // reorder — you'd pick up the <a> instead of moving the element. Killing
+    // dragstart at the capture phase lets the reorder's pointer drag own the
+    // gesture. Stand down while editing text so in-field text drag still works.
+    const onDragStart = (e: DragEvent) => {
+      if (editingRef.current) return
+      e.preventDefault()
+    }
+
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
     document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
+    document.addEventListener('dragstart', onDragStart, true)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('dragstart', onDragStart, true)
     }
   }, [active, selectElement])
 
