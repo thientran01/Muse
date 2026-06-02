@@ -352,13 +352,21 @@ function prefersReducedMotion(): boolean {
 
 function restoreLift(node: HTMLElement, prev: SavedStyle) {
   const s = node.style
+  // Snap the transform back with NO transition, THEN restore the saved transition.
+  // Otherwise an element whose CSS class sets `transition: transform` (Tailwind's
+  // `transition` utility includes transform — buttons carry it for hover) animates
+  // the cleared transform back to rest, sliding the dropped element into place after
+  // the drop (the reorder "replay", most visible on a far-traveling drag like a
+  // button swap). The forced reflow commits the snap before the transition returns.
+  s.transition = 'none'
   s.transform = prev.transform
   s.boxShadow = prev.boxShadow
   s.zIndex = prev.zIndex
   s.opacity = prev.opacity
-  s.transition = prev.transition
   s.cursor = prev.cursor
   s.willChange = prev.willChange
+  void node.offsetWidth // force reflow so the cleared transform paints with no transition
+  s.transition = prev.transition
 }
 
 // The dragged node's destination offset along the layout axis: how far to translate
@@ -556,10 +564,24 @@ function applyMakeRoom(frozen: Frozen, slot: number, fromIndex: number) {
 }
 
 function restoreMakeRoom(saved: Map<HTMLElement, { transition: string; transform: string }>) {
+  // Same snap as restoreLift: clear each sibling's make-room transform with the
+  // transition suppressed so a class-level `transition: transform` can't animate
+  // them back into place on drop. One reflow commits all the snaps, then the saved
+  // transitions are restored. (The during-drag make-room slide is unaffected — it
+  // runs off the inline transition primeMakeRoom sets; this is only the clear.)
   for (const [n, prev] of saved) {
     if (!n.isConnected) continue
-    n.style.transition = prev.transition
+    n.style.transition = 'none'
     n.style.transform = prev.transform
     n.style.willChange = ''
+  }
+  for (const n of saved.keys()) {
+    if (n.isConnected) {
+      void n.offsetWidth // single forced reflow commits the snapped transforms
+      break
+    }
+  }
+  for (const [n, prev] of saved) {
+    if (n.isConnected) n.style.transition = prev.transition
   }
 }
