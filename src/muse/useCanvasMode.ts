@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElementInfo, getSourceLocation, type ElementInfo } from './sourceLocation'
-import type { CanvasElement } from './types'
-import type { Rect } from './useSelection'
+import type { CanvasElement, Rect, SelectedElement } from './types'
 
 function isMuseUI(el: Element | null): boolean {
   if (!el) return false
@@ -48,6 +47,21 @@ export function canvasChain(el: Element): CanvasElement[] {
   return out
 }
 
+// Widen a CanvasElement into the SelectedElement the agent/chat side speaks — it
+// carries classNames + a text snippet the observe call reads. Used when a
+// Shift-click hands the canvas target over to the agent, and for history entries.
+export function asSelected(el: CanvasElement): SelectedElement {
+  return {
+    fileName: el.fileName,
+    line: el.line,
+    tag: el.tag,
+    classNames: el.node.getAttribute('class') ?? '',
+    text: (el.node.textContent ?? '').trim().slice(0, 80),
+    key: el.key,
+    node: el.node,
+  }
+}
+
 /**
  * Drives Canvas Mode's element picking — the direct-manipulation cousin of
  * useSelection.
@@ -66,8 +80,12 @@ export function canvasChain(el: Element): CanvasElement[] {
  * capture-phase listeners stay attached across selection (re-subscribing on every
  * selection would drop a frame and flicker); locking is a guard, not a re-sub.
  */
-export function useCanvasMode() {
+export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => void }) {
   const [active, setActive] = useState(false)
+  // Read inside the click listener via a ref so the listener effect doesn't
+  // re-subscribe when the parent passes a fresh callback each render.
+  const onEscalateRef = useRef(opts?.onEscalate)
+  onEscalateRef.current = opts?.onEscalate
   const [hoverRect, setHoverRect] = useState<Rect | null>(null)
   const [hoverInfo, setHoverInfo] = useState<ElementInfo | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
@@ -139,16 +157,20 @@ export function useCanvasMode() {
         return
       }
       const leaf = chain[0]
+      let picked = leaf
       if (e.altKey) {
         // Step OUT to the parent of what's under the cursor (or of the current
         // selection, if we Alt-clicked back inside it).
         const sel = selectedRef.current
         const anchor = sel && chain.some((c) => c.key === sel.key) ? sel : leaf
         const idx = chain.findIndex((c) => c.key === anchor.key)
-        selectElement(chain[idx + 1] ?? anchor)
-      } else {
-        selectElement(leaf)
+        picked = chain[idx + 1] ?? anchor
       }
+      selectElement(picked)
+      // Shift escalates the picked element to the agent — the intentional gesture,
+      // and the ONLY thing that fires an observe call. Composes with Alt (Shift+Alt
+      // escalates the parent). Plain clicks stay canvas-only and never reach the agent.
+      if (e.shiftKey) onEscalateRef.current?.(asSelected(picked))
     }
 
     const onKey = (e: KeyboardEvent) => {
@@ -174,15 +196,28 @@ export function useCanvasMode() {
       setEditing(leaf)
     }
 
+    // Suppress the browser's native HTML5 drag while Canvas is active. Links and
+    // images are `draggable` by default, so pressing one to reorder it starts a
+    // native link/image drag (the URL ghost) that hijacks the pointer-based
+    // reorder — you'd pick up the <a> instead of moving the element. Killing
+    // dragstart at the capture phase lets the reorder's pointer drag own the
+    // gesture. Stand down while editing text so in-field text drag still works.
+    const onDragStart = (e: DragEvent) => {
+      if (editingRef.current) return
+      e.preventDefault()
+    }
+
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
     document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
+    document.addEventListener('dragstart', onDragStart, true)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('dragstart', onDragStart, true)
     }
   }, [active, selectElement])
 

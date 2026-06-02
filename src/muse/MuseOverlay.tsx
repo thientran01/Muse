@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './muse.css'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { EPHEMERAL, MOCK } from './config'
 import { heuristicObservation } from './observation'
 import { elementPreviewsForOption, matchPreviews } from './diffPreview'
-import { useSelection } from './useSelection'
 import { useHostTheme } from './hooks/useHostTheme'
 import { usePreviewLayer } from './hooks/usePreviewLayer'
 import { museStore, nextThreadId, useMuseStore } from './store'
@@ -18,7 +17,6 @@ import { MusePanel } from './components/MusePanel'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
 import { UndoRedoBar } from './components/UndoRedoBar'
-import { HoverHighlight, SelectBanner, SelectionMarkers } from './components/SelectionOverlay'
 import type {
   AskInput,
   ChatMessage,
@@ -53,8 +51,12 @@ export type HistoryControls = {
 }
 
 export function MuseOverlay() {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selection, setSelection, clearSelection } =
-    useSelection()
+  // The agent's sticky target. Fed ONLY by Shift-click escalation from Canvas
+  // (see CanvasMode's onEscalate below); plain clicks drive Canvas's own live
+  // selection and never touch this, so an observe call can only fire on the
+  // intentional gesture. Kept as a ≤1 array to match the history/archive shape.
+  const [selection, setSelection] = useState<SelectedElement[]>([])
+  const clearSelection = useCallback(() => setSelection([]), [])
 
   const {
     thread,
@@ -77,8 +79,6 @@ export function MuseOverlay() {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  // Canvas Mode (direct manipulation) — mutually exclusive with the chat flow.
-  const [canvas, setCanvas] = useState(false)
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
@@ -179,14 +179,6 @@ export function MuseOverlay() {
       closeTimer.current = null
     }
     setClosing(false)
-  }
-
-  // Enter Canvas Mode (direct manipulation). Leave the chat flow first so the
-  // two UIs never overlap: cancel select mode and collapse an open panel.
-  function enterCanvas() {
-    if (active) setActive(false)
-    if (open && !closing) requestClose()
-    setCanvas(true)
   }
 
   // Bring a past proposal back into the live view (still applyable), close history.
@@ -613,88 +605,41 @@ export function MuseOverlay() {
   const allAnswered =
     pending?.kind === 'ask' &&
     pending.questions.every((_, i) => (answers[i] ?? '').trim() !== '')
-  const panelOpen = open && !active
-  const showMarkers = selection.length >= 1
+  const panelOpen = open
   const home = selection.length === 0 // panel is open with no target → home state
 
-  // Keyboard for both phases + click-outside while the panel is open.
+  // Enter submits a completed clarify (when focus isn't in a text field). Page
+  // gestures — hover, plain/Shift/Alt click, Esc-to-deselect-then-exit — are
+  // owned by Canvas's selection (useCanvasMode) while the panel is open, so there's
+  // deliberately no click-outside-to-close here: every page click is a selection.
   useEffect(() => {
+    if (!open || closing) return
     const onKey = (e: KeyboardEvent) => {
-      if (active) {
-        if (e.key === 'Enter' && selection.length >= 1) {
-          e.preventDefault()
-          setActive(false)
-        }
-        return
-      }
-      if (!open || closing) return
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        requestClose()
-        return
-      }
-      if (e.key === 'Enter') {
-        const t = e.target as HTMLElement | null
-        if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return
-        if (pending?.kind === 'ask' && allAnswered && !loading) {
-          e.preventDefault()
-          submitAnswers()
-        }
-      }
-    }
-    document.addEventListener('keydown', onKey, true)
-
-    let onDocClick: ((e: MouseEvent) => void) | null = null
-    if (!active && open && !closing) {
-      onDocClick = (e: MouseEvent) => {
-        const t = e.target as Element | null
-        if (t && !t.closest('[data-muse-ui]')) requestClose()
-      }
-      document.addEventListener('click', onDocClick, true)
-    }
-
-    return () => {
-      document.removeEventListener('keydown', onKey, true)
-      if (onDocClick) document.removeEventListener('click', onDocClick, true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, open, selection, closing, pending, allAnswered, loading])
-
-  // Global "L" shortcut toggles Canvas Mode (agentation's convention). Ignored
-  // while typing so it never fights a text field in the host app or composer.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'l' || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key !== 'Enter') return
       const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      e.preventDefault()
-      if (canvas) setCanvas(false)
-      else enterCanvas()
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return
+      if (pending?.kind === 'ask' && allAnswered && !loading) {
+        e.preventDefault()
+        submitAnswers()
+      }
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas, active, open, closing])
+  }, [open, closing, pending, allAnswered, loading])
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
-      {active && hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
-      {showMarkers && <SelectionMarkers elements={selection} />}
-
-      {active && (
-        <div className="absolute left-1/2 top-4 -translate-x-1/2">
-          <SelectBanner />
-        </div>
-      )}
-
       {/* FAB renders while closing too (not just once the panel unmounts), so the
           button is already in its shared bottom-right corner to "catch" the
           collapsing panel — the close reads as one motion, not a flash-and-pop.
           The undo bar stays hidden until the collapse finishes so it doesn't pop
-          in over the morph. */}
-      {!canvas && (!panelOpen || closing) && (
+          in over the morph. No separate Canvas button or select-mode crosshair:
+          opening Muse makes the page selectable, and the gesture (plain vs Shift
+          click) picks the surface. */}
+      {(!panelOpen || closing) && (
         <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3">
-          {!active && hasHistory && !closing && (
+          {hasHistory && !closing && (
             <UndoRedoBar
               canUndo={historyControls.canUndo}
               canRedo={historyControls.canRedo}
@@ -704,29 +649,23 @@ export function MuseOverlay() {
               onRevert={historyControls.onRevert}
             />
           )}
-          {/* Enter direct-manipulation editing (also bound to the "L" key). */}
-          {!active && !closing && (
-            <button
-              onClick={enterCanvas}
-              className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-surface-soft px-3.5 py-2 text-xs font-medium text-fg-muted shadow-lg ring-1 ring-line/10 transition hover:bg-surface-raised hover:text-fg active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100"
-              title="Edit spacing & layout directly on the page (L)"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              Canvas
-            </button>
-          )}
-          {/* Mid-collapse → abort the close (reverses home). Select mode →
-              cancel select. Idle → open the panel onto its home state. */}
+          {/* Mid-collapse → abort the close (reverses home). Idle → open Muse onto
+              its home state (which also makes the page selectable). */}
           <MuseFab
-            active={active}
+            active={false}
             loading={loading}
             entering={closing}
-            onToggle={() => (closing ? cancelClose() : active ? setActive(false) : setOpen(true))}
+            onToggle={() => (closing ? cancelClose() : setOpen(true))}
           />
         </div>
       )}
 
-      {canvas && <CanvasMode onExit={() => setCanvas(false)} />}
+      {/* The single selection surface, live whenever Muse is open: hover
+          highlight + on-canvas chrome. Plain-click edits directly; Shift-click
+          escalates the element to the agent panel below (firing the observe read).
+          Unmounts at the start of the close so the chrome clears before the panel
+          morphs into the FAB. */}
+      {open && !closing && <CanvasMode onExit={requestClose} onEscalate={(el) => setSelection([el])} />}
 
       {panelOpen && (
         <div className="absolute bottom-6 right-6">
@@ -752,19 +691,15 @@ export function MuseOverlay() {
               <MuseHistory entries={archived} onPick={openFromHistory} />
             ) : home ? (
               <MuseHome
-                onSelect={() => setActive(true)}
                 onShowDesign={showDesign}
                 bubbles={thread}
                 onGenerateDesign={generateDesign}
               />
             ) : (
             <>
-            <ActiveTargetStrip
-              elements={selection}
-              mock={MOCK}
-              onSwapTarget={() => setActive(true)}
-              onShowDesign={showDesign}
-            />
+            {/* No swap-target crosshair: re-point the agent by Shift-clicking
+                another element on the page. (Chip becomes click-to-reselect in PR4.) */}
+            <ActiveTargetStrip elements={selection} mock={MOCK} onShowDesign={showDesign} />
             {unmappable ? (
               <div className="flex-1 overflow-y-auto px-4 py-3.5">
                 <p className="text-sm leading-relaxed text-amber-300/80">

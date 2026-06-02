@@ -21,7 +21,10 @@ export function MuseHome({
   bubbles,
   onGenerateDesign,
 }: {
-  onSelect: () => void
+  // Optional: the live overlay selects by clicking the page (no separate mode),
+  // so it omits this and the primary entry renders as a static gesture hint. The
+  // gallery state-showcase still passes it to drive its fixture flow.
+  onSelect?: () => void
   onShowDesign: () => void
   bubbles: ThreadMessage[]
   onGenerateDesign: (id: string) => void
@@ -29,29 +32,49 @@ export function MuseHome({
   const hasDesign = bubbles.some((m) => m.kind === 'design')
 
   return (
-    <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-      <div className="space-y-2">
-        {/* Primary action — accent icon marks it as the lead. */}
-        <HomeCard
-          primary
-          testid="muse-home-select"
-          onClick={onSelect}
-          icon={<Crosshair size={18} weight="bold" />}
-          iconClass="bg-accent/10 text-accent ring-1 ring-accent/20"
-          title="Select an element to redesign"
-          sub="Point Muse at any part of the page"
-        />
-
-        {/* Secondary entries. New Muse features slot in here as they land. */}
-        {!hasDesign && (
+    <div className="flex-1 space-y-2 overflow-y-auto px-3 pb-3 pt-2">
+      <div className="space-y-0.5">
+        {/* Primary lead — accent icon. A button when a select handler is given
+            (gallery), else a quiet hint teaching the two page gestures. */}
+        {onSelect ? (
           <HomeCard
-            onClick={onShowDesign}
-            icon={<FileText size={17} />}
-            iconClass="bg-line/5 text-fg-faint ring-1 ring-line/10"
-            title="View design system"
-            sub="DESIGN.md"
-            subMono
+            primary
+            testid="muse-home-select"
+            onClick={onSelect}
+            icon={<Crosshair size={18} weight="bold" />}
+            iconClass="bg-accent/10 text-accent ring-1 ring-accent/20"
+            title="Select an element to redesign"
+            sub="Point Muse at any part of the page"
           />
+        ) : (
+          // Informational, not actionable (opening Muse already makes the page
+          // selectable), so it deliberately skips the HomeCard shell + trailing
+          // caret and reads as a quiet hint. It's the LEAD here, so it keeps the
+          // accent icon; the design-system row below stays secondary/quiet.
+          // role=note so it's announced when it renders.
+          <div role="note" className="flex items-center gap-2.5 px-1.5 py-1 text-fg-faint">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
+              <Crosshair size={16} weight="bold" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-fg">Shift-click an element to ask Muse</span>
+              <span className="block text-xs leading-snug text-fg-faint">Plain-click edits it directly on canvas</span>
+            </span>
+          </div>
+        )}
+
+        {/* Secondary — a quiet utility row, deliberately lighter than the lead
+            above (no card shell / icon box / accent), so it reads as secondary.
+            New selection-independent entries slot in here as they land. */}
+        {!hasDesign && (
+          <button
+            onClick={onShowDesign}
+            className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition hover:bg-line/5"
+          >
+            <FileText size={15} className="shrink-0 text-fg-faint" />
+            <span className="flex-1 text-xs font-medium text-fg-muted">View design system</span>
+            <span className="font-mono text-[10px] text-fg-faint">DESIGN.md</span>
+          </button>
         )}
       </div>
 
