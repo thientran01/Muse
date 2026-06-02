@@ -123,7 +123,7 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscalate?: (el: SelectedElement) => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } =
+  const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, selected, selectElement, editing, exitEditing, miss } =
     useCanvasMode({ onEscalate })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
@@ -772,7 +772,7 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
-      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
+      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} shiftHeld={shiftHeld} />}
 
       {/* Quiet hint — unmappable click, or text that isn't statically editable.
           z-20 keeps it above the properties panel (same overlay container). */}

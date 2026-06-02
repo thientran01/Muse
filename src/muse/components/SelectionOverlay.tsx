@@ -1,5 +1,6 @@
 import type { ElementInfo } from '../sourceLocation'
 import type { Rect } from '../types'
+import { UfoIcon } from './UfoIcon'
 
 export function SelectBanner() {
   return (
@@ -14,10 +15,15 @@ export function HoverHighlight({
   rect,
   cursor,
   info,
+  // Shift is held → the next click goes to the AGENT, not Canvas. The chip swaps
+  // to a manta + "Ask Muse about this <tag>" so the gesture announces itself just
+  // when it's relevant (reinforcing the banner's "⇧-click to ask Muse").
+  shiftHeld = false,
 }: {
   rect: Rect
   cursor?: { x: number; y: number } | null
   info?: ElementInfo | null
+  shiftHeld?: boolean
 }) {
   const OFFSET = 14
   const EST_W = 280
@@ -33,22 +39,38 @@ export function HoverHighlight({
   return (
     <>
       <div
-        className="pointer-events-none absolute rounded-md bg-accent/10 ring-2 ring-accent transition-all duration-100 ease-in-out motion-reduce:transition-none"
+        className={`pointer-events-none absolute rounded-md ring-2 ring-accent transition-all duration-100 ease-in-out motion-reduce:transition-none ${
+          shiftHeld ? 'bg-accent/20' : 'bg-accent/10'
+        }`}
         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
       />
       {info && cursor && (
-        <div
-          className="pointer-events-none absolute z-10 max-w-[260px] rounded-md bg-surface/95 px-2 py-1 font-mono text-[10.5px] leading-snug shadow-lg ring-1 ring-line/10 backdrop-blur"
-          style={{ top: tipTop, left: tipLeft }}
-        >
-          {info.crumbs.length > 0 && (
-            <div className="text-fg-faint">{info.crumbs.map((c) => `<${c}>`).join(' ')}</div>
-          )}
-          <div className="truncate text-fg">
-            {info.tag}
-            {info.text && <span className="text-fg-faint"> "{info.text}"</span>}
+        shiftHeld ? (
+          <div
+            className="pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-md bg-surface/95 px-2 py-1 text-[11px] font-medium text-fg shadow-lg ring-1 ring-line/10 backdrop-blur"
+            style={{ top: tipTop, left: tipLeft }}
+          >
+            {/* Manta in accent is the single flourish; the label stays text-fg so it
+                reads at AA on the dark default surface (brick-on-near-black fails). */}
+            <UfoIcon size={13} className="text-accent" />
+            <span className="whitespace-nowrap">
+              Ask Muse about this <span className="font-mono text-fg-faint">&lt;{info.tag}&gt;</span>
+            </span>
           </div>
-        </div>
+        ) : (
+          <div
+            className="pointer-events-none absolute z-10 max-w-[260px] rounded-md bg-surface/95 px-2 py-1 font-mono text-[10.5px] leading-snug shadow-lg ring-1 ring-line/10 backdrop-blur"
+            style={{ top: tipTop, left: tipLeft }}
+          >
+            {info.crumbs.length > 0 && (
+              <div className="text-fg-faint">{info.crumbs.map((c) => `<${c}>`).join(' ')}</div>
+            )}
+            <div className="truncate text-fg">
+              {info.tag}
+              {info.text && <span className="text-fg-faint"> "{info.text}"</span>}
+            </div>
+          </div>
+        )
       )}
     </>
   )
