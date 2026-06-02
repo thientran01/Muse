@@ -584,7 +584,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       const afterOrder = [...parent.children] as HTMLElement[]
       if (afterOrder.every((n, i) => n === beforeOrder[i])) return // no visible change
       const restore = (order: HTMLElement[]) => {
-        if (parent.isConnected) for (const c of order) parent.appendChild(c)
+        if (!parent.isConnected) return
+        // Only re-order children that are STILL in this parent — never resurrect a
+        // node that was detached, nor steal one that moved elsewhere, since the
+        // snapshot is an array of element references captured at commit time.
+        for (const c of order) if (c.parentElement === parent) parent.appendChild(c)
       }
       museStore.pushEphemeral({ label: `reorder ${el.tag}`, undo: () => restore(beforeOrder), redo: () => restore(afterOrder) })
       const c = canvasChain(el.node)[0]
@@ -661,6 +665,17 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     const node = el.node
     const rendersText = [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0)
     if (!node.isConnected || !rendersText) {
+      exitEditing()
+      return
+    }
+    // EPHEMERAL: the server probe (which only allows a single static JSXText) is
+    // bypassed, so guard the structural risk here — editing a node that also has
+    // ELEMENT children would let contentEditable + peer textContent-sync destroy
+    // them, and undo (which restores text only) couldn't bring them back. Refuse
+    // with the same calm hint the probe would give.
+    if (EPHEMERAL && [...node.childNodes].some((n) => n.nodeType === Node.ELEMENT_NODE)) {
+      const r = node.getBoundingClientRect()
+      flashHint(r.left, r.top, "This text can't be edited here")
       exitEditing()
       return
     }
