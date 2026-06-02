@@ -77,12 +77,15 @@ function ColorRow({
     const place = () => {
       const r = rowRef.current?.getBoundingClientRect()
       if (!r) return
+      // Anchor to the PANEL's edge, not the row's, so the picker sits cleanly
+      // beside the whole panel. Prefer the left of the panel; flip to the right
+      // when the panel hugs the left edge (no room).
+      const panel = (rowRef.current?.closest('[data-muse-panel]') as HTMLElement | null)?.getBoundingClientRect() ?? r
       const W = 226
       const h = popRef.current?.offsetHeight ?? 320
       const gap = 8
-      let left = r.left - W - gap
-      if (left < gap) left = Math.min(r.right + gap, window.innerWidth - W - gap)
-      left = Math.max(gap, left)
+      const left = panel.left - gap >= W + gap ? panel.left - W - gap : Math.min(panel.right + gap, window.innerWidth - W - gap)
+      // Vertically align to the clicked row, clamped so the whole picker stays on-screen.
       const top = Math.max(gap, Math.min(r.top, window.innerHeight - h - gap))
       setPos({ left, top })
     }
@@ -391,7 +394,7 @@ export function SpacingFields({ values, onPreview, onCommit }: { values: CanvasV
 // scrolls inside instead of running off-screen when the element sits low.
 function PanelShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex max-h-[min(70vh,520px)] w-[232px] flex-col gap-2.5 overflow-y-auto overflow-x-hidden rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+    <div data-muse-panel className="flex max-h-[min(70vh,520px)] w-[232px] flex-col gap-2.5 overflow-y-auto overflow-x-hidden rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
       {children}
     </div>
   )
