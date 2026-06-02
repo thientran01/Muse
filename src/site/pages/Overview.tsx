@@ -12,11 +12,11 @@ export function Overview() {
       </span>
 
       <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Design on the real thing.
+        A visual editor for your running React app.
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
-        You already know how you want it to look. Muse lets you just go do it, right on your running
-        app, then turns it into real code you can ship. Tailwind, JSX, all of it.
+        Point at an element in your running app, shape it the way you would in a design tool, and Muse
+        writes the edit back to your source as real, mergeable code.
       </p>
 
       <div className="mt-7 flex flex-wrap gap-3">
@@ -35,24 +35,34 @@ export function Overview() {
       </div>
 
       <Callout tone="try">
-        <strong>This page is the playground.</strong> Press <Kbd>L</Kbd> to drop into Canvas Mode, then
-        grab anything on this page and make it yours. Drag the spacing,
-        recolor it, retype it. Changed your mind? Ctrl+Z undoes, Ctrl+Shift+Z redoes. Refresh to reset
-        it all. Run Muse locally and these same moves rewrite your real source files.
+        <strong>This page is the playground.</strong> Press <Kbd>L</Kbd> to open Canvas Mode and start
+        editing the page you are reading: drag the spacing, scrub the type, recolor a button, rewrite a
+        line of copy, then step back through it with Ctrl+Z and Ctrl+Shift+Z. Edits live in your browser
+        and clear when you refresh. Run Muse locally and the same moves rewrite your source files.
       </Callout>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Canvas Mode is the whole idea
+        Canvas Mode
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Click an element, and a little toolbar shows up around it. Drag its padding. Scrub the font
-        size. Swap the color. Double-click to fix the copy. Drag it above its sibling. No file hunting,
-        no waiting on an engineer, no throwaway mockup. You are editing the actual thing, and Muse
-        writes the actual code.
+        Select an element and a small toolbar wraps around it. You drag its padding, scrub the font
+        size, pick a new color, double-click to rewrite the text, or drag it past a sibling to reorder.
+        Every move maps to that element in your source and writes straight back to it, so you stay in
+        the running product the whole time and leave with the real code.
       </p>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        The best part: it is instant and free. Direct edits do not call a model. A drag is just a
-        number changing, so Muse handles it itself.
+        A direct edit is a known transform, so Muse resolves it without a model call. A drag is a number
+        changing; it lands instantly and costs nothing.
+      </p>
+
+      <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        Or describe it
+      </h2>
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+        Some changes read better as a sentence than a drag. Tell Muse to make a card feel warmer and
+        less boxy and it answers with a few directions, each a real edit you can preview in place before
+        committing to one. The agent carries intent and ambiguity; Canvas carries the precise,
+        hands-on work.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
@@ -62,36 +72,39 @@ export function Overview() {
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">1. Point</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Click anything in your running app. Muse finds the exact file and line it came from.
+            Click any element in your running app and Muse traces it to the exact file and line it came
+            from.
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-          <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">2. Tweak</div>
+          <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">2. Edit</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Drag, scrub, recolor, retype. Or describe it in a sentence and let Muse propose a few takes.
+            Shape it by hand in Canvas Mode, or describe the change and pick from a few directions Muse
+            drafts.
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">3. Real code</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Muse writes it to source and the app hot-reloads. Undo, redo, or revert whenever.
+            Muse writes the change to source and the app hot-reloads. Undo, redo, and revert stay open
+            the whole session.
           </p>
         </div>
       </div>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Why not just use v0 or Cursor?
+        The approach
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Those start from a blank prompt or a file tree. Muse starts from the app you already have, the
-        one running in front of you. And unlike a closed visual builder, what comes out is real source
-        in your own repo, not a thing you are locked into.
+        Most tools start from a prompt or a file tree. Muse starts from the running product, the screen
+        in front of you, and edits the source behind it. What you get out is your own code in your own
+        repo, ready to commit.
       </p>
 
       <Callout>
-        <strong>One honest note:</strong> this hosted demo is a playground. Edits live in your browser
-        and reset on refresh, and the chat uses canned replies so it stays free. The real product
-        writes code when you run it on your own app. See <a className="underline" href="#/install">Install</a>.
+        <strong>A note on this demo.</strong> It runs entirely in your browser, so edits reset on
+        refresh, and the chat replies from a canned script to keep it free. Running Muse on your own app
+        is where it writes real code. See <a className="underline" href="#/install">Install</a>.
       </Callout>
     </article>
   )
