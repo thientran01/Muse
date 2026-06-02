@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
+import { museReorder, museReorderable, museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, SelectedElement, StyleMutation } from '../../types'
+import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -10,6 +10,7 @@ import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
+import { ReorderOverlay } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 208
@@ -107,6 +108,14 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Whether the selected element's siblings can be reordered (host parent +
+  // host-only children — see computeReorderable). Gates the drag handle so it
+  // only appears when a drop will actually commit. Probed per selection.
+  const [reorderable, setReorderable] = useState<Reorderable | null>(null)
+  // True while a reorder drag is in flight. The other overlays + panel hide so they
+  // don't sit on top of the element being dragged (the lifted element + insertion
+  // bar are the only chrome that should show mid-drag).
+  const [reordering, setReordering] = useState(false)
   const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
@@ -183,6 +192,67 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
 
   // Clear any stray inline preview when the target changes or we leave.
   useEffect(() => clearPreview, [selected])
+
+  // Probe whether the selected element's siblings can be reordered, so the drag
+  // handle only shows when a drop will commit. Cancel-guarded so a fast reselect
+  // can't apply a stale verdict to the current target.
+  useEffect(() => {
+    if (!selected) {
+      setReorderable(null)
+      return
+    }
+    let cancelled = false
+    setReorderable(null)
+    void museReorderable({
+      fileName: selected.fileName,
+      line: selected.line,
+      column: selected.column,
+      tag: selected.tag,
+      classNames: selected.node.getAttribute('class') ?? '',
+    }).then((r) => {
+      if (!cancelled) setReorderable(r)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selected])
+  // Keyboard reorder (a11y) — a keyboard-only equivalent of the drag, since the
+  // pointer path isn't reachable without a mouse/touch. When a reorderable element
+  // is selected, Cmd/Ctrl + arrow moves it one slot: Up/Left = back, Down/Right =
+  // forward (accepts both axes so it works in a row OR a column without the user
+  // having to know which). Per Emil's rule, a keyboard-initiated action does NOT
+  // animate — it commits straight through commitReorder (write → HMR → re-select),
+  // the same deterministic path the drag uses. Matches the undo handler's modifier
+  // + input-guard convention.
+  useEffect(() => {
+    if (!selected || !reorderable?.reorderable) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const dir = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : 0
+      if (dir === 0) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const parent = selected.node.parentElement
+      if (!parent) return
+      const kids = ([...parent.children] as Element[]).filter(
+        (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
+      )
+      const from = kids.indexOf(selected.node)
+      if (from < 0) return
+      // toIndex is an insertion slot in SOURCE order (lands BEFORE the child there).
+      // back one = from-1; forward one = from+2 (skip self + the next sibling). Out of
+      // range = already at an end → no-op, and DON'T preventDefault so the key passes
+      // through normally.
+      const toIndex = dir < 0 ? from - 1 : from + 2
+      if (toIndex < 0 || toIndex > kids.length) return
+      e.preventDefault()
+      void commitReorder(selected, toIndex)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, reorderable])
+
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
 
@@ -345,6 +415,75 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     }
   }
 
+  // Move the selected element to source slot `toIndex` among its siblings, then
+  // write + record history on the SAME shared stack as styles/text. A reorder
+  // changes structure, so after HMR repaints we re-select the element at its new
+  // index (best-effort) to keep the panel anchored to what the user just moved.
+  async function commitReorder(el: CanvasElement, toIndex: number) {
+    const parent = el.node.parentElement
+    // The dragged element's index among its movable siblings (DOM order === source
+    // order under the host-only gate) — used to land selection back on it post-HMR.
+    const siblings = parent
+      ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+      : []
+    const fromIndex = siblings.indexOf(el.node)
+    const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
+    try {
+      const { edits, originals, warnings } = await museReorder({
+        fileName: el.fileName,
+        line: el.line,
+        column: el.column,
+        tag: el.tag,
+        classNames: el.node.getAttribute('class') ?? '',
+        toIndex,
+      })
+      if (warnings.length) console.warn('[muse] reorder:', warnings.join(' · '))
+      if (edits.length === 0) {
+        const r = el.node.getBoundingClientRect()
+        flashHint(r.left, r.top, (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, ''))
+        return // ReorderOverlay's no-op/cancel teardown already un-hid the chrome
+      }
+      await museWrite(edits)
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(el)],
+          label: `reorder ${el.tag}`,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      } else {
+        console.warn('[muse] reorder: missing originals, skipping undo entry')
+      }
+      // Wait for HMR to repaint the parent in the new order, THEN re-select the
+      // moved element at its new index and resolve — so ReorderOverlay holds its
+      // eased set-down + the hidden chrome until the new order is actually on
+      // screen, then finalizes (no flash at the old location). Best-effort
+      // re-select: never throw on a stale/ready-diverged node.
+      await new Promise<void>((resolve) =>
+        window.setTimeout(() => {
+          const kids = parent?.isConnected
+            ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+            : []
+          const moved = kids[newIndex]
+          if (moved instanceof HTMLElement) {
+            const c = canvasChain(moved)[0]
+            if (c) selectElement(c)
+          }
+          bump((v) => v + 1)
+          // Resolve only AFTER the re-select has re-rendered + the panel re-anchored
+          // (the useLayoutEffect on `selected` runs before the next paint). Two rAFs
+          // clears that frame, so the overlay's un-hide finds the chrome already
+          // positioned at the new location — no flash at the old slot.
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        }, 200),
+      )
+    } catch (e) {
+      setError((e as Error).message)
+      setReordering(false) // an error path won't reach the overlay's finalize — un-hide here
+    }
+  }
+
   // Enter contentEditable when `editing` is set (double-click). First probe the
   // server: only static text (a single JSXText) is editable, so data-bound text
   // gets a calm hint instead of a caret you'd type into then have bounced.
@@ -469,34 +608,61 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
           the node itself) so the caret is free. */}
       {selected && values && !editing && (
         <>
-          <BoxModelOverlay
-            node={selected.node}
-            padding={values.padding}
-            margin={values.margin}
-            onPreview={applyPreview}
-            onCommit={commit}
-          />
-          {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
-          <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
-          {panelPos && (
-            <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
-              {/* Key by element so the per-side expand state re-derives from the
-                  new element's values instead of carrying over the last one's. */}
-              <PropertiesPanel
-                key={selected.key}
-                values={values}
-                chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
-                selectedKey={selected.key}
-                onPick={selectElement}
-                onPreview={applyPreview}
-                onCommit={commit}
-              />
-              {error && (
-                <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
-                  {error}
-                </p>
-              )}
-            </div>
+          {/* The spacing/size/panel chrome stays MOUNTED while a reorder drag is in
+              flight but FADES out (so it doesn't cover the dragged element), then
+              fades back in on drop — a transition, not a hard mount/unmount, so it's
+              not abrupt. Uses the project's motion tokens (EASE.out / DUR scale,
+              Decision #21). pointer-events off while hidden so the fading panel can't
+              catch the drag. ReorderOverlay (listeners + bar) stays outside, always
+              live. Honors reduced-motion via motion-reduce:transition-none. */}
+          <div
+            className="transition-opacity ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+            style={{
+              opacity: reordering ? 0 : 1,
+              transitionDuration: reordering ? '120ms' : '160ms', // out a touch quicker than in
+              pointerEvents: reordering ? 'none' : undefined,
+            }}
+          >
+            <BoxModelOverlay
+              node={selected.node}
+              padding={values.padding}
+              margin={values.margin}
+              onPreview={applyPreview}
+              onCommit={commit}
+            />
+            {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
+            <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+            {panelPos && (
+              <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
+                {/* Key by element so the per-side expand state re-derives from the
+                    new element's values instead of carrying over the last one's. */}
+                <PropertiesPanel
+                  key={selected.key}
+                  values={values}
+                  chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
+                  selectedKey={selected.key}
+                  onPick={selectElement}
+                  onPreview={applyPreview}
+                  onCommit={commit}
+                />
+                {error && (
+                  <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
+                    {error}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ReorderOverlay lives OUTSIDE the fading wrapper — its listeners + the
+              insertion bar must stay fully live through the drag, never faded. */}
+          {reorderable?.reorderable && (
+            <ReorderOverlay
+              node={selected.node}
+              expectedCount={reorderable.count}
+              onReorder={(toIndex) => commitReorder(selected, toIndex)}
+              onDragChange={setReordering}
+            />
           )}
         </>
       )}
@@ -510,7 +676,9 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             {editing
               ? '· editing text · Enter to save · Esc to cancel'
               : selected
-                ? '· double-click to edit text · Alt-click selects the container · Esc to deselect'
+                ? reorderable?.reorderable
+                  ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · Esc to deselect'
+                  : '· double-click to edit text · Alt-click selects the container · Esc to deselect'
                 : '· click an element · Alt-click for its container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
