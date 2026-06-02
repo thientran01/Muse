@@ -853,19 +853,17 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
           directly (Canvas), Shift-click hands the element to the agent. The full
           manta-marked rewrite + Shift-held hover affordance lands in PR2. */}
       <div className="absolute left-1/2 top-4 -translate-x-1/2">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-surface/95 px-4 py-2 text-sm font-medium text-fg shadow-lg ring-1 ring-line/10 backdrop-blur">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Muse
-          <span className="text-fg-faint">
+        <div className="pointer-events-auto flex items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur">
+          <span>
             {editing
-              ? '· editing text · Enter to save · Esc to cancel'
+              ? 'Editing text · Enter to save · Esc to cancel'
               : selected
                 ? reorderable?.reorderable
-                  ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · ⇧-click to ask Muse · Esc to deselect'
-                  : '· double-click to edit text · ⇧-click to ask Muse · Alt-click the container · Esc to deselect'
-                : '· click to edit · ⇧-click to ask Muse · Alt-click the container · Esc to exit'}
+                  ? 'Drag to reorder · double-click to edit · ⇧-click to ask Muse · Esc to deselect'
+                  : 'Double-click to edit · ⇧-click to ask Muse · Esc to deselect'
+                : 'Click to edit · ⇧-click to ask Muse · Esc to exit'}
           </span>
-          <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
+          <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
           </button>
         </div>
