@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ClockCounterClockwise, FileText, X } from '@phosphor-icons/react'
 import { museDesignGenerate, museDesignGet } from '../api'
 import type { ArchivedThread } from '../store'
@@ -32,7 +32,7 @@ function IconBtn({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`flex h-8 w-8 items-center justify-center rounded-full transition active:scale-95 motion-reduce:active:scale-100 ${
+      className={`flex h-8 w-8 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
         accent ? 'text-accent hover:bg-accent/10' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
       }`}
     >
@@ -57,39 +57,51 @@ export function MuseToolbar({
 }) {
   const [pop, setPop] = useState<Pop>('none')
   const [design, setDesign] = useState<DesignState | null>(null)
+  // Guards for the lazy design fetch: `fetching` blocks a concurrent GET (a
+  // double-click on the design icon), `mounted` drops a late setState if the
+  // toolbar unmounted mid-fetch (Shift-click escalates → home flips false). Mirror
+  // of the parent's showingDesignRef pattern.
+  const fetchingRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   // The design brief is fetched lazily the first time its popover opens (then
   // cached for the session). Self-contained here — the idle toolbar has no thread
   // to append a bubble to, unlike the agent panel's design flow.
   const openDesign = async () => {
     setPop((p) => (p === 'design' ? 'none' : 'design'))
-    if (design) return
+    if (design || fetchingRef.current) return
+    fetchingRef.current = true
     try {
       const res = await museDesignGet()
-      setDesign(res.exists && res.content ? { status: 'view', content: res.content, path: res.path } : { status: 'offer' })
+      if (mountedRef.current) {
+        setDesign(res.exists && res.content ? { status: 'view', content: res.content, path: res.path } : { status: 'offer' })
+      }
     } catch {
-      setDesign({ status: 'offer' })
+      if (mountedRef.current) setDesign({ status: 'offer' })
+    } finally {
+      fetchingRef.current = false
     }
   }
   const generateDesign = async () => {
     setDesign({ status: 'generating' })
     try {
       const res = await museDesignGenerate()
-      setDesign({ status: 'view', content: res.content, path: res.path })
+      if (mountedRef.current) setDesign({ status: 'view', content: res.content, path: res.path })
     } catch {
-      setDesign({ status: 'offer' })
+      if (mountedRef.current) setDesign({ status: 'offer' })
     }
   }
 
   return (
     <div
-      className={`absolute bottom-6 right-6 flex origin-bottom-right flex-col items-end gap-2 transition-all duration-[200ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
-        closing ? 'scale-90 opacity-0' : 'scale-100 opacity-100'
+      className={`absolute bottom-6 right-6 flex origin-bottom-right flex-col items-end gap-2 transition-[transform,opacity] duration-[200ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
+        closing ? 'scale-[0.5] opacity-0' : 'scale-100 opacity-100'
       }`}
     >
       {/* 1B popover — opens above the bar; the bar below stays put. */}
       {pop !== 'none' && !closing && (
-        <div className="w-72 origin-bottom-right animate-muse-step overflow-hidden rounded-2xl bg-surface shadow-2xl shadow-black/40 ring-1 ring-line/10 motion-reduce:animate-none">
+        <div className="w-72 origin-bottom-right animate-muse-step overflow-hidden rounded-2xl bg-surface/95 shadow-2xl shadow-black/40 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none">
           <header className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
               <UfoIcon size={16} className="text-accent" />
@@ -97,8 +109,8 @@ export function MuseToolbar({
             </div>
             <button
               onClick={() => setPop('none')}
-              aria-label="Close"
-              className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg"
+              aria-label={`Close ${pop === 'history' ? 'past proposals' : 'design system'}`}
+              className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <X size={15} />
             </button>
@@ -123,7 +135,7 @@ export function MuseToolbar({
 
       {/* The bar: manta (identity) · past proposals · design system · X. */}
       <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-surface-soft p-1.5 shadow-xl shadow-black/30 ring-1 ring-line/10">
-        <span className="flex h-8 w-8 items-center justify-center" aria-hidden>
+        <span className="flex h-8 w-8 items-center justify-center" aria-hidden="true">
           <UfoIcon size={18} className="text-accent" />
         </span>
         <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>

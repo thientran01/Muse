@@ -608,6 +608,12 @@ export function MuseOverlay() {
   const panelOpen = open
   const home = selection.length === 0 // panel is open with no target → home state
 
+  // Going idle (no agent target → the toolbar) clears the agent panel's history
+  // view, so re-engaging an element opens on the thread, not a stale history list.
+  useEffect(() => {
+    if (home) setHistoryOpen(false)
+  }, [home])
+
   // Enter submits a completed clarify (when focus isn't in a text field). Page
   // gestures — hover, plain/Shift/Alt click, Esc-to-deselect-then-exit — are
   // owned by Canvas's selection (useCanvasMode) while the panel is open, so there's
