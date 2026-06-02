@@ -60,10 +60,10 @@ export function Features() {
         </p>
         <div className="mt-5 flex gap-3">
           <button type="button" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300">
-            Save changes
+            Restyle me
           </button>
           <button type="button" className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800">
-            Cancel
+            Recolor me
           </button>
         </div>
       </div>
@@ -98,8 +98,9 @@ typography:
 ## Brand & Style
 Warm and tool-like. One brick accent, used sparingly.`}</CodeBlock>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Muse can draft one from your code with <Code>npm run design:gen</Code>, then you refine it by
-        hand.
+        Muse can draft one from your code: run <Code>npm run design:gen</Code>, or open the Muse panel,
+        where <strong>View design system</strong> shows the brief in use and can generate a fresh one.
+        Either way you refine it by hand afterward.
       </p>
     </article>
   )
