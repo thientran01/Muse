@@ -110,10 +110,18 @@ function openingClassName(node: JSXOpeningElement): string | null {
 
 const normCls = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-// React's __source columnNumber is 1-based; Babel's loc.start.column is 0-based.
-// Treat both spellings as a match.
+// React's _debugSource.columnNumber and Babel's loc.start.column don't line up on
+// a fixed convention: usually React is 1-based and Babel 0-based (node === reported
+// - 1), but in practice the skew runs the OTHER way too — e.g. a JSX element that's
+// the inline child of a `{cond && (…)}` expression reports a column one LESS than
+// Babel's (observed: Babel col 8, _debugSource col 7). So accept ±1 in either
+// direction. The column stays a strong disambiguator (sibling elements are columns,
+// not 1px, apart); when two candidates do fall within ±1, the className match +
+// offset calibration downstream still pick the right one. Without this, a column
+// that's off-by-one in the unhandled direction makes the (tag, column) signature
+// match nothing → "no JSX element found" → the edit silently reverts.
 function columnMatches(nodeCol: number, reported: number): boolean {
-  return nodeCol === reported || nodeCol === reported - 1
+  return Math.abs(nodeCol - reported) <= 1
 }
 
 function nearestByColumn(candidates: JSXOpeningElement[], column: number): JSXOpeningElement | null {

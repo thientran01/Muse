@@ -4,7 +4,14 @@ import type { CanvasElement } from './types'
 import type { Rect } from './useSelection'
 
 function isMuseUI(el: Element | null): boolean {
-  return !!el && !!el.closest('[data-muse-ui]')
+  if (!el) return false
+  // Dogfooding escape hatch: a `[data-muse-canvas-host]` region is selectable even
+  // though it carries `data-muse-ui` (which it needs only to resolve Muse's scoped
+  // CSS tokens — e.g. the gallery's preview frames). Production host apps never set
+  // this attribute, so the normal "skip Muse's own overlay chrome" guard below is
+  // unchanged there.
+  if (el.closest('[data-muse-canvas-host]')) return false
+  return !!el.closest('[data-muse-ui]')
 }
 
 // Resolve a DOM node to an editable Canvas target. Returns null when the node has
