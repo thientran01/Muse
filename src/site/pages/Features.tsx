@@ -1,4 +1,4 @@
-import { Callout, Kbd } from '../ui'
+import { Callout, Code, CodeBlock, Kbd } from '../ui'
 
 export function Features() {
   return (
@@ -72,6 +72,30 @@ export function Features() {
         comes back with a few distinct directions, each a real edit you can preview in place, then you
         pick one. If the ask is genuinely vague, it asks one quick question instead of guessing. The
         chat is the supporting act here. Canvas is where you will spend your time.
+      </p>
+
+      <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        Keep edits on brand
+      </h2>
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it on every chat edit, so the AI
+        reaches for your real tokens instead of guessing a hex. It follows Google's{' '}
+        <a className="underline" href="https://github.com/google-labs-code/design.md">DESIGN.md format</a>:
+        a little YAML up top for colors, type, and spacing, then prose for the vibe.
+      </p>
+      <CodeBlock label="DESIGN.md">{`---
+colors:
+  brand: "#7f2f2f"
+  paper: "#f7f4ee"
+typography:
+  body: { fontFamily: "Inter" }
+---
+
+## Brand & Style
+Warm and tool-like. One brick accent, used sparingly.`}</CodeBlock>
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+        Do not want to write one by hand? Muse can draft it from your code with{' '}
+        <Code>npm run design:gen</Code>, then you tidy it up.
       </p>
     </article>
   )
