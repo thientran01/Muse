@@ -97,10 +97,11 @@ export function escapeRe(s: string): string {
 // isn't defined here (the wrong stylesheet) or the value already matches.
 export function editCssVar(css: string, varName: string, value: string): CssVarEditResult {
   const newValue = value.trim()
-  // A value carrying `;` `{` `}` (or angle brackets) would break out of the
-  // declaration and corrupt the rule — refuse it. Scrub controls never emit these;
-  // this is defense-in-depth against a malformed value reaching the splice.
-  if (/[;{}<>]/.test(newValue)) return { newContent: css, changed: false, matches: 0 }
+  // A value carrying `;` `{` `}` (angle brackets) or a newline would break out of
+  // the declaration or write a multi-line token into the rule — refuse it. Scrub
+  // controls never emit these; defense-in-depth against a malformed value reaching
+  // the splice.
+  if (/[;{}<>]|[\r\n]/.test(newValue)) return { newContent: css, changed: false, matches: 0 }
   const decls = findVarDecls(css, varName)
   if (decls.length === 0) return { newContent: css, changed: false, matches: 0 }
   const first = decls[0]

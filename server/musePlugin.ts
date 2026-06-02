@@ -563,7 +563,12 @@ export function musePlugin(): Plugin {
                   const key = `${rel}::${me.specifier}`
                   if (!unresolvedModule.has(key)) {
                     unresolvedModule.add(key)
-                    warnings.push(`${rel}: couldn't resolve CSS module "${me.specifier}" under src/ — left unchanged.`)
+                    // Distinguish the two failure reasons: a bare/aliased specifier
+                    // (`@/x.module.css`) is intentionally out of scope; a relative
+                    // one that resolves nowhere genuinely escaped or is missing.
+                    warnings.push(me.specifier.startsWith('.')
+                      ? `${rel}: couldn't resolve CSS module "${me.specifier}" under src/ — left unchanged.`
+                      : `${rel}: CSS module "${me.specifier}" is an alias/package import — only relative ./ imports are editable; left unchanged.`)
                   }
                   continue
                 }
@@ -659,11 +664,17 @@ export function musePlugin(): Plugin {
               let changed = false
               for (const { className, cssProp, value } of edits) {
                 const r = setRuleProperty(content, className, cssProp, value)
+                // Surface the "only edited the base rule" notice whether or not this
+                // particular prop changed (an idempotent re-scrub still leaves the
+                // overrides as-is) — mirrors the var path's matches>1 warning.
+                if (r.matches > 1) {
+                  warnings.push(`.${className} is defined in ${r.matches} rules in ${rel} — edited the first; media/theme overrides unchanged.`)
+                }
                 if (r.changed) {
                   content = r.newContent
                   changed = true
-                  if (r.matches > 1) {
-                    warnings.push(`.${className} is defined in ${r.matches} rules in ${rel} — edited the first; media/theme overrides unchanged.`)
+                  if (r.grouped) {
+                    warnings.push(`.${className} shares a rule with other selectors in ${rel} — they were restyled too.`)
                   }
                 } else if (r.matches === 0) {
                   warnings.push(`no .${className} rule in ${rel} — left ${cssProp} unchanged.`)
