@@ -111,32 +111,24 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
   // pointer moves (covers the common "move toward an element holding Shift") plus
   // key down/up + window blur (covers pressing/releasing Shift while stationary).
   const [shiftHeld, setShiftHeld] = useState(false)
-  // Whether the floating properties panel is held back for the current selection.
+  // Whether the floating properties card is held back for the current selection.
   // A Shift-click hands the element to the AGENT, so we don't also detonate the big
   // canvas card next to it — the lightweight on-element affordances (outline, edge
-  // handles, knobs) still show as the "reach", and the card reveals when the user
-  // actually goes for it: any plain click, or hovering back onto the element after
-  // leaving it. A plain click selects with the card shown immediately.
+  // handles, knobs) still show as the "reach". The card reveals on a deliberate
+  // PLAIN click (of this element or any other); a plain-click selection shows it
+  // immediately. (No hover-reveal — with the agent panel expanded, a card popping
+  // in as you move across elements reads as too much at once.)
   const [panelDeferred, setPanelDeferred] = useState(false)
-  const panelDeferredRef = useRef(panelDeferred)
-  panelDeferredRef.current = panelDeferred
-  // Has the pointer left the selected element since the card was deferred? Guards
-  // the reveal so the instant re-hover right after a Shift-click (cursor is still on
-  // the element) doesn't immediately un-defer it.
-  const leftSelRef = useRef(false)
 
   const clearSelected = useCallback(() => setSelected(null), [])
   const exitEditing = useCallback(() => setEditing(null), [])
   // Select a specific element (a click, a breadcrumb crumb, or a programmatic
   // retarget). Shows the properties card by default; a Shift-click passes
-  // {defer:true} so the card holds back — set atomically (one panelDeferred write,
-  // no false→true flash) — and the leave-sentinel resets so the reveal waits for a
-  // genuine leave+return.
+  // {defer:true} so the card holds back (atomically — one panelDeferred write) while
+  // the agent takes focus.
   const selectElement = useCallback((c: CanvasElement, opts?: { defer?: boolean }) => {
-    const defer = !!opts?.defer
     setSelected(c)
-    setPanelDeferred(defer)
-    if (defer) leftSelRef.current = false
+    setPanelDeferred(!!opts?.defer)
     setHoverRect(null)
     setHoverInfo(null)
   }, [])
@@ -148,7 +140,6 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setCursor(null)
       setShiftHeld(false)
       setPanelDeferred(false)
-      leftSelRef.current = false
       return
     }
 
@@ -158,27 +149,14 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setCursor({ x: e.clientX, y: e.clientY })
       const el = e.target as Element | null
       const sel = selectedRef.current
-      const insideSel = !!sel && !!el && sel.node.contains(el)
       // Lock: don't churn the hover highlight over the active target (or its
       // descendants, or Muse's own chrome). Hovering a *different* element still
       // highlights so you can retarget.
-      if (insideSel) {
-        // Back on the selected element after having left it → reveal a deferred card.
-        if (panelDeferredRef.current && leftSelRef.current) setPanelDeferred(false)
+      if (!el || isMuseUI(el) || (sel && sel.node.contains(el))) {
         setHoverRect(null)
         setHoverInfo(null)
         return
       }
-      if (!el || isMuseUI(el)) {
-        // Muse's own chrome is a neutral zone (the hover-lock invariant) — it does
-        // NOT count as leaving the selection, so it can't spuriously arm the reveal.
-        setHoverRect(null)
-        setHoverInfo(null)
-        return
-      }
-      // A genuine DIFFERENT element → the pointer has left the selection, so a later
-      // re-hover back onto it may reveal a deferred card.
-      leftSelRef.current = true
       const r = el.getBoundingClientRect()
       setHoverRect({ top: r.top, left: r.left, width: r.width, height: r.height })
       setHoverInfo(getElementInfo(el))

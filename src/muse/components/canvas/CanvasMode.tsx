@@ -817,8 +817,8 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
             <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
             {/* Lazy card: a Shift-click hands the element to the agent, so the big
                 properties card holds back (the outline + edges + knobs above are the
-                "reach"); it reveals on any plain click or on hovering back onto the
-                element. A plain-click selection shows it immediately. A commit error
+                "reach"); it reveals on a deliberate PLAIN click (this element or any
+                other). A plain-click selection shows it immediately. A commit error
                 force-reveals it so the message can't be swallowed (the edge/resize
                 handles still commit while the card is deferred). It mounts on reveal,
                 so animate-muse-step gives it the system's "appears on action" entrance. */}
