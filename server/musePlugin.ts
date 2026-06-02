@@ -30,8 +30,9 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit, type ModuleEdit } from './styleEdit'
 import { editCssVar } from '../src/muse/style/cssVarEdit'
+import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -177,6 +178,16 @@ function findCssVarFiles(root: string, varName: string): string[] {
       return false
     }
   })
+}
+
+// Resolve a CSS-modules import specifier (`./Card.module.css`, `../ui/x.module.css`)
+// to an absolute path, relative to the JSX file that imports it, then bound it to
+// <root>/src via resolveInSrc (so a `../../../etc` can't escape the trust boundary).
+// Only relative specifiers are module-local files; a bare/aliased specifier is a
+// package we won't touch. Returns the canonical path, or null.
+function resolveModuleSpecifier(root: string, fromAbs: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null
+  return resolveInSrc(root, path.resolve(path.dirname(fromAbs), specifier))
 }
 
 // The observe endpoint asks for a bare JSON object, but models sometimes wrap
@@ -528,6 +539,9 @@ export function musePlugin(): Plugin {
 
           const originals: Record<string, string> = {} // rel -> pre-edit content, for undo
           const varEdits: VarEdit[] = [] // theme-bound mutations, resolved to .css edits below
+          // CSS-modules-bound mutations, resolved (specifier → abs .module.css) below.
+          const moduleEdits: Array<{ cssAbs: string; cssRel: string; className: string; cssProp: string; value: string }> = []
+          const unresolvedModule = new Set<string>() // dedupe "couldn't resolve" warnings
           for (const { abs, rel, items } of byFile.values()) {
             let content = fs.readFileSync(abs, 'utf8')
             const before = content
@@ -541,6 +555,20 @@ export function musePlugin(): Plugin {
               const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, lineOffsetHint)
               if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
               if (result.varEdits.length) varEdits.push(...result.varEdits)
+              // Resolve each module specifier against THIS JSX file's directory (it
+              // imported it) and stash the abs `.module.css` for the rule-edit pass.
+              for (const me of result.moduleEdits) {
+                const cssAbs = resolveModuleSpecifier(root, abs, me.specifier)
+                if (!cssAbs) {
+                  const key = `${rel}::${me.specifier}`
+                  if (!unresolvedModule.has(key)) {
+                    unresolvedModule.add(key)
+                    warnings.push(`${rel}: couldn't resolve CSS module "${me.specifier}" under src/ — left unchanged.`)
+                  }
+                  continue
+                }
+                moduleEdits.push({ cssAbs, cssRel: relOf(root, cssAbs), className: me.className, cssProp: me.cssProp, value: me.value })
+              }
               if (result.changed) {
                 content = result.newContent
                 changed = true
@@ -606,6 +634,47 @@ export function musePlugin(): Plugin {
               if (changed) {
                 if (!(rel in originals)) originals[rel] = before
                 out.push({ fileName: rel, newContent: content })
+              }
+            }
+          }
+
+          // Resolve CSS-modules-bound mutations to `.module.css` rule edits: set
+          // each declaration inside its `.className` rule, so the change lands in
+          // the stylesheet the element binds to (the className is just the binding).
+          // Group by stylesheet so several props in one file accumulate onto one
+          // newContent, mirroring the var path above.
+          if (moduleEdits.length) {
+            const byCss = new Map<string, { abs: string; rel: string; edits: Array<{ className: string; cssProp: string; value: string }> }>()
+            for (const me of moduleEdits) {
+              const bucket = byCss.get(me.cssRel) ?? { abs: me.cssAbs, rel: me.cssRel, edits: [] }
+              bucket.edits.push({ className: me.className, cssProp: me.cssProp, value: me.value })
+              byCss.set(me.cssRel, bucket)
+            }
+            for (const { abs, rel, edits } of byCss.values()) {
+              // A module file COULD also have been touched as a var-defining sheet
+              // above; build on the already-staged content so neither edit is lost.
+              const staged = out.find((o) => o.fileName === rel)
+              let content = staged ? staged.newContent : fs.readFileSync(abs, 'utf8')
+              const before = content // disk original when not staged (for undo)
+              let changed = false
+              for (const { className, cssProp, value } of edits) {
+                const r = setRuleProperty(content, className, cssProp, value)
+                if (r.changed) {
+                  content = r.newContent
+                  changed = true
+                  if (r.matches > 1) {
+                    warnings.push(`.${className} is defined in ${r.matches} rules in ${rel} — edited the first; media/theme overrides unchanged.`)
+                  }
+                } else if (r.matches === 0) {
+                  warnings.push(`no .${className} rule in ${rel} — left ${cssProp} unchanged.`)
+                }
+              }
+              if (changed) {
+                if (staged) staged.newContent = content
+                else {
+                  originals[rel] = before
+                  out.push({ fileName: rel, newContent: content })
+                }
               }
             }
           }

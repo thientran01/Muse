@@ -56,7 +56,7 @@ type VarDecl = { declStart: number; valueStart: number; valueEnd: number }
 // a commented-out declaration (`/* --x: old */`) can't be picked up and spliced,
 // while every byte offset stays aligned with the original source (we splice the
 // original by these offsets).
-function blankComments(css: string): string {
+export function blankComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length))
 }
 
@@ -86,7 +86,7 @@ function findVarDecls(css: string, varName: string): VarDecl[] {
   return decls
 }
 
-function escapeRe(s: string): string {
+export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
