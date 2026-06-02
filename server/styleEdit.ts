@@ -46,6 +46,14 @@ export type StyleStrategy = 'tailwind-first' | 'inline'
 // it and edits the var's value there. The element's own JSX is left untouched.
 export type VarEdit = { property: StyleProperty; varName: string; value: string }
 
+// A CSS-modules-bound element: its className is `{styles.card}` (a binding into a
+// `.module.css`), so the value lives in the stylesheet's `.card` rule, not the
+// className (which is just the binding) and not inline. The engine emits this
+// intent per CSS key and the server resolves the module specifier (relative to the
+// JSX file) and sets the declaration in the rule — a twin of VarEdit, the change
+// landing in another file while the element's JSX is left untouched.
+export type ModuleEdit = { specifier: string; className: string; cssProp: string; value: string }
+
 export type StyleEditResult = {
   newContent: string
   changed: boolean
@@ -53,6 +61,9 @@ export type StyleEditResult = {
   // Var-bound mutations deferred to a stylesheet edit (see VarEdit). Empty for the
   // common case of a literal class/inline edit.
   varEdits: VarEdit[]
+  // CSS-modules-bound mutations deferred to a `.module.css` rule edit (see
+  // ModuleEdit). Empty unless the target binds its className through a module.
+  moduleEdits: ModuleEdit[]
 }
 
 // The arbitrary-token bracket content (`text-[color:var(--x)]` → `color:var(--x)`),
@@ -304,6 +315,53 @@ function renderStyleObject(props: Array<[string, string]>): string {
   return `{ ${props.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')} }`
 }
 
+// Default/namespace imports whose source is a `*.module.css`, mapped binding-name
+// → specifier. `import styles from './Card.module.css'` makes `styles` a CSS-
+// modules object whose members (`styles.card`) bind to rules in that file; we map
+// those bindings so a Canvas edit can be routed to the rule. Namespace form
+// (`import * as styles from …`) is supported too; named imports aren't the pattern.
+function findModuleImports(ast: File): Map<string, string> {
+  const map = new Map<string, string>()
+  traverse(ast, {
+    ImportDeclaration(path) {
+      const src = path.node.source.value
+      if (!/\.module\.css$/i.test(src)) return
+      for (const s of path.node.specifiers) {
+        if (s.type === 'ImportDefaultSpecifier' || s.type === 'ImportNamespaceSpecifier') {
+          map.set(s.local.name, src)
+        }
+      }
+    },
+  })
+  return map
+}
+
+// If the located element's className is a CSS-modules binding — `{styles.card}` or
+// the bracket form `{styles['card']}`, where `styles` is a module import — return
+// the module specifier + the bound class name. Else null. The class's declarations
+// live in the stylesheet, so these props can't be a className token: they defer to
+// a server-side rule edit. Per-element, so a file can mix module + Tailwind targets.
+function detectModuleBinding(
+  opening: JSXOpeningElement,
+  imports: Map<string, string>,
+): { specifier: string; className: string } | null {
+  if (imports.size === 0) return null
+  const attr = findAttr(opening, 'className')
+  if (!attr || attr.value?.type !== 'JSXExpressionContainer') return null
+  const e = attr.value.expression
+  if (e.type !== 'MemberExpression' || e.object.type !== 'Identifier') return null
+  const specifier = imports.get(e.object.name)
+  if (!specifier) return null
+  // styles.card (non-computed Identifier) or styles['card'] (computed StringLiteral).
+  const key =
+    !e.computed && e.property.type === 'Identifier'
+      ? e.property.name
+      : e.computed && e.property.type === 'StringLiteral'
+        ? e.property.value
+        : null
+  return key ? { specifier, className: key } : null
+}
+
 export function computeStyleEdit(
   source: string,
   line: number,
@@ -316,7 +374,7 @@ export function computeStyleEdit(
 ): StyleEditResult {
   const warnings: string[] = []
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
-  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [] }
+  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [], moduleEdits: [] }
 
   // The host's class writer (Tailwind today) — owns how a value becomes a class
   // token, how to recognize an existing one, and which tokens are theme-bound.
@@ -329,16 +387,19 @@ export function computeStyleEdit(
   } catch (e) {
     // A file we can't parse (exotic syntax, a transient half-saved state) becomes
     // a skipped element with a warning — never a failed batch for its siblings.
-    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`], varEdits: [] }
+    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`], varEdits: [], moduleEdits: [] }
   }
   const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
   if (!opening) {
-    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`], varEdits: [] }
+    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`], varEdits: [], moduleEdits: [] }
   }
 
   const classInfo = analyzeClassName(opening)
   const styleInfo = analyzeStyle(opening)
   const classEditable = classInfo?.editable === true
+  // A `className={styles.card}` binding into a `.module.css` — its props can't be a
+  // class token (the className is the binding) so they defer to a rule edit below.
+  const moduleBinding = detectModuleBinding(opening, findModuleImports(ast))
 
   // Working copies we mutate as we route each property, then emit as patches.
   let classTokens = classEditable ? (classInfo as { value: string }).value.split(/\s+/).filter(Boolean) : []
@@ -348,6 +409,9 @@ export function computeStyleEdit(
   // Mutations whose current value is theme-bound (var(--x)); the server edits the
   // var's definition instead of this element. Collected across the loop below.
   const varEdits: VarEdit[] = []
+  // Mutations on a CSS-modules-bound element; the server sets them in the module's
+  // `.className` rule (see ModuleEdit). Collected across the loop below.
+  const moduleEdits: ModuleEdit[] = []
 
   const setStyleProp = (key: string, value: string) => {
     const i = styleProps.findIndex(([k]) => k === key)
@@ -413,6 +477,17 @@ export function computeStyleEdit(
       }
       continue
     }
+    // A CSS-modules-bound element (`className={styles.card}`): the value lives in
+    // the module's `.card` rule, not the className (just the binding) and not
+    // inline. Emit a rule-edit intent per CSS key; the server resolves the module
+    // file and sets the declaration. (An inline var binding above still wins the
+    // cascade if the element happens to carry one.)
+    if (moduleBinding) {
+      for (const key of spec.css) {
+        moduleEdits.push({ specifier: moduleBinding.specifier, className: moduleBinding.className, cssProp: key, value: m.value })
+      }
+      continue
+    }
     const useTailwind = strategy === 'tailwind-first' && classEditable
     // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
@@ -457,17 +532,19 @@ export function computeStyleEdit(
   }
 
   if (patches.length === 0) {
-    // No JSX patch — but a var edit (in another file) may still be the real change,
-    // so don't report "nothing to change" when varEdits carry the work.
-    const w = varEdits.length ? warnings : [...warnings, 'nothing to change']
-    return { newContent: source, changed: false, warnings: w, varEdits }
+    // No JSX patch — but a var edit or a module rule edit (in another file) may
+    // still be the real change, so don't report "nothing to change" when those
+    // carry the work.
+    const deferred = varEdits.length > 0 || moduleEdits.length > 0
+    const w = deferred ? warnings : [...warnings, 'nothing to change']
+    return { newContent: source, changed: false, warnings: w, varEdits, moduleEdits }
   }
 
   // Apply patches right-to-left so earlier offsets stay valid.
   patches.sort((a, b) => b.start - a.start)
   let out = source
   for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
-  return { newContent: out, changed: true, warnings, varEdits }
+  return { newContent: out, changed: true, warnings, varEdits, moduleEdits }
 }
 
 // ============================================================
