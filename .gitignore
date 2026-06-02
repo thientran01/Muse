@@ -5,6 +5,7 @@ dist-ssr
 .env
 .env.*
 !.env.production
+!.env.demo
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
