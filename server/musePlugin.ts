@@ -30,9 +30,10 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit, type ModuleEdit } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, findStyledExport, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit, type ModuleEdit } from './styleEdit'
 import { editCssVar } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
+import { setTemplateProperty } from '../src/muse/style/styledEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -188,6 +189,56 @@ function findCssVarFiles(root: string, varName: string): string[] {
 function resolveModuleSpecifier(root: string, fromAbs: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null
   return resolveInSrc(root, path.resolve(path.dirname(fromAbs), specifier))
+}
+
+// Resolve a styled-component import specifier (`./ui`, `../components/Button`) to an
+// absolute module file, relative to the importing JSX file and bounded to <root>/src.
+// Unlike a CSS-modules specifier (which carries its `.module.css` extension), a JS/TS
+// import omits the extension, so we try the standard resolution order: the literal
+// path, then `.tsx/.ts/.jsx/.js`, then a directory `index.*`. Only relative imports
+// are in scope; a bare/aliased specifier is a package we won't touch. Returns null
+// if nothing resolves under src/.
+const STYLED_MODULE_EXTS = ['.tsx', '.ts', '.jsx', '.js']
+function resolveStyledSpecifier(root: string, fromAbs: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null
+  const base = path.resolve(path.dirname(fromAbs), specifier)
+  const candidates = [
+    base, // an import that already carries an extension (`./x.tsx`)
+    ...STYLED_MODULE_EXTS.map((e) => base + e),
+    ...STYLED_MODULE_EXTS.map((e) => path.join(base, 'index' + e)),
+  ]
+  for (const c of candidates) {
+    const hit = resolveInSrc(root, c)
+    // Must be a FILE: `base` (the extensionless candidate) matches a same-named
+    // DIRECTORY too (`./components`), which exists under src/ — skip it so the
+    // `index.*` candidates win instead of handing a directory to readFileSync.
+    if (hit && fs.statSync(hit).isFile()) return hit
+  }
+  return null
+}
+
+// Follow a styled export through re-export barrels to the module that actually
+// DEFINES it. Reads disk (re-export structure doesn't change within a request);
+// returns the final {module, exportName} where findStyledExport stops re-exporting
+// (a template, an unsupported form, or simply not found — all "this is the end of
+// the chain"), or null if the chain dead-ends at an unresolvable specifier or loops.
+function followStyledExport(root: string, moduleAbs: string, exportName: string): { abs: string; exportName: string } | null {
+  let abs = moduleAbs
+  let name = exportName
+  const visited = new Set<string>()
+  for (let hop = 0; hop < 6; hop++) {
+    if (visited.has(abs)) return null // re-export cycle
+    visited.add(abs)
+    let content: string
+    try { content = fs.readFileSync(abs, 'utf8') } catch { return null }
+    const loc = findStyledExport(content, name)
+    if (!loc || !('reexport' in loc)) return { abs, exportName: name } // defined here (or absent) — chain ends
+    const next = resolveStyledSpecifier(root, abs, loc.reexport.specifier)
+    if (!next) return null // barrel points outside src/ or to a package
+    abs = next
+    name = loc.reexport.exportName
+  }
+  return null // too many hops — give up rather than spin
 }
 
 // The observe endpoint asks for a bare JSON object, but models sometimes wrap
@@ -542,6 +593,9 @@ export function musePlugin(): Plugin {
           // CSS-modules-bound mutations, resolved (specifier → abs .module.css) below.
           const moduleEdits: Array<{ cssAbs: string; cssRel: string; className: string; cssProp: string; value: string }> = []
           const unresolvedModule = new Set<string>() // dedupe "couldn't resolve" warnings
+          // Imported-styled mutations, resolved (specifier → abs module file) below.
+          const styledEdits: Array<{ tgtAbs: string; tgtRel: string; exportName: string; cssProp: string; value: string }> = []
+          const unresolvedStyled = new Set<string>() // dedupe "couldn't resolve" warnings
           for (const { abs, rel, items } of byFile.values()) {
             let content = fs.readFileSync(abs, 'utf8')
             const before = content
@@ -573,6 +627,24 @@ export function musePlugin(): Plugin {
                   continue
                 }
                 moduleEdits.push({ cssAbs, cssRel: relOf(root, cssAbs), className: me.className, cssProp: me.cssProp, value: me.value })
+              }
+              // Resolve each imported-styled specifier against THIS JSX file's dir
+              // (with extension guessing), follow any re-export barrel to the module
+              // that defines it, and stash the final abs module for the pass below.
+              // (The engine only emits a StyledEdit for a relative specifier, so an
+              // alias/package import never reaches here — no non-relative branch.)
+              for (const se of result.styledEdits) {
+                const firstAbs = resolveStyledSpecifier(root, abs, se.specifier)
+                const final = firstAbs ? followStyledExport(root, firstAbs, se.exportName) : null
+                if (!final) {
+                  const key = `${rel}::${se.specifier}`
+                  if (!unresolvedStyled.has(key)) {
+                    unresolvedStyled.add(key)
+                    warnings.push(`${rel}: couldn't resolve styled import "${se.specifier}" under src/ — left unchanged.`)
+                  }
+                  continue
+                }
+                styledEdits.push({ tgtAbs: final.abs, tgtRel: relOf(root, final.abs), exportName: final.exportName, cssProp: se.cssProp, value: se.value })
               }
               if (result.changed) {
                 content = result.newContent
@@ -678,6 +750,68 @@ export function musePlugin(): Plugin {
                   }
                 } else if (r.matches === 0) {
                   warnings.push(`no .${className} rule in ${rel} — left ${cssProp} unchanged.`)
+                }
+              }
+              if (changed) {
+                if (staged) staged.newContent = content
+                else {
+                  originals[rel] = before
+                  out.push({ fileName: rel, newContent: content })
+                }
+              }
+            }
+          }
+
+          // Resolve imported-styled mutations to cross-file template edits: in each
+          // target module, find the styled export and set the declaration in its
+          // template body. Group by module → exportName so several props on one
+          // component accumulate; re-locate the export against the CURRENT content
+          // each time (its offsets shift as we splice), mirroring how the module
+          // pass re-scans. Build on any already-staged content so we never clobber.
+          if (styledEdits.length) {
+            const byModule = new Map<string, { abs: string; rel: string; byExport: Map<string, Array<{ cssProp: string; value: string }>> }>()
+            for (const se of styledEdits) {
+              const bucket = byModule.get(se.tgtRel) ?? { abs: se.tgtAbs, rel: se.tgtRel, byExport: new Map() }
+              const props = bucket.byExport.get(se.exportName) ?? []
+              props.push({ cssProp: se.cssProp, value: se.value })
+              bucket.byExport.set(se.exportName, props)
+              byModule.set(se.tgtRel, bucket)
+            }
+            for (const { abs, rel, byExport } of byModule.values()) {
+              const staged = out.find((o) => o.fileName === rel)
+              let content = staged ? staged.newContent : fs.readFileSync(abs, 'utf8')
+              const before = content // disk original when not staged (for undo)
+              let changed = false
+              for (const [exportName, props] of byExport) {
+                const label = exportName === 'default' ? 'default export' : `"${exportName}"`
+                const loc = findStyledExport(content, exportName)
+                if (!loc) {
+                  warnings.push(`${rel}: no styled ${label} found — left unchanged (an imported component that isn't a styled template here).`)
+                  continue
+                }
+                // followStyledExport already resolved barrels to the defining module,
+                // so a re-export shouldn't surface here — but guard defensively (and
+                // for the type) rather than splice with offsets it doesn't carry.
+                if ('reexport' in loc) {
+                  warnings.push(`${rel}: styled ${label} re-exports another module — left unchanged.`)
+                  continue
+                }
+                if ('unsupported' in loc) {
+                  warnings.push(`${rel}: styled ${label} is ${loc.unsupported} — left unchanged.`)
+                  continue
+                }
+                let body = content.slice(loc.bodyStart, loc.bodyEnd)
+                let any = false
+                for (const { cssProp, value } of props) {
+                  const r = setTemplateProperty(body, cssProp, value)
+                  if (r.changed) {
+                    body = r.newContent
+                    any = true
+                  }
+                }
+                if (any) {
+                  content = content.slice(0, loc.bodyStart) + body + content.slice(loc.bodyEnd)
+                  changed = true
                 }
               }
               if (changed) {
