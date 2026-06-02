@@ -26,7 +26,11 @@
 // null when the value isn't a single var reference (a literal, or a compound like
 // `calc(var(--a) + var(--b))` we won't try to attribute to one var).
 export function extractVarName(value: string): string | null {
-  const v = value.trim().replace(/^(?:color|length):/, '').trim()
+  const v = value
+    .trim()
+    .replace(/\s*!important\s*$/i, '') // a themed value can still carry !important
+    .replace(/^(?:color|length):/, '')
+    .trim()
   // One var() reference, optional fallback, nothing else around it.
   const m = v.match(/^var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,[^)]*)?\)$/)
   return m ? m[1] : null
@@ -48,24 +52,34 @@ export type CssVarEditResult = {
 // A `--x:` declaration: its full span (for the splice) and the value-only span.
 type VarDecl = { declStart: number; valueStart: number; valueEnd: number }
 
-// Find every `--x: <value>;` declaration in CSS source. Deliberately simple — a
-// regex over the raw text, not a full CSS parser — because a custom-property
-// declaration is a flat `--name: tokens` ending at `;` or `}`. We capture the
-// value span so we can replace ONLY the value, preserving the property name,
-// whitespace, and trailing comment/semicolon exactly.
+// Replace every /* … */ comment with equal-length spaces. Run before matching so
+// a commented-out declaration (`/* --x: old */`) can't be picked up and spliced,
+// while every byte offset stays aligned with the original source (we splice the
+// original by these offsets).
+function blankComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length))
+}
+
+// Find every `--x: <value>` declaration in CSS source. Deliberately simple — a
+// regex over the (comment-blanked) text, not a full CSS parser — because a
+// custom-property declaration is a flat `--name: tokens` ending at `;` or `}`. We
+// capture the value span so we can replace ONLY the value, preserving the property
+// name, whitespace, and trailing semicolon exactly. Matching runs over a copy with
+// comments blanked to spaces; offsets are identical to the original.
 function findVarDecls(css: string, varName: string): VarDecl[] {
+  const scan = blankComments(css)
   const decls: VarDecl[] = []
   // `--name` followed by `:`, then the value up to the terminating `;` or `}`.
   // [^;}]* keeps us inside a single declaration; we never cross a rule boundary.
-  const re = new RegExp(`(${escapeRe(varName)})\\s*:\\s*([^;}]*)`, 'g')
+  const re = new RegExp(`${escapeRe(varName)}\\s*:\\s*([^;}]*)`, 'g')
   let m: RegExpExecArray | null
-  while ((m = re.exec(css)) !== null) {
+  while ((m = re.exec(scan)) !== null) {
     const declStart = m.index
     // The value starts after the matched `--name` + colon + leading spaces.
-    const valueStart = m.index + m[0].length - m[2].length
+    const valueStart = m.index + m[0].length - m[1].length
     // Trim trailing whitespace out of the value span so we replace only the
     // value glyphs, leaving the gap before `;`/`}` untouched.
-    const trailingWs = m[2].length - m[2].trimEnd().length
+    const trailingWs = m[1].length - m[1].trimEnd().length
     const valueEnd = m.index + m[0].length - trailingWs
     decls.push({ declStart, valueStart, valueEnd })
   }
@@ -82,9 +96,13 @@ function escapeRe(s: string): string {
 // were left as-is. Returns the source unchanged with changed:false when the var
 // isn't defined here (the wrong stylesheet) or the value already matches.
 export function editCssVar(css: string, varName: string, value: string): CssVarEditResult {
+  const newValue = value.trim()
+  // A value carrying `;` `{` `}` (or angle brackets) would break out of the
+  // declaration and corrupt the rule — refuse it. Scrub controls never emit these;
+  // this is defense-in-depth against a malformed value reaching the splice.
+  if (/[;{}<>]/.test(newValue)) return { newContent: css, changed: false, matches: 0 }
   const decls = findVarDecls(css, varName)
   if (decls.length === 0) return { newContent: css, changed: false, matches: 0 }
-  const newValue = value.trim()
   const first = decls[0]
   const current = css.slice(first.valueStart, first.valueEnd)
   if (current === newValue) return { newContent: css, changed: false, matches: decls.length }

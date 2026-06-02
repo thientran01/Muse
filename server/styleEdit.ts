@@ -383,20 +383,34 @@ export function computeStyleEdit(
     // (text-[color:var(--x)]) OR an inline value (color: var(--x)) — defers to a
     // stylesheet edit of --x rather than hardcoding a literal over the theme
     // binding. The element's binding stays put; the server resolves + edits --x.
-    // Applies to any kind (color, tracking, leading, …). When we can't recover the
-    // var name (a compound/nested var), fall back to the old skip-with-warning.
+    // Applies to any kind (color, tracking, leading, …).
+    //
+    // INLINE WINS the cascade over a class, so prefer an inline binding when both
+    // are present. An axis property (paddingX → left+right) maps to two css keys:
+    // only defer when ALL of them are bound to the SAME single var, else a scrub
+    // (one scalar) would edit one side and strand the other — warn and skip instead.
+    const inlineVarNames = spec.css.map((k) => {
+      const v = styleProps.find(([pk]) => pk === k)?.[1]
+      return v != null && isVarValue(v) ? extractVarName(v) : undefined
+    })
+    const anyInlineVar = inlineVarNames.some((n) => n)
     const themedToken = classEditable
       ? classTokens.find((c) => matchesFamily(c) && writer.themed(c))
       : undefined
-    const inlineVarVal = spec.css
-      .map((k) => styleProps.find(([pk]) => pk === k)?.[1])
-      .find((v): v is string => v != null && isVarValue(v))
-    if (themedToken || inlineVarVal) {
-      const varName = themedToken
-        ? extractVarName(bracketContent(themedToken) ?? '')
-        : extractVarName(inlineVarVal!)
-      if (varName) varEdits.push({ property: m.property, varName, value: m.value })
-      else warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
+    if (anyInlineVar || themedToken) {
+      if (anyInlineVar) {
+        const distinct = [...new Set(inlineVarNames.filter((n): n is string => n != null))]
+        const allKeysVar = inlineVarNames.every((n) => n != null)
+        if (distinct.length === 1 && allKeysVar) {
+          varEdits.push({ property: m.property, varName: distinct[0], value: m.value })
+        } else {
+          warnings.push(`${m.property}: mixed/asymmetric CSS-variable binding — left unchanged`)
+        }
+      } else {
+        const varName = extractVarName(bracketContent(themedToken!) ?? '')
+        if (varName) varEdits.push({ property: m.property, varName, value: m.value })
+        else warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
+      }
       continue
     }
     const useTailwind = strategy === 'tailwind-first' && classEditable

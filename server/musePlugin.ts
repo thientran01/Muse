@@ -137,14 +137,11 @@ const relOf = (root: string, abs: string) => path.relative(root, abs).replace(/\
 // Does this project author styles as Tailwind utilities? Decides the DEFAULT edit
 // strategy when the client doesn't force one: 'tailwind-first' (author/replace
 // utility classes) for a Tailwind host, else 'inline' (write into style={{}}) —
-// the universal fallback that works in any React app, Tailwind or not. Cached: a
-// project's styling system doesn't change within a dev session.
-let strategyCache: StyleStrategy | null = null
+// the universal fallback that works in any React app, Tailwind or not. Pure; the
+// caller memoizes per plugin instance (detectedStrategy).
 function detectStrategy(root: string): StyleStrategy {
-  if (strategyCache) return strategyCache
   const configs = ['tailwind.config.js', 'tailwind.config.ts', 'tailwind.config.cjs', 'tailwind.config.mjs']
-  strategyCache = configs.some((c) => fs.existsSync(path.join(root, c))) ? 'tailwind-first' : 'inline'
-  return strategyCache
+  return configs.some((c) => fs.existsSync(path.join(root, c))) ? 'tailwind-first' : 'inline'
 }
 
 // Walk <root>/src for .css files (bounded to src, same trust boundary as
@@ -279,6 +276,10 @@ export function musePlugin(): Plugin {
   // line by a constant per-session amount; the style editor learns it once here
   // and reuses it to locate elements exactly. See locateOpening in styleEdit.ts.
   const lineOffsetHint: OffsetHint = { value: null }
+  // Memoized default edit strategy for THIS project (Tailwind vs inline). Scoped
+  // to the plugin instance like every other session value, so a second project in
+  // the same process can't inherit the first's detection. See detectStrategy.
+  let detectedStrategy: StyleStrategy | null = null
 
   return {
     name: 'muse-backend',
@@ -491,9 +492,13 @@ export function musePlugin(): Plugin {
           const rawEdits = Array.isArray(body.edits) ? body.edits : []
           if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
           // Honor an explicit client strategy; otherwise detect from the host
-          // project (Tailwind → utility classes, else inline style).
+          // project (Tailwind → utility classes, else inline style), memoized.
           const strategy: StyleStrategy =
-            body.strategy === 'inline' ? 'inline' : body.strategy === 'tailwind-first' ? 'tailwind-first' : detectStrategy(root)
+            body.strategy === 'inline'
+              ? 'inline'
+              : body.strategy === 'tailwind-first'
+                ? 'tailwind-first'
+                : (detectedStrategy ??= detectStrategy(root))
 
           // Group mutations by file so several elements in one file resolve to a
           // single newContent (each computed off the previous result).
@@ -556,6 +561,12 @@ export function musePlugin(): Plugin {
             const byVar = new Map<string, string>()
             const order: string[] = []
             for (const ve of varEdits) {
+              if (byVar.has(ve.varName) && byVar.get(ve.varName) !== ve.value) {
+                // Two mutations in one request set the same var to different values
+                // — it's one declaration, so the last wins; say so rather than drop
+                // an edit silently.
+                warnings.push(`${ve.varName} got conflicting values in one edit — kept the last (${ve.value}).`)
+              }
               if (!byVar.has(ve.varName)) order.push(ve.varName)
               byVar.set(ve.varName, ve.value)
             }
@@ -585,6 +596,9 @@ export function musePlugin(): Plugin {
                   warnings.push(`${varName} is themed in ${r.matches} selectors — updated the base value; theme overrides unchanged.`)
                 }
                 if (r.changed) {
+                  // Editing a token retunes every element that reads it, not just
+                  // the selected one — surface that so the wide effect isn't a surprise.
+                  warnings.push(`updated ${varName} in ${rel} — this changes everything that uses it.`)
                   content = r.newContent
                   changed = true
                 }
