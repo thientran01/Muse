@@ -65,7 +65,7 @@ export function FeedbackWidget() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="fb-title"
-          className="w-[min(320px,calc(100vw-2.5rem))] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 dark:border-stone-800 dark:bg-[#201d16] dark:ring-white/5"
+          className="w-[min(320px,calc(100vw-2.5rem))] origin-bottom-left animate-site-pop overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 motion-reduce:animate-none dark:border-stone-800 dark:bg-[#201d16] dark:ring-white/5"
         >
           <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3 dark:border-stone-800">
             <h2 id="fb-title" className="text-sm font-semibold text-stone-900 dark:text-stone-100">
@@ -122,7 +122,7 @@ export function FeedbackWidget() {
                 onClick={send}
                 disabled={!message.trim() || status === 'sending'}
                 aria-busy={status === 'sending'}
-                className="mt-3 w-full rounded-lg bg-[#7f2f2f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#6a2727] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#9d3b3b] dark:hover:bg-[#8a3535]"
+                className="mt-3 w-full rounded-lg bg-[#7f2f2f] px-4 py-2 text-sm font-medium text-white transition duration-150 ease-out-strong hover:bg-[#6a2727] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100 dark:bg-[#9d3b3b] dark:hover:bg-[#8a3535]"
               >
                 {status === 'sending' ? 'Sending…' : 'Send feedback'}
               </button>
@@ -133,7 +133,7 @@ export function FeedbackWidget() {
         <button
           ref={triggerRef}
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-700 shadow-lg ring-1 ring-black/5 transition-colors hover:bg-stone-50 dark:border-stone-800 dark:bg-[#201d16] dark:text-stone-200 dark:ring-white/5 dark:hover:bg-stone-800"
+          className="flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-3 text-sm font-medium text-stone-700 shadow-lg ring-1 ring-black/5 transition duration-150 ease-out-strong hover:bg-stone-50 active:scale-[0.97] motion-reduce:active:scale-100 dark:border-stone-800 dark:bg-[#201d16] dark:text-stone-200 dark:ring-white/5 dark:hover:bg-stone-800"
         >
           <svg viewBox="0 0 16 16" className="h-4 w-4 text-[#7f2f2f] dark:text-[#e3a384]" fill="currentColor" aria-hidden>
             <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H6l-3 3v-3H3a1 1 0 01-1-1V3z" />
