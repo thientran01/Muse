@@ -83,6 +83,25 @@ export function ColorPicker({
 
   return (
     <div className="w-[200px] space-y-2.5">
+      {/* WCAG contrast check (Figma-style) — above the picker so the pass/fail
+          verdict reads first, before you start adjusting. Only when a comparison
+          color is provided (Text vs Fill, etc.). */}
+      {contrast && (
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="flex items-center gap-1.5 text-fg-muted">
+            <span className="font-mono tabular-nums">{contrast.ratio.toFixed(2)}:1</span>
+            <span className="text-fg-faint">contrast</span>
+          </span>
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+            contrast.aa ? 'bg-emerald-500/15 text-emerald-400'
+            : contrast.aaLarge ? 'bg-amber-500/15 text-amber-400'
+            : 'bg-rose-500/15 text-rose-400'
+          }`}>
+            {contrast.aaa ? 'AAA' : contrast.aa ? 'AA' : contrast.aaLarge ? 'AA Large' : 'Fail'}
+          </span>
+        </div>
+      )}
+
       <SVSquare hsv={hsv} hueHex={hueHex} onChange={(s, v, commit) => emit({ ...hsv, s, v }, commit)} />
 
       {/* Eyedropper (if supported) + hue slider on one row, so the slider doesn't
@@ -122,29 +141,11 @@ export function ColorPicker({
         ))}
       </div>
 
-      {/* WCAG contrast check against the paired color (Figma-style) — only when a
-          comparison color is provided (Text vs Fill, etc.). */}
-      {contrast && (
-        <div className="flex items-center justify-between border-t border-line/10 pt-2 text-[11px]">
-          <span className="flex items-center gap-1.5 text-fg-muted">
-            <span className="font-mono tabular-nums">{contrast.ratio.toFixed(2)}:1</span>
-            <span className="text-fg-faint">contrast</span>
-          </span>
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-            contrast.aaa ? 'bg-emerald-500/15 text-emerald-400'
-            : contrast.aa ? 'bg-emerald-500/15 text-emerald-400'
-            : contrast.aaLarge ? 'bg-amber-500/15 text-amber-400'
-            : 'bg-rose-500/15 text-rose-400'
-          }`}>
-            {contrast.aaa ? 'AAA' : contrast.aa ? 'AA' : contrast.aaLarge ? 'AA Large' : 'Fail'}
-          </span>
-        </div>
-      )}
-
-      {/* Brand swatches from DESIGN.md */}
+      {/* Brand swatches from DESIGN.md — label tight under the divider, swatches
+          right under the label, so the row sits close to the separator. */}
       {swatches.length > 0 && (
-        <div className="space-y-1 border-t border-line/10 pt-2">
-          <span className="text-[9px] uppercase tracking-wide text-fg-faint">Brand</span>
+        <div className="border-t border-line/10 pt-1.5">
+          <span className="mb-1 block text-[9px] uppercase tracking-wide text-fg-faint">Brand</span>
           <div className="flex flex-wrap gap-1">
             {swatches.map((sw) => {
               const active = sw.toLowerCase() === hex.toLowerCase()
