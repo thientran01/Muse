@@ -5,8 +5,9 @@ export function HowItWorks() {
     <article>
       <H1>How it works</H1>
       <Lead>
-        The intelligence is Claude. The engineering worth talking about is the harness that maps a pixel
-        to its source and writes the change back safely.
+        A look under the hood: how Muse turns a click into a source edit, why direct edits land
+        instantly, and how the agent works as a partner when you would rather describe a change than
+        make it by hand.
       </Lead>
 
       <H2 id="mapping">From a click to a source file</H2>
@@ -31,6 +32,21 @@ export function HowItWorks() {
         file, finds the element by its source position, and rewrites that one class or style with a
         character-range splice that leaves your formatting intact. The result lands instantly, asks for
         no key, and stays reversible.
+      </P>
+
+      <H2 id="agent">The agent, as a partner</H2>
+      <P>
+        Some of the work is conversation, and Muse is built to feel like a partner through it. The moment
+        you select an element, before you have typed anything, it runs a quick read of what you picked: a
+        short, plain observation of what the element is doing, plus a few starter directions tailored to
+        it. The conversation opens with something concrete to react to.
+      </P>
+      <P>
+        From there you say what you want, and Muse answers with one to three distinct directions, each a
+        complete edit you can hover to preview in place and click to apply. When a request is genuinely
+        open-ended, it pauses and asks a single, well-formed question with visual options, then acts once
+        it knows what you meant. It holds a point of view, picks up on what you left unsaid, and works
+        with you toward the result.
       </P>
 
       <H2 id="safety">How writes stay safe</H2>
