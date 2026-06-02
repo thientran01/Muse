@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { museReorder, museReorderable, museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
+import { EPHEMERAL } from '../../config'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
@@ -158,7 +159,11 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // as one object so a commit can SNAPSHOT the exact nodes + keys to strip after
   // HMR — even if the selection moves on first. A stale override left on a node
   // would survive an undo and lie about the source.
-  const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string> } | null>(null)
+  // `before` holds each node's inline `cssText` at the moment this preview entry
+  // was created — the EPHEMERAL undo baseline (it captures all prior committed
+  // inline edits, so undo lands on the state right before THIS scrub). Unused in
+  // the normal server path (where undo restores file content).
+  const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string>; before: Map<HTMLElement, string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
@@ -251,6 +256,28 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       setReorderable(null)
       return
     }
+    // EPHEMERAL: there's no server probe — answer from the live DOM. A run is
+    // reorderable when the parent has ≥2 visible element children including the
+    // selection (DOM order is authoritative; an ephemeral move can't corrupt a
+    // file, so this safely fails open where the real probe fails closed).
+    if (EPHEMERAL) {
+      const parent = selected.node.parentElement
+      const kids = parent
+        ? ([...parent.children] as Element[]).filter(
+            (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
+          )
+        : []
+      setReorderable(
+        kids.length >= 2 && kids.includes(selected.node)
+          ? {
+              reorderable: true,
+              count: kids.length,
+              children: kids.map((k, i) => ({ index: i, tag: k.tagName.toLowerCase(), classNames: k.getAttribute('class') })),
+            }
+          : { reorderable: false, reason: 'not a reorderable run' },
+      )
+      return
+    }
     let cancelled = false
     setReorderable(null)
     void museReorderable({
@@ -317,6 +344,12 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // file-only (no chat-panel side effects), so Cmd/Ctrl+Z works in canvas too.
   useEffect(() => {
     const step = async (dir: 'undo' | 'redo') => {
+      // EPHEMERAL: undo/redo run on the DOM-snapshot stack, not file content.
+      if (EPHEMERAL) {
+        clearPreview()
+        if (dir === 'undo' ? museStore.ephemeralUndo() : museStore.ephemeralRedo()) bump((v) => v + 1)
+        return
+      }
       const s = museStore.getState()
       const entry = dir === 'undo' ? s.past[s.past.length - 1] : s.future[0]
       if (!entry) return
@@ -353,7 +386,10 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
     // list of N instances all preview together, matching what the commit will do.
     let p = previewRef.current
     if (!p || p.anchor !== selected.node) {
-      p = { anchor: selected.node, nodes: peerNodes(selected), keys: new Set() }
+      const nodes = peerNodes(selected)
+      // Snapshot each node's current inline style as the EPHEMERAL undo baseline.
+      const before = new Map(nodes.map((n) => [n, n.style.cssText]))
+      p = { anchor: selected.node, nodes, keys: new Set(), before }
       previewRef.current = p
     }
     for (const m of mutations) {
@@ -386,6 +422,31 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
 
     applyPreview(mutations) // make sure the final value is showing
     const label = mutations.map((m) => `${m.property} ${m.value}`).join(', ').slice(0, 80)
+
+    // EPHEMERAL: the inline preview IS the committed state. Record a DOM-snapshot
+    // undo entry (before/after cssText, captured per peer node), keep the inline
+    // style on the nodes, and skip the server + disk write entirely.
+    if (EPHEMERAL) {
+      const p = previewRef.current
+      if (p) {
+        const nodes = p.nodes
+        const before = p.before
+        const after = new Map(nodes.map((n) => [n, n.style.cssText]))
+        // Skip a no-op commit (e.g. a re-fire on the same value) so it doesn't add
+        // an undo step that visibly does nothing.
+        const changed = nodes.some((n) => (before.get(n) ?? '') !== (after.get(n) ?? ''))
+        if (changed) {
+          const apply = (snap: Map<HTMLElement, string>) => {
+            for (const n of nodes) if (n.isConnected) n.style.cssText = snap.get(n) ?? ''
+          }
+          museStore.pushEphemeral({ label, undo: () => apply(before), redo: () => apply(after) })
+        }
+      }
+      previewRef.current = null // keep the inline style ON the nodes; stop tracking it
+      bump((v) => v + 1) // re-read the panel from the new (inline) state
+      return
+    }
+
     try {
       const { edits, originals, warnings } = await museStyleEdit([
         {
@@ -450,6 +511,21 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       exitEditing()
       return
     }
+
+    // EPHEMERAL: the node already shows the typed text (contentEditable). Sync the
+    // same-source peers and record a text-snapshot undo entry; no server, no write.
+    if (EPHEMERAL) {
+      const peers = peerNodes(el).filter((p) => p !== node)
+      for (const peer of peers) peer.textContent = raw
+      const all = [node, ...peers]
+      const set = (text: string) => {
+        for (const n of all) if (n.isConnected) n.textContent = text
+      }
+      museStore.pushEphemeral({ label: `text "${raw.slice(0, 40)}"`, undo: () => set(original), redo: () => set(raw) })
+      exitEditing()
+      return
+    }
+
     try {
       const { edits, originals, warnings } = await museTextEdit([
         { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: node.getAttribute('class') ?? '', text: raw },
@@ -495,6 +571,31 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       : []
     const fromIndex = siblings.indexOf(el.node)
     const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
+
+    // EPHEMERAL: physically move the DOM node among its siblings (DOM order ===
+    // source order under the host-only gate), record an order-snapshot undo, and
+    // re-select the same (still-live) node — no server, no write, no HMR to await.
+    if (EPHEMERAL) {
+      if (!parent) return
+      const beforeOrder = [...parent.children] as HTMLElement[]
+      const target = siblings[toIndex] ?? null // element at the source slot, or null = append
+      if (target === el.node) return // dropping onto self — no move
+      parent.insertBefore(el.node, target)
+      const afterOrder = [...parent.children] as HTMLElement[]
+      if (afterOrder.every((n, i) => n === beforeOrder[i])) return // no visible change
+      const restore = (order: HTMLElement[]) => {
+        if (parent.isConnected) for (const c of order) parent.appendChild(c)
+      }
+      museStore.pushEphemeral({ label: `reorder ${el.tag}`, undo: () => restore(beforeOrder), redo: () => restore(afterOrder) })
+      const c = canvasChain(el.node)[0]
+      if (c) selectElement(c)
+      bump((v) => v + 1)
+      // Settle two frames so ReorderOverlay's eased set-down finds the chrome
+      // re-anchored at the new position (mirrors the server path's resolve timing).
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      return
+    }
+
     try {
       const { edits, originals, warnings } = await museReorder({
         fileName: el.fileName,

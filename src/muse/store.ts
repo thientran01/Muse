@@ -88,6 +88,16 @@ const subscribers = new Set<() => void>()
 // Resets on full refresh / HMR of this file, like the rest of the store.
 let observationCache: Record<string, ObserveResult> = {}
 
+// Ephemeral (EPHEMERAL mode) undo/redo: in-browser-only Canvas edits don't write
+// to disk, so they can't use the file-content `past`/`future` stack. Each entry is
+// a pair of DOM-restoration thunks captured at commit (inline-style cssText, text
+// content, or sibling order). Kept OFF the reactive state — nothing renders these
+// directly; the DOM mutation IS the visible effect, and the panel re-reads via its
+// own revision bump. Resets on full refresh / HMR of this file.
+export type EphemeralEntry = { label: string; undo: () => void; redo: () => void }
+let ePast: EphemeralEntry[] = []
+let eFuture: EphemeralEntry[] = []
+
 function notify() {
   subscribers.forEach((fn) => fn())
 }
@@ -229,6 +239,29 @@ export const museStore = {
    * target is (re)selected. */
   cacheObservation(key: string, result: ObserveResult) {
     observationCache = { ...observationCache, [key]: result }
+  },
+  /** Push an ephemeral (in-browser-only) Canvas edit onto the undo stack and
+   * clear the redo stack. Off-state — see the ePast/eFuture comment. */
+  pushEphemeral(entry: EphemeralEntry) {
+    ePast.push(entry)
+    eFuture = []
+  },
+  /** Undo the last ephemeral edit (run its `undo` thunk, move it to redo).
+   * Returns false if nothing to undo. */
+  ephemeralUndo(): boolean {
+    const e = ePast.pop()
+    if (!e) return false
+    e.undo()
+    eFuture.unshift(e)
+    return true
+  },
+  /** Redo the last undone ephemeral edit. Returns false if nothing to redo. */
+  ephemeralRedo(): boolean {
+    const e = eFuture.shift()
+    if (!e) return false
+    e.redo()
+    ePast.push(e)
+    return true
   },
   /** Swap the LLM read (or a fallback) into an existing observation bubble,
    * clearing its pending shimmer. No-op if the bubble was scrolled past and
