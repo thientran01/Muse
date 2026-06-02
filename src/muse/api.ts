@@ -7,6 +7,10 @@ import type {
   ClarifyingQuestion,
   FileEdit,
   ObserveResult,
+  Reorderable,
+  ReorderChild,
+  ReorderRequest,
+  ReorderResponse,
   SelectedElement,
   StyleEditRequest,
   StyleEditResponse,
@@ -133,6 +137,57 @@ export async function museTextEditable(
     return { editable: data.editable !== false, reason: data.reason }
   } catch {
     return { editable: true } // probe failed — let the commit be the authority
+  }
+}
+
+// Deterministic sibling reorder (Canvas Mode drag). NO model call — the server
+// moves the element among its siblings by a character-range splice and returns the
+// new file contents + originals, flowing through the SAME museWrite + history as
+// styles/text. `toIndex` is the source-order slot to land before (count === end).
+export async function museReorder(req: ReorderRequest): Promise<ReorderResponse> {
+  const res = await fetch('/api/muse/reorder', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ edits: [req] }),
+  })
+  const data = (await res.json()) as Partial<ReorderResponse> & { error?: string }
+  if (data.error) throw new Error(data.error)
+  return {
+    edits: Array.isArray(data.edits) ? data.edits : [],
+    originals: data.originals ?? {},
+    warnings: Array.isArray(data.warnings) ? data.warnings : [],
+  }
+}
+
+// Probe whether an element's siblings can be reordered (host parent + host-only
+// children) BEFORE showing the drag handle, so a non-reorderable run shows no
+// handle (or a calm hint) instead of a drag that silently does nothing. Fails
+// CLOSED on a transport error (no handle) — unlike museTextEditable's fail-open,
+// because the handle needs the probe's `count` for its divergence guard, and a
+// re-select simply re-probes. The engine still fails closed on any commit, so a
+// missed handle is the safe failure, never a bad write.
+export async function museReorderable(
+  req: Omit<ReorderRequest, 'toIndex'>,
+): Promise<Reorderable> {
+  try {
+    const res = await fetch('/api/muse/reorderable', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    const data = (await res.json()) as {
+      reorderable?: boolean
+      count?: number
+      children?: ReorderChild[]
+      reason?: string
+      error?: string
+    }
+    if (data.reorderable && Array.isArray(data.children)) {
+      return { reorderable: true, count: data.count ?? data.children.length, children: data.children }
+    }
+    return { reorderable: false, reason: data.reason ?? data.error ?? 'not reorderable' }
+  } catch {
+    return { reorderable: false, reason: 'check failed' }
   }
 }
 

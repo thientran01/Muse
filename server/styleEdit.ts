@@ -26,6 +26,7 @@ import type {
   JSXElement,
   JSXOpeningElement,
   JSXText,
+  Node,
   ObjectExpression,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
@@ -71,10 +72,20 @@ function parseFile(source: string): File {
 // unambiguous locate calibrates every later one.
 export type OffsetHint = { value: number | null }
 
-// The host tag name of an opening element ("div", "h1"), or null for component /
-// member / namespaced names (which never equal a DOM tagName).
+// The tag name of an opening element ("div", "MatchRow"), or null for member /
+// namespaced names. NOTE: this returns COMPONENT names too — use isHostOpening to
+// tell a real DOM element ("div") from a component ("MatchRow").
 function openingTag(node: JSXOpeningElement): string | null {
   return node.name.type === 'JSXIdentifier' ? node.name.name : null
+}
+
+// A host (intrinsic DOM) element opens with a lowercase identifier — React's rule:
+// lowercase = DOM tag, Capitalized = component (renders its DOM elsewhere). Reorder
+// needs host-only because the client maps drop slots from live DOM geometry, which
+// only lines up 1:1 when each child IS the DOM node it authors.
+function isHostOpening(node: JSXOpeningElement): boolean {
+  const t = openingTag(node)
+  return t !== null && t[0] === t[0].toLowerCase() && t[0] !== t[0].toUpperCase()
 }
 
 // A STATIC className string off an opening element (literal, or a `…` template
@@ -516,5 +527,206 @@ export function computeTextEdit(
   if (replacement === node.value) return { newContent: source, changed: false, warnings: ['nothing to change'] }
 
   const out = source.slice(0, node.start!) + replacement + source.slice(node.end!)
+  return { newContent: out, changed: true, warnings: [] }
+}
+
+// ============================================================
+//  REORDER — move a JSX element among its siblings
+// ------------------------------------------------------------
+//  Phase 3: the first STRUCTURAL canvas edit (every prior edit rewrote an
+//  attribute string or one JSXText child — none moved a subtree). Given an
+//  element and a target slot among its siblings, reorder the parent's children
+//  by a character-range splice that preserves each child's surrounding
+//  whitespace/indentation — same "smallest possible change" contract, same
+//  { newContent } result shape, so it flows through the existing write + undo
+//  path. No model call.
+//
+//  v1 is deliberately host-only and fails closed everywhere else, because the
+//  client maps drop slots from live DOM geometry and that mapping is only sound
+//  when source order === DOM order 1:1:
+//    • Parent must be a host JSXElement (lowercase tag) — a fragment/component
+//      parent renders its children into a DIFFERENT DOM node, breaking the map.
+//    • Every significant child must be a host JSXElement — a component child
+//      (<MatchRow/>) renders DOM whose _debugSource points INSIDE the component,
+//      not at the usage site, so it can't be matched back; an expression child
+//      ({list.map(...)}, {cond && <x/>}) is dynamic/list content; mixed static
+//      text means it isn't a clean element list.
+//  Anything else → not reorderable, with a calm reason the client can surface.
+// ============================================================
+
+// A movable child the probe reports back, so the client can cross-check that the
+// live DOM children line up 1:1 with the source children before it trusts an index.
+export type ReorderChild = { index: number; tag: string; classNames: string | null }
+
+export type Reorderable =
+  | { reorderable: true; count: number; children: ReorderChild[] }
+  | { reorderable: false; reason: string }
+
+export type ReorderResult = { newContent: string; changed: boolean; warnings: string[] }
+
+// Like locateElement, but also returns the located element's AST parent so we can
+// reorder among its siblings. Single traversal, identity match on the opening the
+// shared locator picked — exact and self-validating.
+function locateElementWithParent(
+  ast: File,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { el: JSXElement; parent: Node } | null {
+  const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
+  if (!opening) return null
+  let found: { el: JSXElement; parent: Node } | null = null
+  traverse(ast, {
+    JSXElement(path) {
+      if (path.node.openingElement === opening) {
+        found = { el: path.node, parent: path.parent }
+        path.stop()
+      }
+    },
+  })
+  return found
+}
+
+// Classify a parent's children into the movable host-element run, or the reason
+// it can't be reordered. Shared by the probe and the edit so "can I reorder?" and
+// "reorder it" can never disagree. Whitespace-only JSXText is insignificant and
+// preserved; ANY non-host-element significant child fails the whole container.
+type ChildScan = { ok: true; elements: JSXElement[] } | { ok: false; reason: string }
+
+function scanReorderChildren(parent: JSXElement): ChildScan {
+  const elements: JSXElement[] = []
+  for (const c of parent.children) {
+    if (c.type === 'JSXText') {
+      if (/\S/.test(c.value)) return { ok: false, reason: 'this mixes text and elements — reorder is not supported here' }
+      continue // insignificant whitespace
+    }
+    if (c.type === 'JSXElement') {
+      if (!isHostOpening(c.openingElement)) {
+        return { ok: false, reason: 'these are components, not plain elements — reorder is not supported here yet' }
+      }
+      elements.push(c)
+      continue
+    }
+    if (c.type === 'JSXExpressionContainer') {
+      // {items.map(...)}, {cond && <x/>}, {/* comment */} — dynamic/list content.
+      return { ok: false, reason: 'these are generated from data — reorder the list instead' }
+    }
+    // JSXFragment child, JSXSpreadChild, anything else.
+    return { ok: false, reason: 'can not reorder around dynamic content here' }
+  }
+  if (elements.length < 2) return { ok: false, reason: 'needs at least two sibling elements to reorder' }
+  return { ok: true, elements }
+}
+
+// Resolve the selected element to its reorderable sibling run (or the reason it
+// isn't one). The one place the host-parent + host-children rules live.
+function resolveSiblings(
+  ast: File,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { el: JSXElement; parent: JSXElement; elements: JSXElement[] } | { reason: string } {
+  const found = locateElementWithParent(ast, line, column, tag, classNames, offsetHint)
+  if (!found) return { reason: `no JSX element found at line ${line}` }
+  if (found.parent.type !== 'JSXElement') {
+    // Fragment / expression / component-root parent → its children render into a
+    // different DOM node, so DOM geometry can't map slots safely.
+    return { reason: 'these elements are not in a reorderable container' }
+  }
+  const parent = found.parent
+  if (!isHostOpening(parent.openingElement)) {
+    // A component parent (<Card>…</Card>) renders its children into a different
+    // DOM node, so DOM geometry can't map slots safely.
+    return { reason: 'these elements are not in a reorderable container' }
+  }
+  const scan = scanReorderChildren(parent)
+  if (!scan.ok) return { reason: scan.reason }
+  return { el: found.el, parent, elements: scan.elements }
+}
+
+// Cheap "can these siblings be reordered?" probe (no write) — the client calls it
+// on select so it can show the drag handle only when a drop will actually commit.
+export function computeReorderable(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): Reorderable {
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { reorderable: false, reason: `parse failed: ${(e as Error).message}` }
+  }
+  const r = resolveSiblings(ast, line, column, tag, classNames, offsetHint)
+  if ('reason' in r) return { reorderable: false, reason: r.reason }
+  const children: ReorderChild[] = r.elements.map((el, index) => ({
+    index,
+    tag: openingTag(el.openingElement)!,
+    classNames: openingClassName(el.openingElement),
+  }))
+  return { reorderable: true, count: children.length, children }
+}
+
+// Move the located element to insertion slot `toIndex` among its siblings, where
+// toIndex is a position in the ORIGINAL significant-child list: the element ends
+// up immediately before the original child at toIndex (toIndex === count → end).
+// fromIndex is derived here from the element itself (the one location the client
+// can pin most reliably), so the client only has to compute the drop slot.
+export function computeReorder(
+  source: string,
+  line: number,
+  column: number,
+  toIndex: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): ReorderResult {
+  if (!Number.isInteger(toIndex) || toIndex < 0) {
+    return { newContent: source, changed: false, warnings: ['invalid target slot'] }
+  }
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`] }
+  }
+  const r = resolveSiblings(ast, line, column, tag, classNames, offsetHint)
+  if ('reason' in r) return { newContent: source, changed: false, warnings: [r.reason] }
+  const { el, parent, elements } = r
+
+  const fromIndex = elements.indexOf(el)
+  if (fromIndex === -1) return { newContent: source, changed: false, warnings: ['element is not among its siblings'] }
+  const to = Math.min(toIndex, elements.length) // clamp an over-far drop to "end"
+  // Inserting before yourself, or before your immediate successor, is a no-op.
+  if (to === fromIndex || to === fromIndex + 1) {
+    return { newContent: source, changed: false, warnings: ['nothing to change'] }
+  }
+
+  // Each child's "block" = its source PLUS the whitespace that precedes it (the
+  // newline + indentation, or — for the first — the gap after the parent's
+  // opening tag). The blocks tile [regionStart, regionEnd) exactly, because we
+  // proved no non-whitespace lives between the elements. The trailing whitespace
+  // before the closing tag sits past regionEnd and never moves.
+  const regionStart = parent.openingElement.end!
+  const regionEnd = elements[elements.length - 1].end!
+  const blocks: string[] = elements.map((node, i) => {
+    const start = i === 0 ? regionStart : elements[i - 1].end!
+    return source.slice(start, node.end!)
+  })
+
+  // Standard array-move on the index order, then re-emit the blocks in that order.
+  const order = [...elements.keys()]
+  order.splice(fromIndex, 1)
+  order.splice(to > fromIndex ? to - 1 : to, 0, fromIndex)
+  const newRegion = order.map((i) => blocks[i]).join('')
+
+  const out = source.slice(0, regionStart) + newRegion + source.slice(regionEnd)
   return { newContent: out, changed: true, warnings: [] }
 }
