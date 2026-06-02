@@ -1,4 +1,4 @@
-import DemoApp from './demo/DemoApp'
+import SiteApp from './site/SiteApp'
 import { MuseGallery } from './muse/MuseGallery'
 import { MuseOverlay } from './muse/MuseOverlay'
 
@@ -16,9 +16,12 @@ export default function App() {
     )
   }
 
+  // The Muse docs site IS the demo surface (Agentation-style): the overlay is
+  // mounted alongside it, so pressing L lets you edit the page you're reading.
+  // In the hosted demo build those edits are ephemeral (VITE_MUSE_EPHEMERAL).
   return (
     <>
-      <DemoApp />
+      <SiteApp />
       <MuseOverlay />
     </>
   )
