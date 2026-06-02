@@ -6,6 +6,7 @@ import { Features } from './pages/Features'
 import { HowItWorks } from './pages/HowItWorks'
 import { Reference } from './pages/Reference'
 import { FeedbackWidget } from './FeedbackWidget'
+import { ThemeToggle } from './ThemeToggle'
 
 // The Muse docs site — a self-demonstrating page (Agentation-style): the prose and
 // example components you read ARE the editable surface. Muse's overlay is mounted
@@ -34,13 +35,16 @@ export default function SiteApp() {
   const Page = PAGES[page]
 
   return (
-    <div className="min-h-screen bg-[#faf9f7] text-zinc-900 antialiased">
+    <div className="min-h-screen bg-[#f7f4ee] text-stone-900 antialiased dark:bg-[#15130e] dark:text-stone-100">
       {/* Mobile top bar — the sidebar is desktop-only, so phones navigate here. */}
-      <header className="sticky top-0 z-30 border-b border-zinc-200/80 bg-[#faf9f7]/95 px-4 py-3 backdrop-blur md:hidden">
-        <a href="#/overview" className="flex items-center gap-2">
-          <MuseMark />
-          <span className="text-base font-semibold tracking-tight">Muse</span>
-        </a>
+      <header className="sticky top-0 z-30 border-b border-stone-200/80 bg-[#f7f4ee]/90 px-4 py-3 backdrop-blur dark:border-stone-800/80 dark:bg-[#15130e]/90 md:hidden">
+        <div className="flex items-center justify-between">
+          <a href="#/overview" className="flex items-center gap-2">
+            <MuseMark />
+            <span className="text-base font-semibold tracking-tight">Muse</span>
+          </a>
+          <ThemeToggle />
+        </div>
         <nav className="-mx-1 mt-2 flex gap-1.5 overflow-x-auto pb-1" aria-label="Sections">
           {NAV.map((n) => (
             <a
@@ -48,7 +52,9 @@ export default function SiteApp() {
               href={`#/${n.id}`}
               aria-current={page === n.id ? 'page' : undefined}
               className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                page === n.id ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'
+                page === n.id
+                  ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900'
+                  : 'bg-white text-stone-600 ring-1 ring-stone-200 dark:bg-[#201d16] dark:text-stone-400 dark:ring-stone-800'
               }`}
             >
               {n.label}
@@ -59,14 +65,12 @@ export default function SiteApp() {
 
       <div className="mx-auto flex max-w-6xl">
         {/* Sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-zinc-200/80 px-6 py-7 md:flex">
+        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-stone-200/70 px-6 py-7 dark:border-stone-800/70 md:flex">
           <a href="#/overview" className="flex items-center gap-2.5">
             <MuseMark />
             <span className="text-lg font-semibold tracking-tight">Muse</span>
           </a>
-          <p className="mt-1 text-[13px] leading-snug text-zinc-500">
-            Visual editing for design engineers
-          </p>
+          <p className="mt-1 text-[13px] leading-snug text-stone-500">Visual editing for design engineers</p>
           <nav className="mt-8 flex flex-col gap-1">
             {NAV.map((n) => (
               <a
@@ -74,18 +78,21 @@ export default function SiteApp() {
                 href={`#/${n.id}`}
                 aria-current={page === n.id ? 'page' : undefined}
                 className={`group rounded-lg px-3 py-2 transition-colors ${
-                  page === n.id ? 'bg-white shadow-sm ring-1 ring-zinc-200' : 'hover:bg-white/60'
+                  page === n.id
+                    ? 'bg-white shadow-sm ring-1 ring-stone-200 dark:bg-[#201d16] dark:ring-stone-800'
+                    : 'hover:bg-white/60 dark:hover:bg-white/5'
                 }`}
               >
-                <span className="block text-sm font-medium text-zinc-800">{n.label}</span>
-                <span className="block text-[12px] text-zinc-500">{n.blurb}</span>
+                <span className="block text-sm font-medium text-stone-800 dark:text-stone-200">{n.label}</span>
+                <span className="block text-[12px] text-stone-500 dark:text-stone-400">{n.blurb}</span>
               </a>
             ))}
           </nav>
-          <div className="mt-auto pt-6 text-[12px] text-zinc-400">
-            <a href="https://github.com/thientran01/Muse" className="hover:text-zinc-600">
+          <div className="mt-auto flex items-center justify-between pt-6">
+            <a href="https://github.com/thientran01/Muse" className="text-[12px] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300">
               GitHub ↗
             </a>
+            <ThemeToggle />
           </div>
         </aside>
 
@@ -93,8 +100,8 @@ export default function SiteApp() {
         <main className="min-w-0 flex-1 px-6 py-10 md:px-12 md:py-14">
           <div className="mx-auto max-w-2xl">
             <Page />
-            <footer className="mt-20 border-t border-zinc-200 pt-6 text-[13px] text-zinc-500">
-              Muse — point at your running app, say what you want, get real code.
+            <footer className="mt-20 border-t border-stone-200 pt-6 text-[13px] text-stone-500 dark:border-stone-800">
+              Muse, visual editing for the app you already have.
             </footer>
           </div>
         </main>
