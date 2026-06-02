@@ -55,8 +55,8 @@
   --muse-accent: 127 47 47;           /* brick red #7F2F2F, same as dark */
   --muse-accent-hover: 100 36 36;     /* deeper brick #642424 for hover on the light surface */
   --muse-surface: 251 249 246;        /* warm white #FBF9F6 — a whisper of warmth, not parchment */
-  --muse-surface-soft: 247 245 240;   /* #F7F5F0 — mild recess (diff blocks, FAB rest) */
-  --muse-surface-raised: 244 241 236; /* #F4F1EC — strongest separation (dialogs, hover) */
+  --muse-surface-soft: 246 243 238;   /* #F6F3EE — mild recess (diff blocks, FAB rest) */
+  --muse-surface-raised: 240 236 229; /* #F0ECE5 — strongest separation (dialogs, hover) */
   --muse-line: 28 26 23;              /* warm near-black ink #1C1A17, used at low alpha for borders */
   --muse-fg: 28 26 23;                /* warm near-black #1C1A17 */
   --muse-fg-muted: 107 101 96;        /* warm gray #6B6560 */
