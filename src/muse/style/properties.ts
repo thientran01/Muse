@@ -2,9 +2,10 @@
 //  Property model — what Muse can edit, and how it maps to code
 // ------------------------------------------------------------
 //  One entry per editable property the canvas controls expose. Each maps to:
-//    • tw  — the Tailwind utility family (prefix) used by the TailwindWriter
-//    • css — the inline-style camelCase key(s) used by the InlineStyleWriter
-//            (two for axis props like paddingX = left + right)
+//    • tw  — the Tailwind utility family (prefix) used by the host StyleWriter
+//            (see style/writers.ts)
+//    • css — the inline-style camelCase key(s) used by the engine's inline
+//            fallback (two for axis props like paddingX = left + right)
 //  Pure + framework-neutral so the server editor and the client controls share
 //  one vocabulary. Phase 0 ships spacing; size / typography / color extend this
 //  table without touching the editor.

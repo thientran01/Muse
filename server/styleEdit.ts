@@ -30,7 +30,7 @@ import type {
   ObjectExpression,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
-import { buildToken, familyMatcher } from '../src/muse/style/tailwindScales'
+import { resolveStyleWriter, type StyleWriter } from '../src/muse/style/writers'
 
 // @babel/traverse ships CJS; the default export is on `.default` under ESM.
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
@@ -292,6 +292,11 @@ export function computeStyleEdit(
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
   if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'] }
 
+  // The host's class writer (Tailwind today) — owns how a value becomes a class
+  // token, how to recognize an existing one, and which tokens are theme-bound.
+  // Inline style is the engine's universal fallback below, not a writer.
+  const writer: StyleWriter = resolveStyleWriter()
+
   let ast: File
   try {
     ast = parseFile(source)
@@ -332,7 +337,7 @@ export function computeStyleEdit(
     }
     for (const key of spec.css) setStyleProp(key, m.value)
     if (classEditable) {
-      const matches = familyMatcher(spec)
+      const matches = writer.family(spec)
       const before = classTokens.length
       classTokens = classTokens.filter((c) => !matches(c))
       if (classTokens.length !== before) classTouched = true
@@ -348,19 +353,19 @@ export function computeStyleEdit(
     // over a `…-[…var(--x)…]` token (it would break theming). Applies to any kind
     // (color, tracking, leading, …); skip with a warning the client can surface.
     if (classEditable) {
-      const matchesFamily = familyMatcher(spec)
-      if (classTokens.some((c) => matchesFamily(c) && c.includes('var('))) {
+      const matchesFamily = writer.family(spec)
+      if (classTokens.some((c) => matchesFamily(c) && writer.themed(c))) {
         warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
         continue
       }
     }
     const useTailwind = strategy === 'tailwind-first' && classEditable
-    // A value that can't be expressed as a safe class token (buildToken → null)
+    // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
     // className.
-    const token = useTailwind ? buildToken(spec, m.value) : null
+    const token = useTailwind ? writer.build(spec, m.value) : null
     if (useTailwind && token !== null) {
-      const matches = familyMatcher(spec)
+      const matches = writer.family(spec)
       // Replace the family's existing utility IN PLACE (minimal diff); append
       // only if the element didn't have one. Drop any extra duplicates.
       const idx = classTokens.findIndex((c) => matches(c))
