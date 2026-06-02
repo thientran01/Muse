@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { museReorder, museReorderable, museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
+import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
@@ -165,6 +166,12 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   // the normal server path (where undo restores file content).
   const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string>; before: Map<HTMLElement, string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
+  // Canvas renders its OWN [data-muse-ui] root (separate from the chat overlay's),
+  // so it needs its own data-theme or muse.css's dark defaults win on a light host.
+  // This ref doubles as the portal target for popovers that must escape the panel's
+  // overflow (the color picker).
+  const rootRef = useRef<HTMLDivElement>(null)
+  useHostTheme(rootRef)
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
   const startedRef = useRef(false)
@@ -772,7 +779,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   }, [editing])
 
   return (
-    <div data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
+    <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
       {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
 
@@ -825,6 +832,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
                   chain={selected.node.isConnected ? canvasChain(selected.node) : [selected]}
                   selectedKey={selected.key}
                   onPick={selectElement}
+                  portalContainer={rootRef}
                   onPreview={applyPreview}
                   onCommit={commit}
                 />
