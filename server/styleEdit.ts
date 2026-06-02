@@ -554,16 +554,19 @@ export function computeTextEdit(
 //  { newContent } result shape, so it flows through the existing write + undo
 //  path. No model call.
 //
-//  v1 is deliberately host-only and fails closed everywhere else, because the
-//  client maps drop slots from live DOM geometry and that mapping is only sound
-//  when source order === DOM order 1:1:
+//  Reorder fails closed unless the run preserves source order === DOM order 1:1,
+//  because the client maps drop slots from live DOM geometry:
 //    • Parent must be a host JSXElement (lowercase tag) — a fragment/component
 //      parent renders its children into a DIFFERENT DOM node, breaking the map.
-//    • Every significant child must be a host JSXElement — a component child
-//      (<MatchRow/>) renders DOM whose _debugSource points INSIDE the component,
-//      not at the usage site, so it can't be matched back; an expression child
-//      ({list.map(...)}, {cond && <x/>}) is dynamic/list content; mixed static
-//      text means it isn't a clean element list.
+//    • Children may be host elements OR components. A host element can be DRAGGED
+//      (it's locatable via its _debugSource); a component is an ANCHOR — it can't
+//      be dragged (its _debugSource points INSIDE the component, not the usage),
+//      but host siblings reorder AROUND it. The client's count-based 1:1 check
+//      fails closed if a component renders ≠1 DOM node, so anchors stay safe while
+//      a single <Callout>/<CodeBlock> no longer poisons the whole run.
+//    • An expression child ({list.map(...)}, {cond && <x/>}) is dynamic/list
+//      content, and mixed significant text isn't a clean element list — both still
+//      fail closed (a variable DOM-node count the client can't map 1:1).
 //  Anything else → not reorderable, with a calm reason the client can surface.
 // ============================================================
 
@@ -602,10 +605,13 @@ function locateElementWithParent(
   return found
 }
 
-// Classify a parent's children into the movable host-element run, or the reason
-// it can't be reordered. Shared by the probe and the edit so "can I reorder?" and
+// Classify a parent's children into the movable sibling run, or the reason it
+// can't be reordered. Shared by the probe and the edit so "can I reorder?" and
 // "reorder it" can never disagree. Whitespace-only JSXText is insignificant and
-// preserved; ANY non-host-element significant child fails the whole container.
+// preserved; component elements are kept as anchors (see below); significant text,
+// expression containers, and fragments still fail closed (unpredictable DOM
+// mapping — a `{list.map()}` or fragment renders a variable number of DOM nodes,
+// so the client's count-based 1:1 mapping can't be trusted).
 type ChildScan = { ok: true; elements: JSXElement[] } | { ok: false; reason: string }
 
 function scanReorderChildren(parent: JSXElement): ChildScan {
@@ -616,9 +622,13 @@ function scanReorderChildren(parent: JSXElement): ChildScan {
       continue // insignificant whitespace
     }
     if (c.type === 'JSXElement') {
-      if (!isHostOpening(c.openingElement)) {
-        return { ok: false, reason: 'these are components, not plain elements — reorder is not supported here yet' }
-      }
+      // Host elements AND components both count as movable siblings. A component is
+      // an ANCHOR: it can't be DRAGGED (its _debugSource points INSIDE the component,
+      // not the usage site, so it isn't locatable here), but a host sibling can be
+      // reordered AROUND it. Including components is safe because the client's
+      // count-based 1:1 cross-check (ReorderOverlay) fails closed if a component
+      // renders ≠1 DOM node — and it stops a single <Callout>/<CodeBlock> from
+      // poisoning an otherwise-reorderable host run (the common real-page case).
       elements.push(c)
       continue
     }
@@ -634,7 +644,7 @@ function scanReorderChildren(parent: JSXElement): ChildScan {
 }
 
 // Resolve the selected element to its reorderable sibling run (or the reason it
-// isn't one). The one place the host-parent + host-children rules live.
+// isn't one). The one place the host-parent rule lives.
 function resolveSiblings(
   ast: File,
   line: number,
