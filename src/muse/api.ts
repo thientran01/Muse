@@ -88,11 +88,13 @@ export async function museWrite(files: FileEdit[]): Promise<void> {
 // museWrite, exactly like an approved chat proposal.
 export async function museStyleEdit(
   requests: StyleEditRequest[],
-  strategy: StyleStrategy = 'tailwind-first',
+  strategy?: StyleStrategy,
 ): Promise<StyleEditResponse> {
   // Ephemeral demo: there's no backend and nothing to write — CanvasMode keeps the
   // live inline preview as the committed state. Backstop in case a path reaches here.
   if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  // Omitting `strategy` lets the server detect it from the host project (Tailwind →
+  // utility classes, else inline). JSON.stringify drops the key when undefined.
   const res = await fetch('/api/muse/style-edit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
