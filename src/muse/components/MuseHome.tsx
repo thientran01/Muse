@@ -47,12 +47,16 @@ export function MuseHome({
             sub="Point Muse at any part of the page"
           />
         ) : (
-          <div className="flex items-center gap-3 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10">
+          // Informational, not actionable (opening Muse already makes the page
+          // selectable), so it deliberately skips the HomeCard shell + trailing
+          // caret and reads as a quiet hint, visually distinct from the
+          // interactive entries below. role=note so it's announced when it renders.
+          <div role="note" className="flex items-center gap-3 px-1 py-1.5 text-fg-faint">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
               <Crosshair size={18} weight="bold" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-fg">Shift-click an element to ask Muse</span>
+              <span className="block text-sm font-medium text-fg">Shift-click an element to ask Muse</span>
               <span className="block text-xs leading-snug text-fg-faint">Plain-click edits it directly on canvas</span>
             </span>
           </div>

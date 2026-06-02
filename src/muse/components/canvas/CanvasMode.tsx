@@ -862,7 +862,7 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
               : selected
                 ? reorderable?.reorderable
                   ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · ⇧-click to ask Muse · Esc to deselect'
-                  : '· double-click to edit text · Alt-click the container · ⇧-click to ask Muse · Esc to deselect'
+                  : '· double-click to edit text · ⇧-click to ask Muse · Alt-click the container · Esc to deselect'
                 : '· click to edit · ⇧-click to ask Muse · Alt-click the container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
