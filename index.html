@@ -10,6 +10,19 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply the saved (or system) theme before paint so there's no flash, and
+      // set an explicit light/dark class that Muse's overlay reads too.
+      ;(function () {
+        try {
+          var t = localStorage.getItem('muse-site-theme') || 'system'
+          var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          var r = document.documentElement
+          r.classList.toggle('dark', dark)
+          r.classList.toggle('light', !dark)
+        } catch (e) {}
+      })()
+    </script>
     <title>Muse — visual editing for design engineers</title>
     <meta
       name="description"
