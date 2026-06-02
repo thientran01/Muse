@@ -40,7 +40,7 @@ export function MusePanel({
       // by data-closing — interruptible, so a mid-collapse reopen reverses
       // smoothly. transform-origin / reduced-motion live in that CSS class.
       data-closing={closing}
-      className="muse-panel-surface pointer-events-auto flex max-h-[40vh] w-[380px] flex-col overflow-hidden rounded-2xl bg-surface/95 text-fg shadow-2xl shadow-black/40 ring-1 ring-line/10 backdrop-blur-xl"
+      className="muse-panel-surface pointer-events-auto flex max-h-[40vh] w-[380px] flex-col overflow-hidden rounded-2xl bg-surface/95 text-fg shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur-xl"
     >
       <header className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">

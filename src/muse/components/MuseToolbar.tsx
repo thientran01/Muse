@@ -95,13 +95,14 @@ export function MuseToolbar({
 
   return (
     <div
-      className={`absolute bottom-6 right-6 flex origin-bottom-right flex-col items-end gap-2 transition-[transform,opacity] duration-[200ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
-        closing ? 'scale-[0.5] opacity-0' : 'scale-100 opacity-100'
-      }`}
+      data-closing={closing ? 'true' : undefined}
+      className="muse-panel-surface pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-2"
     >
       {/* 1B popover — opens above the bar; the bar below stays put. */}
       {pop !== 'none' && !closing && (
-        <div className="w-72 origin-bottom-right animate-muse-step overflow-hidden rounded-2xl bg-surface/95 shadow-2xl shadow-black/40 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none">
+        // Origin-aware entrance — scales up from the bar/FAB corner below it
+        // (Emil: popovers grow from their trigger), reusing the panel keyframe.
+        <div className="w-72 origin-bottom-right animate-muse-panel overflow-hidden rounded-2xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none">
           <header className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
               <UfoIcon size={16} className="text-accent" />
@@ -134,7 +135,7 @@ export function MuseToolbar({
       )}
 
       {/* The bar: manta (identity) · past proposals · design system · X. */}
-      <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-surface-soft p-1.5 shadow-xl shadow-black/30 ring-1 ring-line/10">
+      <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10">
         <span className="flex h-8 w-8 items-center justify-center" aria-hidden="true">
           <UfoIcon size={18} className="text-accent" />
         </span>
