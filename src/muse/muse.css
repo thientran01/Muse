@@ -2,11 +2,15 @@
  * `rgb(var(--muse-foo) / <alpha-value>)`) — values here are space-separated RGB
  * triplets so the Tailwind alpha syntax works.
  *
- * Palette: Phantom-inspired warm system.
- *   Light  = parchment cream + dark warm ink + coral accent.
- *   Dark   = warm near-black + cream text + same coral accent.
+ * Palette: warm system, but the two themes part ways on the light surface.
+ *   Light  = warm WHITE (a whisper of warmth, not parchment) + warm near-black
+ *            ink + brick accent. Kept near-neutral on purpose: the overlay floats
+ *            on top of the user's app, so a saturated cream panel clashes with
+ *            whatever they're building, and warm-on-warm mutes the brick accent.
+ *            Warm white sits quietly on any host and lets the brick red pop.
+ *   Dark   = warm near-black + cream text + same brick accent.
  *
- * The coral accent stays consistent across themes for brand recognition;
+ * The brick accent stays consistent across themes for brand recognition;
  * accent-hover shifts slightly per theme so the hover state reads on its
  * respective surface.
  *
@@ -48,21 +52,21 @@
 }
 
 [data-muse-ui][data-theme='light'] {
-  --muse-accent: 127 47 47;           /* muted brick red, same as dark */
-  --muse-accent-hover: 100 36 36;     /* deeper brick for hover on cream */
-  --muse-surface: 245 239 230;        /* parchment cream #F5EFE6 */
-  --muse-surface-soft: 239 231 216;   /* #EFE7D8 */
-  --muse-surface-raised: 232 222 203; /* #E8DECB */
-  --muse-line: 31 26 18;              /* dark warm ink, used at low alpha */
-  --muse-fg: 31 26 18;                /* dark warm ink #1F1A12 */
-  --muse-fg-muted: 111 102 87;        /* warm gray-brown #6F6657 */
-  --muse-fg-faint: 156 146 127;       /* lighter warm gray #9C927F */
-  /* Light theme — deeper warm muted values readable on cream. Olive-green
-   * for add, deep terracotta for del. Both distinct from the burgundy accent. */
+  --muse-accent: 127 47 47;           /* brick red #7F2F2F, same as dark */
+  --muse-accent-hover: 100 36 36;     /* deeper brick #642424 for hover on the light surface */
+  --muse-surface: 251 249 246;        /* warm white #FBF9F6 — a whisper of warmth, not parchment */
+  --muse-surface-soft: 246 243 238;   /* #F6F3EE — mild recess (diff blocks, FAB rest) */
+  --muse-surface-raised: 240 236 229; /* #F0ECE5 — strongest separation (dialogs, hover) */
+  --muse-line: 28 26 23;              /* warm near-black ink #1C1A17, used at low alpha for borders */
+  --muse-fg: 28 26 23;                /* warm near-black #1C1A17 */
+  --muse-fg-muted: 107 101 96;        /* warm gray #6B6560 */
+  --muse-fg-faint: 148 142 136;       /* quiet warm gray #948E88 */
+  /* Light theme — deep warm muted values readable on the warm-white surface.
+   * Forest-green for add, cherry for del. Both distinct from the burgundy accent. */
   --muse-diff-add-tint: 40 110 60;    /* deep clean forest green */
-  --muse-diff-add-text: 18 60 30;     /* very deep forest — readable on cream */
+  --muse-diff-add-text: 18 60 30;     /* very deep forest — readable on warm white */
   --muse-diff-del-tint: 175 40 55;    /* deep clean cherry — distinct from burgundy accent */
-  --muse-diff-del-text: 95 18 30;     /* very deep cherry — readable on cream */
+  --muse-diff-del-text: 95 18 30;     /* very deep cherry — readable on warm white */
 }
 
 /* Clean, themed scrollbars for every Muse scroll area. Thin and quiet — an
