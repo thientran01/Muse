@@ -17,7 +17,7 @@ export function MuseFab({
     <button
       data-testid="muse-fab"
       onClick={onToggle}
-      className={`pointer-events-auto flex items-center gap-2 rounded-full bg-surface-soft px-5 py-3 text-sm font-medium text-fg shadow-xl shadow-black/30 ring-1 transition active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:animate-none ${
+      className={`pointer-events-auto flex items-center gap-2 rounded-full bg-surface-soft px-5 py-3 text-sm font-medium text-fg shadow-lg shadow-black/20 ring-1 transition active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:animate-none ${
         entering ? 'animate-muse-fab-catch origin-bottom-right ' : ''
       }${active ? 'ring-accent/60 hover:bg-surface' : 'ring-line/10 hover:bg-surface-raised'}`}
     >
