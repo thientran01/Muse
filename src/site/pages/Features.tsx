@@ -1,69 +1,78 @@
-import { Callout, Card, H1, H2, Kbd, Lead, P, PrimaryButton, SecondaryButton } from '../ui'
+import { Callout, Kbd } from '../ui'
 
 export function Features() {
   return (
     <article>
-      <H1>Features</H1>
-      <Lead>
-        Two ways to edit: <strong>Canvas Mode</strong> for direct manipulation, and a{' '}
-        <strong>chat</strong> partner for intent you'd rather describe. Everything below is live —
-        press <Kbd>L</Kbd> and edit it.
-      </Lead>
+      <h1 className="text-4xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        What you can do
+      </h1>
+      <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
+        Canvas Mode is the main event: grab any element and shape it by hand. There is also a chat
+        partner for the times you would rather describe a change than make it. Everything below is
+        live, so press <Kbd>L</Kbd> and go.
+      </p>
 
-      <H2 id="canvas">Canvas Mode</H2>
-      <P>
-        Select an element and adjust it directly — no model call, no API key. Drag spacing and gaps,
-        scrub font size and weight, change colors, edit text in place, and drag to reorder siblings.
-        Each change is written deterministically to source and is undoable.
-      </P>
+      <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        Canvas Mode
+      </h2>
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+        Select something and edit it directly. No model, no API key, no latency. It just happens, and
+        every change is written to your source and is undoable.
+      </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Card>
-          <h3 className="text-sm font-semibold text-zinc-900">Spacing & layout</h3>
-          <p className="mt-2 text-[14px] leading-relaxed text-zinc-600">
-            Drag padding, margin, and gap bands right on the element.
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+          <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Spacing and layout</h3>
+          <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
+            Drag padding, margin, and gap bands right on the element. Resize it. Reorder its siblings.
           </p>
-        </Card>
-        <Card>
-          <h3 className="text-sm font-semibold text-zinc-900">Type & color</h3>
-          <p className="mt-2 text-[14px] leading-relaxed text-zinc-600">
-            Scrub size, weight, tracking; pick colors with a built-in picker.
+        </div>
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+          <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Type, color, and text</h3>
+          <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
+            Scrub size and weight, pick colors with a built-in picker, double-click to rewrite the copy.
           </p>
-        </Card>
+        </div>
       </div>
-
-      <H2 id="chat">Chat partner</H2>
-      <P>
-        For changes you'd rather describe — "make this card feel warmer and less boxy" — Muse proposes
-        a few distinct directions, each a complete edit you can preview in place, then approve. On a
-        genuinely ambiguous ask it asks one short question instead of guessing.
-      </P>
 
       <Callout tone="try">
-        <strong>Try the playground below.</strong> Enter Canvas Mode and restyle this pricing card —
-        change the button color, bump the heading size, tighten the spacing. It's all live.
+        <strong>Go wild on this card.</strong> Recolor the button, bump the heading, tighten the
+        spacing, rename it. It is just markup, and it is all yours until you refresh.
       </Callout>
 
-      {/* Editable playground element */}
-      <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <div className="text-[13px] font-medium uppercase tracking-wider text-[#7f2f2f]">Pro</div>
-        <div className="mt-2 flex items-baseline gap-1">
-          <span className="text-4xl font-semibold tracking-tight text-zinc-900">$12</span>
-          <span className="text-sm text-zinc-500">/ month</span>
+      {/* Editable playground card (replaces the old pricing card). */}
+      <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+        <div className="flex items-center gap-3">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-[#7f2f2f] text-base font-semibold text-white">
+            T
+          </span>
+          <div>
+            <div className="text-[15px] font-semibold text-stone-900 dark:text-stone-100">Workspace settings</div>
+            <div className="text-[13px] text-stone-600 dark:text-stone-400">Make it feel like home</div>
+          </div>
         </div>
-        <p className="mt-3 text-[14px] leading-relaxed text-zinc-600">
-          Everything you need to ship a polished interface, fast.
+        <p className="mt-4 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
+          A plain little card with a few moving parts, here so you have something real to push around.
         </p>
-        <ul className="mt-4 flex flex-col gap-2 text-[14px] text-zinc-700">
-          <li className="flex gap-2"><span className="text-[#7f2f2f]">✓</span> Unlimited edits</li>
-          <li className="flex gap-2"><span className="text-[#7f2f2f]">✓</span> Canvas Mode + chat</li>
-          <li className="flex gap-2"><span className="text-[#7f2f2f]">✓</span> Full undo history</li>
-        </ul>
-        <div className="mt-6 flex gap-3">
-          <PrimaryButton>Choose Pro</PrimaryButton>
-          <SecondaryButton>Compare</SecondaryButton>
+        <div className="mt-5 flex gap-3">
+          <button type="button" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300">
+            Save changes
+          </button>
+          <button type="button" className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800">
+            Cancel
+          </button>
         </div>
       </div>
+
+      <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        Or just describe it
+      </h2>
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+        Some changes are easier to say than to drag. "Make this card feel warmer and less boxy." Muse
+        comes back with a few distinct directions, each a real edit you can preview in place, then you
+        pick one. If the ask is genuinely vague, it asks one quick question instead of guessing. The
+        chat is the supporting act here. Canvas is where you will spend your time.
+      </p>
     </article>
   )
 }

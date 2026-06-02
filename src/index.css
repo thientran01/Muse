@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Reserve the scrollbar gutter so navigating between a tall page (scrollbar
+   present) and a short one (no scrollbar) doesn't shift the centered layout
+   sideways. This is what made page transitions feel like the nav "jumps". */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Base surface colors so the page background matches the theme everywhere
+   (incl. overscroll), flipped by the `dark` class on <html>. */
+body {
+  background-color: #f7f4ee;
+  color: #1c1917;
+}
+html.dark body {
+  background-color: #15130e;
+  color: #f5f5f4;
+}
