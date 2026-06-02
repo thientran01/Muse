@@ -78,13 +78,14 @@ function ColorRow({
       const r = rowRef.current?.getBoundingClientRect()
       if (!r) return
       // Anchor to the PANEL's edge, not the row's, so the picker sits cleanly
-      // beside the whole panel. Prefer the left of the panel; flip to the right
-      // when the panel hugs the left edge (no room).
+      // beside the whole panel. Default to the RIGHT of the panel; flip to the
+      // left only when the right side would clip off-screen.
       const panel = (rowRef.current?.closest('[data-muse-panel]') as HTMLElement | null)?.getBoundingClientRect() ?? r
       const W = 226
       const h = popRef.current?.offsetHeight ?? 320
       const gap = 8
-      const left = panel.left - gap >= W + gap ? panel.left - W - gap : Math.min(panel.right + gap, window.innerWidth - W - gap)
+      const fitsRight = panel.right + gap + W + gap <= window.innerWidth
+      const left = fitsRight ? panel.right + gap : Math.max(gap, panel.left - W - gap)
       // Vertically align to the clicked row, clamped so the whole picker stays on-screen.
       const top = Math.max(gap, Math.min(r.top, window.innerHeight - h - gap))
       setPos({ left, top })
