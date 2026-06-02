@@ -1,4 +1,4 @@
-import { MOCK } from './config'
+import { EPHEMERAL, MOCK } from './config'
 import { fxEdits, fxOriginals } from './fixtures'
 import { heuristicObservation } from './observation'
 import type {
@@ -68,8 +68,8 @@ export async function museObserve(target: SelectedElement): Promise<ObserveResul
 }
 
 export async function museWrite(files: FileEdit[]): Promise<void> {
-  if (MOCK) {
-    await delay(300) // pretend to write; no real disk change in mock mode
+  if (MOCK || EPHEMERAL) {
+    await delay(MOCK ? 300 : 0) // no real disk change in mock/ephemeral mode
     return
   }
 
@@ -90,6 +90,9 @@ export async function museStyleEdit(
   requests: StyleEditRequest[],
   strategy: StyleStrategy = 'tailwind-first',
 ): Promise<StyleEditResponse> {
+  // Ephemeral demo: there's no backend and nothing to write — CanvasMode keeps the
+  // live inline preview as the committed state. Backstop in case a path reaches here.
+  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch('/api/muse/style-edit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -108,6 +111,7 @@ export async function museStyleEdit(
 // server rewrites the element's single static JSXText and returns the new file
 // contents + originals, flowing through the SAME museWrite + history as styles.
 export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEditResponse> {
+  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch('/api/muse/text-edit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -127,6 +131,7 @@ export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEdi
 export async function museTextEditable(
   req: Omit<TextEditRequest, 'text'>,
 ): Promise<{ editable: boolean; reason?: string }> {
+  if (EPHEMERAL) return { editable: true } // in-browser edits are always reversible
   try {
     const res = await fetch('/api/muse/text-editable', {
       method: 'POST',
@@ -145,6 +150,7 @@ export async function museTextEditable(
 // new file contents + originals, flowing through the SAME museWrite + history as
 // styles/text. `toIndex` is the source-order slot to land before (count === end).
 export async function museReorder(req: ReorderRequest): Promise<ReorderResponse> {
+  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch('/api/muse/reorder', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
