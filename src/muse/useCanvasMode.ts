@@ -106,6 +106,11 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
   const [editing, setEditing] = useState<CanvasElement | null>(null)
   const editingRef = useRef<CanvasElement | null>(editing)
   editingRef.current = editing
+  // Whether Shift is currently held — drives the hover affordance that signals a
+  // hover-then-click will go to the AGENT (Shift-click), not Canvas. Tracked from
+  // pointer moves (covers the common "move toward an element holding Shift") plus
+  // key down/up + window blur (covers pressing/releasing Shift while stationary).
+  const [shiftHeld, setShiftHeld] = useState(false)
 
   const clearSelected = useCallback(() => setSelected(null), [])
   const exitEditing = useCallback(() => setEditing(null), [])
@@ -121,11 +126,13 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setHoverRect(null)
       setHoverInfo(null)
       setCursor(null)
+      setShiftHeld(false)
       return
     }
 
     const onMove = (e: MouseEvent) => {
       if (editingRef.current) return // typing — leave the page alone
+      setShiftHeld(e.shiftKey)
       setCursor({ x: e.clientX, y: e.clientY })
       const el = e.target as Element | null
       const sel = selectedRef.current
@@ -174,6 +181,7 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
     }
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true) // track even while editing-guarded below
       if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
@@ -207,19 +215,28 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       e.preventDefault()
     }
 
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false)
+    }
+    const onBlur = () => setShiftHeld(false) // dropped Shift while tabbed away
+
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
     document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
+    document.addEventListener('keyup', onKeyUp, true)
     document.addEventListener('dragstart', onDragStart, true)
+    window.addEventListener('blur', onBlur)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('keyup', onKeyUp, true)
       document.removeEventListener('dragstart', onDragStart, true)
+      window.removeEventListener('blur', onBlur)
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
+  return { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
 }
