@@ -338,36 +338,24 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [miss?.id])
 
-  // Track the element through the reorder set-down. A committed reorder eases the
-  // moved element into its slot via a CSS transform (landToDestination, SLIDE_MS =
-  // 160ms), but the box-model bands / resize knobs / panel read getBoundingClientRect
-  // only on render and only re-render on scroll/resize/element-resize — none of which
-  // fire during a transform transition. So when the chrome un-hid it could paint at
-  // the pre-settle position until the next render caught up (the brief misplacement
-  // on reorder). Once a drag actually ENDS (reordering true → false), re-measure
-  // across a short settle window so the chrome stays glued to the element as it lands.
+  // Re-anchor the Canvas chrome after a reorder drops. The box-model bands / resize
+  // knobs / panel read getBoundingClientRect only on render and re-render only on
+  // scroll/resize/element-resize — none of which fire when a reorder moves the
+  // element — so without this the chrome could paint one stale frame at the
+  // pre-reorder position when it un-hides. ReorderOverlay flips `reordering` false
+  // only AFTER it has cleared its set-down transforms, so a single re-measure here
+  // lands on the element's final, settled slot.
   //
-  // useLayoutEffect (not useEffect) + a synchronous first bump: the first re-measure
-  // runs BEFORE the un-hide paints, so even the first visible frame is settled — a
-  // post-paint useEffect+rAF would leave one stale frame. rAF tracks the rest.
-  // Skipped under reduced motion (landToDestination no-ops → nothing to chase) and
-  // ref-guarded so it only fires after a real reorder, not on mount.
+  // Deliberately ONE synchronous (pre-paint, useLayoutEffect) re-measure — NOT an
+  // rAF loop. Repeatedly forcing layout across the ~160ms set-down window made the
+  // reorder's eased transforms render as a visible replay on drop (it broke the
+  // atomic transform-clear ReorderOverlay relies on). Ref-guarded to fire only
+  // after a real reorder (true → false), never on mount.
   const wasReorderingRef = useRef(false)
   useLayoutEffect(() => {
     const justDropped = wasReorderingRef.current && !reordering
     wasReorderingRef.current = reordering
-    if (!justDropped) return
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    bump((v) => v + 1) // synchronous, pre-paint: no stale first frame
-    let raf = 0
-    let frames = 0
-    const SETTLE_FRAMES = 12 // ~200ms at 60fps, covers SLIDE_MS (160ms) with margin
-    const tick = () => {
-      bump((v) => v + 1)
-      if (++frames < SETTLE_FRAMES) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    if (justDropped) bump((v) => v + 1)
   }, [reordering])
 
   // Native-feeling undo/redo on the SAME shared history stack chat writes to —
