@@ -31,6 +31,7 @@ import type {
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
 import { resolveStyleWriter, type StyleWriter } from '../src/muse/style/writers'
+import { extractVarName, isVarValue } from '../src/muse/style/cssVarEdit'
 
 // @babel/traverse ships CJS; the default export is on `.default` under ESM.
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
@@ -39,10 +40,27 @@ const traverse = ((_traverse as unknown as { default?: typeof _traverse }).defau
 export type Mutation = { property: StyleProperty; value: string }
 export type StyleStrategy = 'tailwind-first' | 'inline'
 
+// A property whose value is painted through a CSS variable: rather than hardcode
+// a literal over the theme binding, the engine emits this intent and the server
+// (which has filesystem access) resolves `--name` to the stylesheet that defines
+// it and edits the var's value there. The element's own JSX is left untouched.
+export type VarEdit = { property: StyleProperty; varName: string; value: string }
+
 export type StyleEditResult = {
   newContent: string
   changed: boolean
   warnings: string[]
+  // Var-bound mutations deferred to a stylesheet edit (see VarEdit). Empty for the
+  // common case of a literal class/inline edit.
+  varEdits: VarEdit[]
+}
+
+// The arbitrary-token bracket content (`text-[color:var(--x)]` → `color:var(--x)`),
+// or null for a non-arbitrary token. Used to recover the var a themed class paints
+// through, so a class-bound theme value defers to the same var edit as an inline one.
+function bracketContent(token: string): string | null {
+  const m = token.match(/\[(.+)\]$/)
+  return m ? m[1] : null
 }
 
 // A character-range splice on the original source. start === end is an insertion.
@@ -298,7 +316,7 @@ export function computeStyleEdit(
 ): StyleEditResult {
   const warnings: string[] = []
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
-  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'] }
+  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [] }
 
   // The host's class writer (Tailwind today) — owns how a value becomes a class
   // token, how to recognize an existing one, and which tokens are theme-bound.
@@ -311,11 +329,11 @@ export function computeStyleEdit(
   } catch (e) {
     // A file we can't parse (exotic syntax, a transient half-saved state) becomes
     // a skipped element with a warning — never a failed batch for its siblings.
-    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`] }
+    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`], varEdits: [] }
   }
   const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
   if (!opening) {
-    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`] }
+    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`], varEdits: [] }
   }
 
   const classInfo = analyzeClassName(opening)
@@ -327,6 +345,9 @@ export function computeStyleEdit(
   const styleProps: Array<[string, string]> = styleInfo?.editable ? [...styleInfo.props] : []
   let classTouched = false
   let styleTouched = false
+  // Mutations whose current value is theme-bound (var(--x)); the server edits the
+  // var's definition instead of this element. Collected across the loop below.
+  const varEdits: VarEdit[] = []
 
   const setStyleProp = (key: string, value: string) => {
     const i = styleProps.findIndex(([k]) => k === key)
@@ -357,15 +378,26 @@ export function computeStyleEdit(
 
   for (const m of valid) {
     const spec = PROPERTIES[m.property]
-    // A value themed through a CSS variable stays put — never hardcode a literal
-    // over a `…-[…var(--x)…]` token (it would break theming). Applies to any kind
-    // (color, tracking, leading, …); skip with a warning the client can surface.
-    if (classEditable) {
-      const matchesFamily = writer.family(spec)
-      if (classTokens.some((c) => matchesFamily(c) && writer.themed(c))) {
-        warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
-        continue
-      }
+    const matchesFamily = writer.family(spec)
+    // A value painted through a CSS variable — as a themed class token
+    // (text-[color:var(--x)]) OR an inline value (color: var(--x)) — defers to a
+    // stylesheet edit of --x rather than hardcoding a literal over the theme
+    // binding. The element's binding stays put; the server resolves + edits --x.
+    // Applies to any kind (color, tracking, leading, …). When we can't recover the
+    // var name (a compound/nested var), fall back to the old skip-with-warning.
+    const themedToken = classEditable
+      ? classTokens.find((c) => matchesFamily(c) && writer.themed(c))
+      : undefined
+    const inlineVarVal = spec.css
+      .map((k) => styleProps.find(([pk]) => pk === k)?.[1])
+      .find((v): v is string => v != null && isVarValue(v))
+    if (themedToken || inlineVarVal) {
+      const varName = themedToken
+        ? extractVarName(bracketContent(themedToken) ?? '')
+        : extractVarName(inlineVarVal!)
+      if (varName) varEdits.push({ property: m.property, varName, value: m.value })
+      else warnings.push(`${m.property}: value is themed via a CSS variable — left unchanged`)
+      continue
     }
     const useTailwind = strategy === 'tailwind-first' && classEditable
     // A value that can't be expressed as a safe class token (writer.build → null)
@@ -411,14 +443,17 @@ export function computeStyleEdit(
   }
 
   if (patches.length === 0) {
-    return { newContent: source, changed: false, warnings: [...warnings, 'nothing to change'] }
+    // No JSX patch — but a var edit (in another file) may still be the real change,
+    // so don't report "nothing to change" when varEdits carry the work.
+    const w = varEdits.length ? warnings : [...warnings, 'nothing to change']
+    return { newContent: source, changed: false, warnings: w, varEdits }
   }
 
   // Apply patches right-to-left so earlier offsets stay valid.
   patches.sort((a, b) => b.start - a.start)
   let out = source
   for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
-  return { newContent: out, changed: true, warnings }
+  return { newContent: out, changed: true, warnings, varEdits }
 }
 
 // ============================================================

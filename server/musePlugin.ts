@@ -30,7 +30,8 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit } from './styleEdit'
+import { editCssVar } from '../src/muse/style/cssVarEdit'
 
 const DEFAULT_BACKEND = 'claude-cli'
 const DEFAULT_MODEL = 'claude-sonnet-4-6' // anthropic backend, /chat
@@ -132,6 +133,54 @@ function resolveInSrc(root: string, fileName: unknown): string | null {
 }
 
 const relOf = (root: string, abs: string) => path.relative(root, abs).replace(/\\/g, '/')
+
+// Does this project author styles as Tailwind utilities? Decides the DEFAULT edit
+// strategy when the client doesn't force one: 'tailwind-first' (author/replace
+// utility classes) for a Tailwind host, else 'inline' (write into style={{}}) —
+// the universal fallback that works in any React app, Tailwind or not. Cached: a
+// project's styling system doesn't change within a dev session.
+let strategyCache: StyleStrategy | null = null
+function detectStrategy(root: string): StyleStrategy {
+  if (strategyCache) return strategyCache
+  const configs = ['tailwind.config.js', 'tailwind.config.ts', 'tailwind.config.cjs', 'tailwind.config.mjs']
+  strategyCache = configs.some((c) => fs.existsSync(path.join(root, c))) ? 'tailwind-first' : 'inline'
+  return strategyCache
+}
+
+// Walk <root>/src for .css files (bounded to src, same trust boundary as
+// resolveInSrc; skips dotdirs + node_modules). The list is sorted for a
+// deterministic pick when a var is defined in more than one stylesheet.
+function collectCssFiles(dir: string, acc: string[]): void {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || e.name === 'node_modules') continue
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) collectCssFiles(full, acc)
+    else if (e.isFile() && e.name.endsWith('.css')) acc.push(full)
+  }
+}
+
+// Absolute paths of the stylesheet(s) under src that DEFINE `--name` (a `--name:`
+// declaration), so a theme-bound value edit can be routed to the file that owns
+// the token. Read fresh (files change during a session); the file set is small.
+function findCssVarFiles(root: string, varName: string): string[] {
+  const files: string[] = []
+  collectCssFiles(path.join(root, 'src'), files)
+  files.sort()
+  const re = new RegExp(`${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`)
+  return files.filter((f) => {
+    try {
+      return re.test(fs.readFileSync(f, 'utf8'))
+    } catch {
+      return false
+    }
+  })
+}
 
 // The observe endpoint asks for a bare JSON object, but models sometimes wrap
 // it in prose or a ```json fence. Be liberal: strip fences, grab the outermost
@@ -441,7 +490,10 @@ export function musePlugin(): Plugin {
           }
           const rawEdits = Array.isArray(body.edits) ? body.edits : []
           if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
-          const strategy: StyleStrategy = body.strategy === 'inline' ? 'inline' : 'tailwind-first'
+          // Honor an explicit client strategy; otherwise detect from the host
+          // project (Tailwind → utility classes, else inline style).
+          const strategy: StyleStrategy =
+            body.strategy === 'inline' ? 'inline' : body.strategy === 'tailwind-first' ? 'tailwind-first' : detectStrategy(root)
 
           // Group mutations by file so several elements in one file resolve to a
           // single newContent (each computed off the previous result).
@@ -470,6 +522,7 @@ export function musePlugin(): Plugin {
           }
 
           const originals: Record<string, string> = {} // rel -> pre-edit content, for undo
+          const varEdits: VarEdit[] = [] // theme-bound mutations, resolved to .css edits below
           for (const { abs, rel, items } of byFile.values()) {
             let content = fs.readFileSync(abs, 'utf8')
             const before = content
@@ -482,6 +535,7 @@ export function musePlugin(): Plugin {
             for (const it of items) {
               const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, lineOffsetHint)
               if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
+              if (result.varEdits.length) varEdits.push(...result.varEdits)
               if (result.changed) {
                 content = result.newContent
                 changed = true
@@ -490,6 +544,55 @@ export function musePlugin(): Plugin {
             if (changed) {
               originals[rel] = before
               out.push({ fileName: rel, newContent: content })
+            }
+          }
+
+          // Resolve theme-bound mutations to stylesheet edits: find where each
+          // --var is defined and rewrite its value there, so the change propagates
+          // everywhere the token is used (the point of editing the var, not the
+          // element). Dedupe by var name (last value wins); group by stylesheet so
+          // several vars in one file accumulate onto one newContent.
+          if (varEdits.length) {
+            const byVar = new Map<string, string>()
+            const order: string[] = []
+            for (const ve of varEdits) {
+              if (!byVar.has(ve.varName)) order.push(ve.varName)
+              byVar.set(ve.varName, ve.value)
+            }
+            const cssByFile = new Map<string, { abs: string; rel: string; vars: Array<[string, string]> }>()
+            for (const varName of order) {
+              const files = findCssVarFiles(root, varName)
+              if (files.length === 0) {
+                warnings.push(`couldn't find where ${varName} is defined — left unchanged.`)
+                continue
+              }
+              if (files.length > 1) {
+                warnings.push(`${varName} is defined in ${files.length} stylesheets — edited ${relOf(root, files[0])}.`)
+              }
+              const abs = files[0]
+              const rel = relOf(root, abs)
+              const bucket = cssByFile.get(rel) ?? { abs, rel, vars: [] }
+              bucket.vars.push([varName, byVar.get(varName)!])
+              cssByFile.set(rel, bucket)
+            }
+            for (const { abs, rel, vars } of cssByFile.values()) {
+              let content = fs.readFileSync(abs, 'utf8')
+              const before = content
+              let changed = false
+              for (const [varName, value] of vars) {
+                const r = editCssVar(content, varName, value)
+                if (r.matches > 1) {
+                  warnings.push(`${varName} is themed in ${r.matches} selectors — updated the base value; theme overrides unchanged.`)
+                }
+                if (r.changed) {
+                  content = r.newContent
+                  changed = true
+                }
+              }
+              if (changed) {
+                if (!(rel in originals)) originals[rel] = before
+                out.push({ fileName: rel, newContent: content })
+              }
             }
           }
 
