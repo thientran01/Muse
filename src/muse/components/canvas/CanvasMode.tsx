@@ -135,6 +135,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   // Whether the selected element's siblings can be reordered (host parent +
   // host-only children — see computeReorderable). Gates the drag handle so it
@@ -206,15 +207,36 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
       const r = selected.node.getBoundingClientRect()
       const right = r.right + GAP
       const left = right + PANEL_W <= window.innerWidth ? right : Math.max(GAP, r.left - GAP - PANEL_W)
-      const top = Math.min(Math.max(GAP, r.top), window.innerHeight - 240)
+      // Clamp the top so the WHOLE panel stays on-screen. Use its real measured
+      // height (it's capped at min(70vh,520px) + scrolls, but a short panel is much
+      // smaller) so a low element doesn't push the panel off the bottom. Falls back
+      // to the max cap before the first measure. Prefer aligning to the element's
+      // top; only lift it up when it would overflow, never above GAP.
+      const panelH = panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.7, 520)
+      const maxTop = window.innerHeight - panelH - GAP
+      const top = Math.max(GAP, Math.min(r.top, maxTop))
       setPanelPos({ top, left })
     }
     place()
+    // Re-place after paint: on the first selection the panel isn't mounted yet when
+    // place() first runs, so panelRef is null and the clamp uses the max-cap height.
+    // A rAF re-run measures the real (often much shorter) panel and re-clamps, and
+    // lets the ResizeObserver attach to the now-mounted node.
+    const raf = requestAnimationFrame(() => {
+      place()
+      if (panelRef.current) ro.observe(panelRef.current)
+    })
     window.addEventListener('scroll', place, true)
     window.addEventListener('resize', place)
+    // Re-place when the panel's own height changes (sections expand/collapse) so the
+    // bottom-edge clamp tracks the real height — a tall→short toggle won't leave it
+    // lifted, and short→tall near the bottom lifts it just enough to fit.
+    const ro = new ResizeObserver(place)
     return () => {
+      cancelAnimationFrame(raf)
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
+      ro.disconnect()
     }
   }, [selected, revision])
 
@@ -678,7 +700,7 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
             {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
             <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
             {panelPos && (
-              <div className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
+              <div ref={panelRef} className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
                 {/* Key by element so the per-side expand state re-derives from the
                     new element's values instead of carrying over the last one's. */}
                 <PropertiesPanel
