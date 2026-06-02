@@ -13,7 +13,7 @@ import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPane
 import { ReorderOverlay } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
-const PANEL_W = 208
+const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
 const GAP = 12
 
 const px = (v: string) => {
@@ -97,6 +97,34 @@ const asSelected = (el: CanvasElement): SelectedElement => ({
   key: el.key,
   node: el.node,
 })
+
+// Which margin properties on `node` are actually controlled by a PARENT's Tailwind
+// `space-y-*` / `space-x-*` utility, and so can't be changed by a child margin
+// class (the `& > * + *` selector outspecifies `mt-*`/`ml-*`). Returns the set of
+// blocked StyleProperty names. space-y owns the BLOCK-START margin of every child
+// after the first (margin-top in normal flow) → blocks marginTop/marginY; space-x
+// owns margin-left → blocks marginLeft/marginX. The `margin` shorthand touches the
+// controlled side too, so it's blocked by either. The first child is unaffected
+// (the `+ *` selector skips it), so we only block non-first children.
+function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): Set<string> {
+  const blocked = new Set<string>()
+  const parent = node.parentElement
+  if (!parent) return blocked
+  const pcls = (parent.getAttribute('class') ?? '').split(/\s+/)
+  const hasSpaceY = pcls.some((c) => /^-?space-y-/.test(c))
+  const hasSpaceX = pcls.some((c) => /^-?space-x-/.test(c))
+  if (!hasSpaceY && !hasSpaceX) return blocked
+  // Only children after the first visible one get the space margin (the `+ *`).
+  const kids = [...parent.children].filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
+  if (kids.indexOf(node) <= 0) return blocked
+  const yProps = new Set(['marginTop', 'marginBottom', 'marginY', 'margin'])
+  const xProps = new Set(['marginLeft', 'marginRight', 'marginX', 'margin'])
+  for (const m of mutations) {
+    if (hasSpaceY && yProps.has(m.property)) blocked.add(m.property)
+    if (hasSpaceX && xProps.has(m.property)) blocked.add(m.property)
+  }
+  return blocked
+}
 
 // The direct-manipulation mode. Picks an element, shows a floating spacing
 // popover + box-model overlay, scrubs live (inline style), and commits each
@@ -317,6 +345,23 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
 
   async function commit(mutations: StyleMutation[]) {
     if (!selected) return
+
+    // Guard: a margin governed by a parent's Tailwind `space-y-*`/`space-x-*` can't
+    // be changed from the child — that utility's `& > * + *` selector outspecifies a
+    // child `mt-*`/`ml-*`, so the engine would write a class that has no visible
+    // effect (looks like "margin won't save"). Detect it from the live DOM (the
+    // engine only sees the file) and refuse with a calm hint pointing at the real
+    // lever, mirroring how var-themed colors are skipped. Only blocks the AXIS the
+    // space utility controls; the other axis + padding still flow through.
+    const spaceBlocked = spaceControlledMargins(selected.node, mutations)
+    if (spaceBlocked.size === mutations.length) {
+      const r = selected.node.getBoundingClientRect()
+      flashHint(r.left, r.top, 'Spacing here is set by the parent’s space-y/x — adjust it on the parent')
+      clearPreview()
+      return
+    }
+    if (spaceBlocked.size > 0) mutations = mutations.filter((m) => !spaceBlocked.has(m.property))
+
     applyPreview(mutations) // make sure the final value is showing
     const label = mutations.map((m) => `${m.property} ${m.value}`).join(', ').slice(0, 80)
     try {

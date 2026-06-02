@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 // committing.
 export function ScrubField({
   label,
+  ariaLabel,
   value,
   min = -Infinity,
   max = Infinity,
@@ -16,6 +17,7 @@ export function ScrubField({
   onCommit,
 }: {
   label: string
+  ariaLabel?: string // full name when `label` is a compact form (e.g. "T" → "Top")
   value: number
   min?: number
   max?: number
@@ -24,6 +26,7 @@ export function ScrubField({
   onPreview: (v: number) => void
   onCommit: (v: number) => void
 }) {
+  const full = ariaLabel ?? label
   // `draft` (a number) drives the drag scrub + live preview. `text` (a string)
   // backs the input only while typing, so partial entries like "-" or "" are
   // allowed without snapping back.
@@ -82,42 +85,49 @@ export function ScrubField({
   const shown = dragging ? draft : typing ? text : String(Math.round(value * 100) / 100)
 
   return (
-    <label className="flex items-center justify-between gap-2 text-[11px]">
+    // One UNIFIED field box (Figma-style): label · value · unit all inside a single
+    // bordered container, so they read as one control instead of three scattered
+    // pieces. The box fills its grid cell, so fields in a 2-col group line up. The
+    // border lights up on focus-within (the whole field reacts, not just the input).
+    <label
+      className={`flex items-center gap-1 rounded-md border border-line/15 bg-surface px-2 py-1 text-[11px] transition-colors focus-within:border-accent/60 motion-reduce:transition-none ${
+        disabled ? 'opacity-40' : ''
+      }`}
+    >
       <span
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className={`select-none text-fg-faint ${disabled ? 'opacity-40' : 'cursor-ew-resize hover:text-fg-muted'}`}
-        title={disabled ? undefined : 'Drag to scrub · Shift for fine'}
+        className={`shrink-0 select-none text-fg-faint ${disabled ? '' : 'cursor-ew-resize hover:text-fg-muted'}`}
+        title={disabled ? full : `${full} — drag to scrub · Shift for fine`}
       >
         {label}
       </span>
-      <span className="flex items-center gap-0.5">
-        <input
-          type="text"
-          inputMode="decimal"
-          data-testid={`scrub-${label}`}
-          disabled={disabled}
-          value={shown}
-          onFocus={() => {
-            cancelRef.current = false
-            setTyping(true)
-            setText(String(Math.round(value * 100) / 100))
-          }}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-            else if (e.key === 'Escape') {
-              cancelRef.current = true
-              ;(e.target as HTMLInputElement).blur()
-            }
-          }}
-          onBlur={commitTyped}
-          className="w-12 rounded border border-line/15 bg-surface px-1.5 py-1 text-right tabular-nums text-fg outline-none transition-colors focus:border-accent/60 motion-reduce:transition-none disabled:opacity-40"
-        />
-        <span className="w-4 text-fg-faint">{unit}</span>
-      </span>
+      <input
+        type="text"
+        inputMode="decimal"
+        aria-label={full}
+        data-testid={`scrub-${label}`}
+        disabled={disabled}
+        value={shown}
+        onFocus={() => {
+          cancelRef.current = false
+          setTyping(true)
+          setText(String(Math.round(value * 100) / 100))
+        }}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          else if (e.key === 'Escape') {
+            cancelRef.current = true
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+        onBlur={commitTyped}
+        className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 text-right tabular-nums text-fg outline-none disabled:opacity-40"
+      />
+      {unit && <span className="shrink-0 select-none text-fg-faint">{unit}</span>}
     </label>
   )
 }
