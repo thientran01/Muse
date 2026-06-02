@@ -12,8 +12,8 @@ import { CanvasMode } from './components/canvas/CanvasMode'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'
 import { MuseHistory } from './components/MuseHistory'
-import { MuseHome } from './components/MuseHome'
 import { MusePanel } from './components/MusePanel'
+import { MuseToolbar } from './components/MuseToolbar'
 import { MuseThread } from './components/MuseThread'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
 import { UndoRedoBar } from './components/UndoRedoBar'
@@ -667,7 +667,20 @@ export function MuseOverlay() {
           morphs into the FAB. */}
       {open && !closing && <CanvasMode onExit={requestClose} onEscalate={(el) => setSelection([el])} />}
 
-      {panelOpen && (
+      {/* Idle home = the compact icon toolbar (manta · past proposals · design ·
+          X), grown from the FAB (2A). History + the design brief open as a popover
+          above the bar (1B). Shift-clicking a page element is what opens the agent
+          panel below — this is just the resting state. */}
+      {panelOpen && home && (
+        <MuseToolbar
+          archived={archived}
+          onPickHistory={openFromHistory}
+          onClose={requestClose}
+          closing={closing}
+        />
+      )}
+
+      {panelOpen && !home && (
         <div className="absolute bottom-6 right-6">
           <MusePanel
             mock={MOCK}
@@ -679,22 +692,16 @@ export function MuseOverlay() {
             onToggleHistory={() => setHistoryOpen((v) => !v)}
             onClose={requestClose}
           >
-            {/* Keyed by which view is showing, so switching views (home ⇄
-                history ⇄ thread) remounts this wrapper and replays muse-step —
-                the new view rises + unblurs in instead of snapping. Carries the
-                panel's flex column so the inner views lay out unchanged. */}
+            {/* Keyed by which view is showing, so switching views (history ⇄
+                thread) remounts this wrapper and replays muse-step — the new view
+                rises + unblurs in instead of snapping. Carries the panel's flex
+                column so the inner views lay out unchanged. */}
             <div
-              key={historyOpen ? 'history' : home ? 'home' : 'thread'}
+              key={historyOpen ? 'history' : 'thread'}
               className="flex min-h-0 flex-1 flex-col animate-muse-step motion-reduce:animate-none"
             >
             {historyOpen ? (
               <MuseHistory entries={archived} onPick={openFromHistory} />
-            ) : home ? (
-              <MuseHome
-                onShowDesign={showDesign}
-                bubbles={thread}
-                onGenerateDesign={generateDesign}
-              />
             ) : (
             <>
             {/* No swap-target crosshair: re-point the agent by Shift-clicking
