@@ -33,8 +33,54 @@ export type CssRuleEditResult = {
 // The engine's PropertySpec.css keys are camelCase DOM-style names (paddingLeft,
 // backgroundColor); CSS declarations are kebab-case. color → color, paddingLeft →
 // padding-left, backgroundColor → background-color.
-function kebab(prop: string): string {
+export function kebab(prop: string): string {
   return prop.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())
+}
+
+// Set (or insert) a `cssProp: value` declaration inside a flat declaration block —
+// the inner text of a `.rule { … }` body (CSS Modules) OR a styled/emotion tagged
+// template body (which is a brace-less declaration list). Shared by setRuleProperty
+// and styledEdit's setTemplateProperty so both express a property in CSS the same
+// way. PURE string→string; the caller owns finding the block and splicing it back.
+//
+//   • inner — the real block text we splice and return.
+//   • scan  — the version to MATCH against, with anything that must NOT be treated
+//             as a top-level declaration blanked to equal-length spaces (comments,
+//             and for templates, nested `&{…}`/`@media{…}` blocks). For a flat CSS-
+//             Modules body the caller passes `inner` itself (no nesting to mask), so
+//             behavior is byte-identical to the pre-refactor inline logic.
+//
+// The `value` MUST be pre-validated by the caller (no `; { } < >` or newline) — the
+// public entry points (setRuleProperty / setTemplateProperty) guard it up front so
+// an unsafe value fails closed before we ever look for the block.
+export function setDeclarationInBlock(
+  inner: string,
+  scan: string,
+  cssProp: string,
+  value: string,
+): { inner: string; changed: boolean } {
+  const v = value.trim()
+  const prop = kebab(cssProp)
+  // Existing declaration of this EXACT property (not a prefix like padding vs
+  // padding-left)? Replace its value in place, preserving name/colon/spacing. We
+  // match on `scan` (nested/comment regions masked) but splice the same offsets in
+  // `inner`, so a `color` inside `&:hover{…}` can't be mistaken for the base one.
+  const declRe = new RegExp(`(^|[;{]\\s*|\\s)(${escapeRe(prop)})(?![\\w-])(\\s*:\\s*)([^;]*?)(\\s*)(?=;|$)`, 'm')
+  const dm = declRe.exec(scan)
+  if (dm) {
+    const valStart = dm.index + dm[1].length + dm[2].length + dm[3].length
+    const valEnd = valStart + dm[4].length
+    if (inner.slice(valStart, valEnd) === v) return { inner, changed: false }
+    return { inner: inner.slice(0, valStart) + v + inner.slice(valEnd), changed: true }
+  }
+  // No existing declaration — insert one as the last in the block. Match the
+  // indentation of an existing declaration if any, else two spaces. A block ending
+  // in `;`/`{`/`}` (the last being a closed nested rule) needs no leading semicolon.
+  const indent = inner.match(/\n([ \t]+)\S/)?.[1] ?? '  '
+  const trimmed = inner.replace(/\s+$/, '') // body up to the last non-ws char
+  const needsSemi = trimmed !== '' && !/[;{}]$/.test(trimmed)
+  const newInner = `${trimmed}${needsSemi ? ';' : ''}\n${indent}${prop}: ${v};\n`
+  return { inner: newInner, changed: true }
 }
 
 // The inner-content span [start, end) (between the braces) of the FIRST flat rule
@@ -91,25 +137,10 @@ export function setRuleProperty(css: string, className: string, cssProp: string,
   if (/[;{}<>]|[\r\n]/.test(v)) return { newContent: css, changed: false, matches: 0, grouped: false }
   const body = findRuleBody(css, className)
   if (!body) return { newContent: css, changed: false, matches: 0, grouped: false }
-  const prop = kebab(cssProp)
   const inner = css.slice(body.start, body.end)
-
-  // Existing declaration of this exact property (not a prefix like padding vs
-  // padding-left)? Replace its value in place, preserving name/colon/spacing.
-  const declRe = new RegExp(`(^|[;{]\\s*|\\s)(${escapeRe(prop)})(?![\\w-])(\\s*:\\s*)([^;]*?)(\\s*)(?=;|$)`, 'm')
-  const dm = declRe.exec(inner)
-  if (dm) {
-    const valStart = body.start + dm.index + dm[1].length + dm[2].length + dm[3].length
-    const valEnd = valStart + dm[4].length
-    if (css.slice(valStart, valEnd) === v) return { newContent: css, changed: false, matches: body.count, grouped: body.grouped }
-    return { newContent: css.slice(0, valStart) + v + css.slice(valEnd), changed: true, matches: body.count, grouped: body.grouped }
-  }
-
-  // No existing declaration — insert one as the last in the rule. Match the
-  // indentation of an existing declaration if any, else two spaces.
-  const indent = inner.match(/\n([ \t]+)\S/)?.[1] ?? '  '
-  const trimmed = inner.replace(/\s+$/, '') // body up to the last non-ws char
-  const needsSemi = trimmed !== '' && !trimmed.endsWith(';') && !trimmed.endsWith('{')
-  const newInner = `${trimmed}${needsSemi ? ';' : ''}\n${indent}${prop}: ${v};\n`
-  return { newContent: css.slice(0, body.start) + newInner + css.slice(body.end), changed: true, matches: body.count, grouped: body.grouped }
+  // A CSS-Modules rule body is flat (findRuleBody already skipped nested rules), so
+  // the match copy IS the inner text — no nested/comment masking needed here.
+  const r = setDeclarationInBlock(inner, inner, cssProp, v)
+  if (!r.changed) return { newContent: css, changed: false, matches: body.count, grouped: body.grouped }
+  return { newContent: css.slice(0, body.start) + r.inner + css.slice(body.end), changed: true, matches: body.count, grouped: body.grouped }
 }
