@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './muse.css'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
-import { MOCK } from './config'
+import { EPHEMERAL, MOCK } from './config'
 import { heuristicObservation } from './observation'
 import { elementPreviewsForOption, matchPreviews } from './diffPreview'
 import { useSelection } from './useSelection'
@@ -442,6 +442,39 @@ export function MuseOverlay() {
     if (!s.pending || s.pending.kind !== 'propose' || s.loading) return
     restore() // drop any hover-preview styles before the real write/HMR lands
     const edits = option.edits
+    const label = (option.description || option.label).slice(0, 80)
+
+    // EPHEMERAL (demo): there's no source write or HMR, so keep the edit's deltas
+    // on the live DOM (the same matches the hover preview used) and record them so
+    // undo/redo can replay it. This is what makes the agent feel real here — the
+    // change you previewed actually sticks when you apply.
+    if (EPHEMERAL) {
+      const matches = matchPreviews(elementPreviewsForOption(option, s.originals))
+      const dom = matches.map((m) => ({
+        node: m.node,
+        before: m.node.className,
+        beforeStyle: m.node.style.cssText,
+        after: '',
+        afterStyle: '',
+      }))
+      for (let i = 0; i < matches.length; i++) {
+        const { node, delta } = matches[i]
+        node.className = delta.newClassName
+        Object.assign(node.style, delta.style)
+        dom[i].after = node.className
+        dom[i].afterStyle = node.style.cssText
+      }
+      const entry: HistoryEntry = {
+        files: edits.map((e) => ({ fileName: e.fileName, before: s.originals[e.fileName] ?? '', after: e.newContent })),
+        elements: selection,
+        label,
+        dom,
+      }
+      museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true, pending: null }))
+      museStore.appendThread({ id: nextThreadId(), kind: 'applied', fileCount: edits.length, rationale: '' })
+      return
+    }
+
     museStore.setState({ loading: true, error: null })
     try {
       await museWrite(edits)
@@ -452,7 +485,7 @@ export function MuseOverlay() {
           after: e.newContent,
         })),
         elements: selection,
-        label: (option.description || option.label).slice(0, 80),
+        label,
       }
       museStore.setState((cur) => ({
         past: [...cur.past, entry],
@@ -473,9 +506,25 @@ export function MuseOverlay() {
     }
   }
 
+  // EPHEMERAL undo/redo: replay an entry's DOM snapshots (no source write/HMR).
+  const applyDom = (snaps: NonNullable<HistoryEntry['dom']>, side: 'before' | 'after') => {
+    for (const s of snaps) {
+      if (!s.node.isConnected) continue
+      s.node.className = side === 'before' ? s.before : s.after
+      s.node.style.cssText = side === 'before' ? s.beforeStyle : s.afterStyle
+    }
+  }
+
   async function undo() {
     if (past.length === 0) return
     const entry = past[past.length - 1]
+    if (entry.dom) {
+      applyDom(entry.dom, 'before')
+      museStore.setState((s) => ({ past: s.past.slice(0, -1), future: [entry, ...s.future], applied: false }))
+      setOpen(true)
+      setSelection(entry.elements)
+      return
+    }
     museStore.setState({ historyLoading: true, error: null })
     try {
       await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f.before })))
@@ -496,6 +545,13 @@ export function MuseOverlay() {
   async function redo() {
     if (future.length === 0) return
     const entry = future[0]
+    if (entry.dom) {
+      applyDom(entry.dom, 'after')
+      museStore.setState((s) => ({ future: s.future.slice(1), past: [...s.past, entry], applied: true }))
+      setOpen(true)
+      setSelection(entry.elements)
+      return
+    }
     museStore.setState({ historyLoading: true, error: null })
     try {
       await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f.after })))
@@ -515,6 +571,18 @@ export function MuseOverlay() {
 
   async function revertToOriginal() {
     if (past.length === 0) return
+    if (EPHEMERAL) {
+      // Restore every touched node to its EARLIEST pre-Muse className/style.
+      const earliest = new Map<HTMLElement, { before: string; beforeStyle: string }>()
+      for (const entry of past) for (const s of entry.dom ?? []) if (!earliest.has(s.node)) earliest.set(s.node, s)
+      for (const [node, s] of earliest) {
+        if (!node.isConnected) continue
+        node.className = s.before
+        node.style.cssText = s.beforeStyle
+      }
+      museStore.setState({ past: [], future: [], applied: false, showRevertConfirm: false })
+      return
+    }
     museStore.setState({ historyLoading: true, error: null })
     try {
       const earliest = new Map<string, string>()
