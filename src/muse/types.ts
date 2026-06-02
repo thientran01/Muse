@@ -136,6 +136,10 @@ export type HistoryEntry = {
   // panel reopens ready for follow-up edits.
   elements: SelectedElement[]
   label: string
+  // EPHEMERAL (demo) only: DOM snapshots so an applied chat edit persists in the
+  // browser and undo/redo replays it, since there's no source write/HMR. Each
+  // entry holds a live node + its className/cssText before and after the apply.
+  dom?: Array<{ node: HTMLElement; before: string; after: string; beforeStyle: string; afterStyle: string }>
 }
 
 // Anthropic message shape we send back and forth.
