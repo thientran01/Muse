@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, StyleMutation, StyleProperty } from '../../types'
+import { museDesignGet } from '../../api'
 import { ScrubField } from './ScrubField'
+import { ColorPicker } from './ColorPicker'
 
 // A short, devtools-style label for a breadcrumb crumb: the tag plus its first
 // simple class token (e.g. "div.flex-1"), so a column of <div>s is tellable apart.
@@ -38,54 +40,103 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 const divider = <div className="h-px bg-line/10" />
 
-// One color channel: a native swatch + hex readout, or a read-only "themed" note
-// when the source paints this channel through a CSS variable (Muse leaves those).
+// One color channel: a swatch + hex readout that opens the custom ColorPicker in a
+// popover, or a read-only "themed" note when the source paints this channel through
+// a CSS variable (Muse leaves those). The popover closes on outside-click or Esc.
 function ColorRow({
   label,
   value,
   themed,
+  swatches,
+  contrastAgainst,
   onPreview,
   onCommit,
 }: {
   label: string
   value: string
   themed: boolean
+  swatches: string[] // brand colors from DESIGN.md
+  contrastAgainst?: string // paired color for the WCAG check (Fill behind Text, etc.)
   onPreview: (v: string) => void
   onCommit: (v: string) => void
 }) {
-  // Native color inputs can fire `change` more than once; only write when the
-  // committed color actually differs from what we last wrote (one source edit +
-  // undo entry per pick). Re-syncs when the upstream value changes (new element).
-  const lastCommitted = useRef(value)
+  const [open, setOpen] = useState(false)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside-click / Esc. Restore the live preview if the popover closes
+  // without a commit (so a hover-scrub that wasn't released doesn't strand).
   useEffect(() => {
-    lastCommitted.current = value
-  }, [value])
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (rowRef.current && !rowRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [open])
+
   return (
-    <label className="flex items-center justify-between gap-2 text-[11px]">
-      <span className="select-none text-fg-faint">{label}</span>
-      {themed ? (
-        <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable — edit the design token instead">
-          themed
-        </span>
-      ) : (
-        <span className="flex items-center gap-1.5">
-          <span className="font-mono tabular-nums text-fg-muted">{value}</span>
-          <input
-            type="color"
+    <div ref={rowRef} className="relative">
+      <div className="flex items-center justify-between gap-2 text-[11px]">
+        <span className="select-none text-fg-faint">{label}</span>
+        {themed ? (
+          <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable — edit the design token instead">
+            themed
+          </span>
+        ) : (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded px-1 py-0.5 transition hover:bg-line/10"
+            aria-expanded={open}
+            title="Edit color"
+          >
+            <span className="font-mono tabular-nums text-fg-muted">{value}</span>
+            <span className="h-5 w-5 shrink-0 rounded border border-line/20" style={{ backgroundColor: value }} />
+          </button>
+        )}
+      </div>
+      {open && !themed && (
+        // Anchored popover: opens to the LEFT of the panel (the panel hugs the right
+        // edge), so the picker doesn't run off-screen. z above the panel content.
+        <div className="absolute right-full top-0 z-30 mr-2 rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur">
+          <ColorPicker
             value={value}
-            onInput={(e) => onPreview((e.target as HTMLInputElement).value)}
-            onChange={(e) => {
-              const v = (e.target as HTMLInputElement).value
-              if (v === lastCommitted.current) return
-              lastCommitted.current = v
-              onCommit(v)
-            }}
-            className="h-5 w-5 shrink-0 cursor-pointer rounded border border-line/20 bg-transparent p-0"
+            swatches={swatches}
+            contrastAgainst={contrastAgainst}
+            onPreview={onPreview}
+            onCommit={onCommit}
           />
-        </span>
+        </div>
       )}
-    </label>
+    </div>
   )
+}
+
+// Fetch the app's DESIGN.md brand colors once (module-cached) for the picker's
+// swatch row. Hex values pulled from the frontmatter, same loose scan as the
+// design card. Returns [] until loaded / when there's no brief.
+let brandCache: string[] | null = null
+function useBrandSwatches(): string[] {
+  const [colors, setColors] = useState<string[]>(brandCache ?? [])
+  useEffect(() => {
+    if (brandCache) return
+    let cancelled = false
+    void museDesignGet()
+      .then((d) => {
+        const fm = (d.content ?? '').slice(0, 8000).match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
+        brandCache = [...new Set(fm.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [])].slice(0, 12)
+        if (!cancelled) setColors(brandCache)
+      })
+      .catch(() => { brandCache = [] })
+    return () => { cancelled = true }
+  }, [])
+  return colors
 }
 
 // A padding/margin group: one field when all sides match, four when they don't —
@@ -241,19 +292,26 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
   )
 }
 
-// Text / fill / border color. Text row only where the element renders text.
+// Text / fill / border color. Text row only where the element renders text. Each
+// row opens the custom ColorPicker (brand swatches + WCAG check). The contrast
+// pairing is Text↔Fill (the usual readability question); Border has no natural
+// pair, so it gets no contrast badge.
 export function ColorFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  const swatches = useBrandSwatches()
   return (
     <div className="space-y-1.5">
       {values.rendersText && (
         <ColorRow label="Text" value={values.color.text} themed={values.colorThemed.text}
+          swatches={swatches} contrastAgainst={values.color.background}
           onPreview={(v) => onPreview([{ property: 'color', value: v }])}
           onCommit={(v) => onCommit([{ property: 'color', value: v }])} />
       )}
       <ColorRow label="Fill" value={values.color.background} themed={values.colorThemed.background}
+        swatches={swatches} contrastAgainst={values.rendersText ? values.color.text : undefined}
         onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
         onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])} />
       <ColorRow label="Border" value={values.color.border} themed={values.colorThemed.border}
+        swatches={swatches}
         onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
         onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])} />
     </div>
