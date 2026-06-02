@@ -12,6 +12,9 @@ export type SelectedElement = {
   node?: Element // client-only: live DOM node for drawing outlines/badges (never sent to backend)
 }
 
+// A measured viewport rect — what the hover/selection overlays draw against.
+export type Rect = { top: number; left: number; width: number; height: number }
+
 // --- Canvas Mode (direct manipulation) ---
 // An element resolved for deterministic editing: like SelectedElement but always
 // carries the column too (the style editor disambiguates several JSX elements on

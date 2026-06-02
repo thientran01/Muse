@@ -1,7 +1,5 @@
-import { useEffect, useReducer } from 'react'
 import type { ElementInfo } from '../sourceLocation'
-import type { SelectedElement } from '../types'
-import type { Rect } from '../useSelection'
+import type { Rect } from '../types'
 
 export function SelectBanner() {
   return (
@@ -52,50 +50,6 @@ export function HoverHighlight({
           </div>
         </div>
       )}
-    </>
-  )
-}
-
-// Persistent outline + numbered badge on each selected element. Re-measures on
-// scroll/resize so the markers track the live layout.
-export function SelectionMarkers({ elements }: { elements: SelectedElement[] }) {
-  const [, force] = useReducer((x: number) => x + 1, 0)
-  useEffect(() => {
-    const on = () => force()
-    window.addEventListener('scroll', on, true)
-    window.addEventListener('resize', on)
-
-    // Re-measure whenever a selected element changes size (e.g. after HMR applies an edit).
-    const ro = new ResizeObserver(() => force())
-    elements.forEach((el) => { if (el.node?.isConnected) ro.observe(el.node) })
-
-    return () => {
-      window.removeEventListener('scroll', on, true)
-      window.removeEventListener('resize', on)
-      ro.disconnect()
-    }
-  }, [elements])
-
-  return (
-    <>
-      {elements.map((el, i) => {
-        if (!el.node || !el.node.isConnected) return null // skip detached nodes (e.g. after HMR)
-        const r = el.node.getBoundingClientRect()
-        return (
-          <div key={el.key} className="pointer-events-none">
-            <div
-              className="absolute rounded-md ring-2 ring-accent"
-              style={{ top: r.top, left: r.left, width: r.width, height: r.height }}
-            />
-            <div
-              className="absolute flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-white shadow-md ring-2 ring-surface"
-              style={{ top: r.top - 9, left: r.left - 9 }}
-            >
-              {i + 1}
-            </div>
-          </div>
-        )
-      })}
     </>
   )
 }
