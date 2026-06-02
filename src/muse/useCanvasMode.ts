@@ -111,12 +111,24 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
   // pointer moves (covers the common "move toward an element holding Shift") plus
   // key down/up + window blur (covers pressing/releasing Shift while stationary).
   const [shiftHeld, setShiftHeld] = useState(false)
+  // Whether the floating properties card is held back for the current selection.
+  // A Shift-click hands the element to the AGENT, so we don't also detonate the big
+  // canvas card next to it — the lightweight on-element affordances (outline, edge
+  // handles, knobs) still show as the "reach". The card reveals on a deliberate
+  // PLAIN click (of this element or any other); a plain-click selection shows it
+  // immediately. (No hover-reveal — with the agent panel expanded, a card popping
+  // in as you move across elements reads as too much at once.)
+  const [panelDeferred, setPanelDeferred] = useState(false)
 
   const clearSelected = useCallback(() => setSelected(null), [])
   const exitEditing = useCallback(() => setEditing(null), [])
-  // Select a specific element (breadcrumb crumb, or a programmatic retarget).
-  const selectElement = useCallback((c: CanvasElement) => {
+  // Select a specific element (a click, a breadcrumb crumb, or a programmatic
+  // retarget). Shows the properties card by default; a Shift-click passes
+  // {defer:true} so the card holds back (atomically — one panelDeferred write) while
+  // the agent takes focus.
+  const selectElement = useCallback((c: CanvasElement, opts?: { defer?: boolean }) => {
     setSelected(c)
+    setPanelDeferred(!!opts?.defer)
     setHoverRect(null)
     setHoverInfo(null)
   }, [])
@@ -127,6 +139,7 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setHoverInfo(null)
       setCursor(null)
       setShiftHeld(false)
+      setPanelDeferred(false)
       return
     }
 
@@ -173,7 +186,10 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
         const idx = chain.findIndex((c) => c.key === anchor.key)
         picked = chain[idx + 1] ?? anchor
       }
-      selectElement(picked)
+      // A Shift-select hands the element to the agent AND defers the properties card
+      // (the agent panel is the focus — don't also stack the big card next to it);
+      // selectElement({defer}) sets the card + leave-sentinel atomically.
+      selectElement(picked, { defer: e.shiftKey })
       // Shift escalates the picked element to the agent — the intentional gesture,
       // and the ONLY thing that fires an observe call. Composes with Alt (Shift+Alt
       // escalates the parent). Plain clicks stay canvas-only and never reach the agent.
@@ -238,5 +254,5 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
+  return { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
 }

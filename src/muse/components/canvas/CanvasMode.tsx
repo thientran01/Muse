@@ -123,7 +123,7 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
 export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscalate?: (el: SelectedElement) => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, selected, selectElement, editing, exitEditing, miss } =
+  const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, selectElement, editing, exitEditing, miss } =
     useCanvasMode({ onEscalate })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
@@ -241,7 +241,9 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
       window.removeEventListener('resize', place)
       ro.disconnect()
     }
-  }, [selected, revision])
+    // panelDeferred: re-place + re-attach the ResizeObserver when the card reveals
+    // (it wasn't mounted while deferred, so panelRef was null on the first pass).
+  }, [selected, revision, panelDeferred])
 
   // Clear any stray inline preview when the target changes or we leave.
   useEffect(() => clearPreview, [selected])
@@ -813,8 +815,15 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
             />
             {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
             <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
-            {panelPos && (
-              <div ref={panelRef} className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
+            {/* Lazy card: a Shift-click hands the element to the agent, so the big
+                properties card holds back (the outline + edges + knobs above are the
+                "reach"); it reveals on a deliberate PLAIN click (this element or any
+                other). A plain-click selection shows it immediately. A commit error
+                force-reveals it so the message can't be swallowed (the edge/resize
+                handles still commit while the card is deferred). It mounts on reveal,
+                so animate-muse-step gives it the system's "appears on action" entrance. */}
+            {panelPos && (!panelDeferred || error) && (
+              <div ref={panelRef} className="pointer-events-auto absolute animate-muse-step motion-reduce:animate-none" style={{ top: panelPos.top, left: panelPos.left }}>
                 {/* Key by element so the per-side expand state re-derives from the
                     new element's values instead of carrying over the last one's. */}
                 <PropertiesPanel
