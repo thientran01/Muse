@@ -818,9 +818,12 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
             {/* Lazy card: a Shift-click hands the element to the agent, so the big
                 properties card holds back (the outline + edges + knobs above are the
                 "reach"); it reveals on any plain click or on hovering back onto the
-                element. A plain-click selection shows it immediately (panelDeferred=false). */}
-            {panelPos && !panelDeferred && (
-              <div ref={panelRef} className="pointer-events-auto absolute" style={{ top: panelPos.top, left: panelPos.left }}>
+                element. A plain-click selection shows it immediately. A commit error
+                force-reveals it so the message can't be swallowed (the edge/resize
+                handles still commit while the card is deferred). It mounts on reveal,
+                so animate-muse-step gives it the system's "appears on action" entrance. */}
+            {panelPos && (!panelDeferred || error) && (
+              <div ref={panelRef} className="pointer-events-auto absolute animate-muse-step motion-reduce:animate-none" style={{ top: panelPos.top, left: panelPos.left }}>
                 {/* Key by element so the per-side expand state re-derives from the
                     new element's values instead of carrying over the last one's. */}
                 <PropertiesPanel

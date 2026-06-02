@@ -127,11 +127,16 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
 
   const clearSelected = useCallback(() => setSelected(null), [])
   const exitEditing = useCallback(() => setEditing(null), [])
-  // Select a specific element (breadcrumb crumb, or a programmatic retarget). Shows
-  // the properties card by default; the Shift-click path re-defers it after.
-  const selectElement = useCallback((c: CanvasElement) => {
+  // Select a specific element (a click, a breadcrumb crumb, or a programmatic
+  // retarget). Shows the properties card by default; a Shift-click passes
+  // {defer:true} so the card holds back — set atomically (one panelDeferred write,
+  // no false→true flash) — and the leave-sentinel resets so the reveal waits for a
+  // genuine leave+return.
+  const selectElement = useCallback((c: CanvasElement, opts?: { defer?: boolean }) => {
+    const defer = !!opts?.defer
     setSelected(c)
-    setPanelDeferred(false)
+    setPanelDeferred(defer)
+    if (defer) leftSelRef.current = false
     setHoverRect(null)
     setHoverInfo(null)
   }, [])
@@ -164,14 +169,16 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
         setHoverInfo(null)
         return
       }
-      // Anywhere off the selection (a different element, Muse chrome, or nothing)
-      // counts as having left it — so a later re-hover can reveal the card.
-      leftSelRef.current = true
       if (!el || isMuseUI(el)) {
+        // Muse's own chrome is a neutral zone (the hover-lock invariant) — it does
+        // NOT count as leaving the selection, so it can't spuriously arm the reveal.
         setHoverRect(null)
         setHoverInfo(null)
         return
       }
+      // A genuine DIFFERENT element → the pointer has left the selection, so a later
+      // re-hover back onto it may reveal a deferred card.
+      leftSelRef.current = true
       const r = el.getBoundingClientRect()
       setHoverRect({ top: r.top, left: r.left, width: r.width, height: r.height })
       setHoverInfo(getElementInfo(el))
@@ -201,18 +208,14 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
         const idx = chain.findIndex((c) => c.key === anchor.key)
         picked = chain[idx + 1] ?? anchor
       }
-      selectElement(picked)
+      // A Shift-select hands the element to the agent AND defers the properties card
+      // (the agent panel is the focus — don't also stack the big card next to it);
+      // selectElement({defer}) sets the card + leave-sentinel atomically.
+      selectElement(picked, { defer: e.shiftKey })
       // Shift escalates the picked element to the agent — the intentional gesture,
       // and the ONLY thing that fires an observe call. Composes with Alt (Shift+Alt
       // escalates the parent). Plain clicks stay canvas-only and never reach the agent.
-      // A Shift-select also DEFERS the properties card (the agent panel is the focus;
-      // don't stack the big canvas card next to it) — reset leftSel so the reveal
-      // waits until the pointer actually leaves and returns.
-      if (e.shiftKey) {
-        onEscalateRef.current?.(asSelected(picked))
-        setPanelDeferred(true)
-        leftSelRef.current = false
-      }
+      if (e.shiftKey) onEscalateRef.current?.(asSelected(picked))
     }
 
     const onKey = (e: KeyboardEvent) => {
