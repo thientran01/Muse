@@ -14,7 +14,7 @@ export function Overview() {
       <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Design on the real thing.
       </h1>
-      <p className="mt-4 text-lg leading-relaxed text-stone-500 dark:text-stone-400">
+      <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
         You already know how you want it to look. Muse lets you just go do it, right on your running
         app, then turns it into real code you can ship. Tailwind, JSX, all of it.
       </p>
@@ -22,13 +22,13 @@ export function Overview() {
       <div className="mt-7 flex flex-wrap gap-3">
         <a
           href="#/install"
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300"
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300 dark:focus-visible:ring-[#e3a384]/50"
         >
           Get started
         </a>
         <a
           href="#/how"
-          className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800"
+          className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800 dark:focus-visible:ring-[#e3a384]/50"
         >
           See how it works
         </a>

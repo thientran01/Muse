@@ -39,13 +39,17 @@ export function setTheme(t: Theme) {
   subs.forEach((f) => f())
 }
 
-// Re-apply when the OS flips, but only while following the system.
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  if (current === 'system') {
-    apply('system')
-    subs.forEach((f) => f())
-  }
-})
+// Re-apply when the OS flips, but only while following the system. Guarded so
+// importing this module in a non-browser context (tests, a future SSR build)
+// can't throw at import time.
+if (typeof window !== 'undefined') {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (current === 'system') {
+      apply('system')
+      subs.forEach((f) => f())
+    }
+  })
+}
 
 export function useTheme() {
   const theme = useSyncExternalStore(

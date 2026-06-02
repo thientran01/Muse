@@ -6,7 +6,7 @@ export function Features() {
       <h1 className="text-4xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         What you can do
       </h1>
-      <p className="mt-4 text-lg leading-relaxed text-stone-500 dark:text-stone-400">
+      <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
         Canvas Mode is the main event: grab any element and shape it by hand. There is also a chat
         partner for the times you would rather describe a change than make it. Everything below is
         live, so press <Kbd>L</Kbd> and go.
@@ -48,7 +48,7 @@ export function Features() {
           </span>
           <div>
             <div className="text-[15px] font-semibold text-stone-900 dark:text-stone-100">Workspace settings</div>
-            <div className="text-[13px] text-stone-500 dark:text-stone-400">Make it feel like home</div>
+            <div className="text-[13px] text-stone-600 dark:text-stone-400">Make it feel like home</div>
           </div>
         </div>
         <p className="mt-4 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">

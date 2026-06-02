@@ -51,7 +51,7 @@ export default function SiteApp() {
               key={n.id}
               href={`#/${n.id}`}
               aria-current={page === n.id ? 'page' : undefined}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:focus-visible:ring-[#e3a384]/50 ${
                 page === n.id
                   ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900'
                   : 'bg-white text-stone-600 ring-1 ring-stone-200 dark:bg-[#201d16] dark:text-stone-400 dark:ring-stone-800'
@@ -70,26 +70,26 @@ export default function SiteApp() {
             <MuseMark />
             <span className="text-lg font-semibold tracking-tight">Muse</span>
           </a>
-          <p className="mt-1 text-[13px] leading-snug text-stone-500">Visual editing for design engineers</p>
+          <p className="mt-1 text-[13px] leading-snug text-stone-600 dark:text-stone-400">Visual editing for design engineers</p>
           <nav className="mt-8 flex flex-col gap-1">
             {NAV.map((n) => (
               <a
                 key={n.id}
                 href={`#/${n.id}`}
                 aria-current={page === n.id ? 'page' : undefined}
-                className={`group rounded-lg px-3 py-2 transition-colors ${
+                className={`group rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:focus-visible:ring-[#e3a384]/50 ${
                   page === n.id
                     ? 'bg-white shadow-sm ring-1 ring-stone-200 dark:bg-[#201d16] dark:ring-stone-800'
                     : 'hover:bg-white/60 dark:hover:bg-white/5'
                 }`}
               >
                 <span className="block text-sm font-medium text-stone-800 dark:text-stone-200">{n.label}</span>
-                <span className="block text-[12px] text-stone-500 dark:text-stone-400">{n.blurb}</span>
+                <span className="block text-[12px] text-stone-600 dark:text-stone-400">{n.blurb}</span>
               </a>
             ))}
           </nav>
           <div className="mt-auto flex items-center justify-between pt-6">
-            <a href="https://github.com/thientran01/Muse" className="text-[12px] text-stone-500 hover:text-stone-700 dark:hover:text-stone-300">
+            <a href="https://github.com/thientran01/Muse" className="rounded text-[12px] text-stone-600 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:text-stone-400 dark:hover:text-stone-200 dark:focus-visible:ring-[#e3a384]/50">
               GitHub ↗
             </a>
             <ThemeToggle />
@@ -100,7 +100,7 @@ export default function SiteApp() {
         <main className="min-w-0 flex-1 px-6 py-10 md:px-12 md:py-14">
           <div className="mx-auto max-w-2xl">
             <Page />
-            <footer className="mt-20 border-t border-stone-200 pt-6 text-[13px] text-stone-500 dark:border-stone-800">
+            <footer className="mt-20 border-t border-stone-200 pt-6 text-[13px] text-stone-600 dark:border-stone-800 dark:text-stone-400">
               Muse, visual editing for the app you already have.
             </footer>
           </div>

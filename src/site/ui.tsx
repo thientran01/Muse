@@ -45,7 +45,7 @@ export function P({ children }: { children: ReactNode }) {
   return <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">{children}</p>
 }
 export function Lead({ children }: { children: ReactNode }) {
-  return <p className="mt-4 text-lg leading-relaxed text-stone-500 dark:text-stone-400">{children}</p>
+  return <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">{children}</p>
 }
 
 // ── Callout ───────────────────────────────────────────────────────────────
