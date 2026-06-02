@@ -7,7 +7,7 @@ import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
-import { canvasChain, useCanvasMode } from '../../useCanvasMode'
+import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
@@ -90,16 +90,6 @@ function peerNodes(el: CanvasElement): HTMLElement[] {
   return peers
 }
 
-const asSelected = (el: CanvasElement): SelectedElement => ({
-  fileName: el.fileName,
-  line: el.line,
-  tag: el.tag,
-  classNames: el.node.getAttribute('class') ?? '',
-  text: (el.node.textContent ?? '').trim().slice(0, 80),
-  key: el.key,
-  node: el.node,
-})
-
 // Which margin properties on `node` are actually controlled by a PARENT's Tailwind
 // `space-y-*` / `space-x-*` utility, and so can't be changed by a child margin
 // class (the `& > * + *` selector outspecifies `mt-*`/`ml-*`). Returns the set of
@@ -132,8 +122,9 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // popover + box-model overlay, scrubs live (inline style), and commits each
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
-export function CanvasMode({ onExit }: { onExit: () => void }) {
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } = useCanvasMode()
+export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscalate?: (el: SelectedElement) => void }) {
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } =
+    useCanvasMode({ onEscalate })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -858,19 +849,21 @@ export function CanvasMode({ onExit }: { onExit: () => void }) {
         </>
       )}
 
-      {/* Mode banner — mirrors chat's SelectBanner. */}
+      {/* Active-selection banner — one surface, two gestures: plain-click edits
+          directly (Canvas), Shift-click hands the element to the agent. The full
+          manta-marked rewrite + Shift-held hover affordance lands in PR2. */}
       <div className="absolute left-1/2 top-4 -translate-x-1/2">
         <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-surface/95 px-4 py-2 text-sm font-medium text-fg shadow-lg ring-1 ring-line/10 backdrop-blur">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Canvas
+          Muse
           <span className="text-fg-faint">
             {editing
               ? '· editing text · Enter to save · Esc to cancel'
               : selected
                 ? reorderable?.reorderable
-                  ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · Esc to deselect'
-                  : '· double-click to edit text · Alt-click selects the container · Esc to deselect'
-                : '· click an element · Alt-click for its container · Esc to exit'}
+                  ? '· drag to reorder (or ⌘+arrows) · double-click to edit text · ⇧-click to ask Muse · Esc to deselect'
+                  : '· double-click to edit text · Alt-click the container · ⇧-click to ask Muse · Esc to deselect'
+                : '· click to edit · ⇧-click to ask Muse · Alt-click the container · Esc to exit'}
           </span>
           <button onClick={() => setActive(false)} className="ml-1 rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done

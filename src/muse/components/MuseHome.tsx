@@ -21,7 +21,10 @@ export function MuseHome({
   bubbles,
   onGenerateDesign,
 }: {
-  onSelect: () => void
+  // Optional: the live overlay selects by clicking the page (no separate mode),
+  // so it omits this and the primary entry renders as a static gesture hint. The
+  // gallery state-showcase still passes it to drive its fixture flow.
+  onSelect?: () => void
   onShowDesign: () => void
   bubbles: ThreadMessage[]
   onGenerateDesign: (id: string) => void
@@ -31,16 +34,29 @@ export function MuseHome({
   return (
     <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
       <div className="space-y-2">
-        {/* Primary action — accent icon marks it as the lead. */}
-        <HomeCard
-          primary
-          testid="muse-home-select"
-          onClick={onSelect}
-          icon={<Crosshair size={18} weight="bold" />}
-          iconClass="bg-accent/10 text-accent ring-1 ring-accent/20"
-          title="Select an element to redesign"
-          sub="Point Muse at any part of the page"
-        />
+        {/* Primary lead — accent icon. A button when a select handler is given
+            (gallery), else a quiet hint teaching the two page gestures. */}
+        {onSelect ? (
+          <HomeCard
+            primary
+            testid="muse-home-select"
+            onClick={onSelect}
+            icon={<Crosshair size={18} weight="bold" />}
+            iconClass="bg-accent/10 text-accent ring-1 ring-accent/20"
+            title="Select an element to redesign"
+            sub="Point Muse at any part of the page"
+          />
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent ring-1 ring-accent/20">
+              <Crosshair size={18} weight="bold" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-fg">Shift-click an element to ask Muse</span>
+              <span className="block text-xs leading-snug text-fg-faint">Plain-click edits it directly on canvas</span>
+            </span>
+          </div>
+        )}
 
         {/* Secondary entries. New Muse features slot in here as they land. */}
         {!hasDesign && (
