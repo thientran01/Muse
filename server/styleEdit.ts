@@ -28,10 +28,12 @@ import type {
   JSXText,
   Node,
   ObjectExpression,
+  TemplateLiteral,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
 import { resolveStyleWriter, type StyleWriter } from '../src/muse/style/writers'
 import { extractVarName, isVarValue } from '../src/muse/style/cssVarEdit'
+import { setTemplateProperty } from '../src/muse/style/styledEdit'
 
 // @babel/traverse ships CJS; the default export is on `.default` under ESM.
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
@@ -362,6 +364,98 @@ function detectModuleBinding(
   return key ? { specifier, className: key } : null
 }
 
+// A styled-components / emotion target for the located element: the source range of
+// a tagged-template body we can edit IN PLACE (same file), or a marker that the
+// element is styled but its styles aren't safely editable here (an interpolated
+// template, or the object-syntax form) — those fail closed to inline. Cross-file
+// imported styled components are intentionally NOT resolved here (we can't tell an
+// imported `<Card>` is even styled without reading the other file) — a deferred
+// follow-up (Phase 4D); such elements return null and route normally.
+type StyledTarget =
+  | { kind: 'template'; bodyStart: number; bodyEnd: number; body: string }
+  | { kind: 'unsupported'; reason: string }
+
+// Walk a styled tag-expression chain down to its root identifier: styled.div →
+// styled, styled(Base) → styled, styled.div.attrs({…}) → styled, styled(Base)
+// .attrs(…) → styled, emotion's styled('div') → styled. Returns the root Identifier
+// name (or null), so we recognize every factory shape without enumerating them.
+function tagRootName(node: Node): string | null {
+  let n: Node = node
+  for (;;) {
+    if (n.type === 'Identifier') return n.name
+    if (n.type === 'MemberExpression') { n = n.object; continue }
+    if (n.type === 'CallExpression') { n = n.callee; continue }
+    return null
+  }
+}
+
+// Is this initializer a styled-component definition? Returns the tagged TEMPLATE for
+// a template form (styled.div`…`, styled(Base)`…`, the .attrs/.withConfig chains),
+// `object:true` for the object-syntax form (styled.div({…}) — JS object, not CSS
+// text, so unsupported here), or null when it isn't `styled` at all.
+function asStyledDef(init: Node | null | undefined): { template: TemplateLiteral } | { object: true } | null {
+  if (!init) return null
+  if (init.type === 'TaggedTemplateExpression' && tagRootName(init.tag) === 'styled') {
+    return { template: init.quasi }
+  }
+  if (init.type === 'CallExpression' && tagRootName(init.callee) === 'styled' &&
+      init.arguments.some((a) => a.type === 'ObjectExpression')) {
+    return { object: true }
+  }
+  return null
+}
+
+// A single-quasi (no `${…}` interpolation) template body is editable: return its
+// source range + text. An interpolated or multi-quasi template can't be spliced
+// safely (offsets shift around dynamic chunks), so it's marked unsupported and
+// fails closed to inline.
+function templateTarget(tpl: TemplateLiteral, source: string, dynReason: string): StyledTarget {
+  if (tpl.expressions.length !== 0 || tpl.quasis.length !== 1) return { kind: 'unsupported', reason: dynReason }
+  const q = tpl.quasis[0]
+  return { kind: 'template', bodyStart: q.start!, bodyEnd: q.end!, body: source.slice(q.start!, q.end!) }
+}
+
+// Find a same-file styled definition bound to `name` (`const Card = styled.div`…``).
+// First declarator with this name wins; we don't restrict to module scope (a
+// function-scoped styled const is still a static template we can edit in place).
+function findStyledDef(ast: File, name: string): { template: TemplateLiteral } | { object: true } | null {
+  let found: { template: TemplateLiteral } | { object: true } | null = null
+  traverse(ast, {
+    VariableDeclarator(path) {
+      if (found) return
+      if (path.node.id.type === 'Identifier' && path.node.id.name === name) {
+        const def = asStyledDef(path.node.init)
+        if (def) found = def
+      }
+    },
+  })
+  return found
+}
+
+// If the located element is a styled-components / emotion target — an emotion `css`
+// prop holding a `css`…`` template, or a `<Card>` whose tag resolves to a same-file
+// `styled.*` definition — return the editable template range (or an unsupported
+// marker). Else null (a host element, a plain component, or an imported component we
+// don't resolve cross-file). Per-element, so a file can mix styled + Tailwind targets.
+function detectStyledBinding(opening: JSXOpeningElement, ast: File, source: string): StyledTarget | null {
+  // emotion css prop: <div css={css`…`}> — the template sits right at the JSX site.
+  const cssAttr = findAttr(opening, 'css')
+  if (cssAttr?.value?.type === 'JSXExpressionContainer') {
+    const ex = cssAttr.value.expression
+    if (ex.type === 'TaggedTemplateExpression' && tagRootName(ex.tag) === 'css') {
+      return templateTarget(ex.quasi, source, 'css prop template has interpolations')
+    }
+    if (ex.type === 'ObjectExpression') return { kind: 'unsupported', reason: 'css prop is an object' }
+  }
+  // styled component: a capitalized tag (`<Card>`) bound to a same-file styled def.
+  const tag = openingTag(opening)
+  if (!tag || tag[0] === tag[0].toLowerCase()) return null // host element / member name — not a styled component
+  const def = findStyledDef(ast, tag)
+  if (!def) return null // imported (cross-file, 4D) or a plain component — route normally
+  if ('object' in def) return { kind: 'unsupported', reason: 'styled object syntax' }
+  return templateTarget(def.template, source, 'styled template has interpolations')
+}
+
 export function computeStyleEdit(
   source: string,
   line: number,
@@ -400,6 +494,10 @@ export function computeStyleEdit(
   // A `className={styles.card}` binding into a `.module.css` — its props can't be a
   // class token (the className is the binding) so they defer to a rule edit below.
   const moduleBinding = detectModuleBinding(opening, findModuleImports(ast))
+  // A styled-components / emotion target (`<Card>` from a same-file `styled.*`, or an
+  // emotion `css` prop) — its props live in the tagged-template body, edited in place
+  // below. Mutually exclusive with a module binding in practice (different shapes).
+  const styledTarget = moduleBinding ? null : detectStyledBinding(opening, ast, source)
 
   // Working copies we mutate as we route each property, then emit as patches.
   let classTokens = classEditable ? (classInfo as { value: string }).value.split(/\s+/).filter(Boolean) : []
@@ -412,6 +510,10 @@ export function computeStyleEdit(
   // Mutations on a CSS-modules-bound element; the server sets them in the module's
   // `.className` rule (see ModuleEdit). Collected across the loop below.
   const moduleEdits: ModuleEdit[] = []
+  // A styled/emotion target's template body, mutated across the loop and emitted as
+  // a single in-place patch below (same file — no deferred intent needed).
+  let styledBody = styledTarget?.kind === 'template' ? styledTarget.body : ''
+  let styledTouched = false
 
   const setStyleProp = (key: string, value: string) => {
     const i = styleProps.findIndex(([k]) => k === key)
@@ -488,6 +590,29 @@ export function computeStyleEdit(
       }
       continue
     }
+    // A styled-components / emotion target (`<Card>` from `styled.div`…``, or an
+    // emotion `css` prop): the value lives in the tagged-template body, not the
+    // className (a generated hash) and not inline. We only divert when there's no
+    // editable static className — if the element ALSO carries Tailwind utilities
+    // (`<Card className="mt-4">`), those stay the primary surface (visible in JSX,
+    // and safe from being overridden by the styled class's cascade). An unsupported
+    // styled form (interpolated template / object syntax) fails closed to inline —
+    // styled forwards `style`, so an inline value still applies (and overrides it).
+    if (styledTarget && !classEditable) {
+      if (styledTarget.kind === 'template') {
+        for (const key of spec.css) {
+          const r = setTemplateProperty(styledBody, key, m.value)
+          if (r.changed) {
+            styledBody = r.newContent
+            styledTouched = true
+          }
+        }
+        continue
+      }
+      warnings.push(`${m.property}: ${styledTarget.reason} — wrote inline style instead`)
+      routeInline(m, spec)
+      continue
+    }
     const useTailwind = strategy === 'tailwind-first' && classEditable
     // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
@@ -529,6 +654,13 @@ export function computeStyleEdit(
       const insertAt = classAttr ? classAttr.end! : opening.name.end!
       patches.push({ start: insertAt, end: insertAt, text: ` style={${renderStyleObject(styleProps)}}` })
     }
+  }
+
+  // A styled/emotion target's edited template body — one in-place patch on the
+  // single-quasi body range (same file as the JSX, applied alongside the patches
+  // above via the right-to-left splice below).
+  if (styledTouched && styledTarget?.kind === 'template') {
+    patches.push({ start: styledTarget.bodyStart, end: styledTarget.bodyEnd, text: styledBody })
   }
 
   if (patches.length === 0) {
