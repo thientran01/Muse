@@ -56,6 +56,16 @@ export type VarEdit = { property: StyleProperty; varName: string; value: string 
 // landing in another file while the element's JSX is left untouched.
 export type ModuleEdit = { specifier: string; className: string; cssProp: string; value: string }
 
+// An IMPORTED styled-components / emotion target: the element is `<Card>` where
+// `Card` is imported from a relative module (`import { Card } from './ui'`). The
+// styles live in that module's `styled.*` template, which the engine can't read
+// (it only has the importing file), so — a twin of ModuleEdit — it emits this
+// intent and the server resolves the specifier (relative to the JSX file, with
+// extension guessing, bounded to src/), finds the `exportName` styled export, and
+// edits its template body. Same-file styled defs are NOT deferred (the engine
+// patches them in place); only cross-file imports become a StyledEdit.
+export type StyledEdit = { specifier: string; exportName: string; cssProp: string; value: string }
+
 export type StyleEditResult = {
   newContent: string
   changed: boolean
@@ -66,6 +76,9 @@ export type StyleEditResult = {
   // CSS-modules-bound mutations deferred to a `.module.css` rule edit (see
   // ModuleEdit). Empty unless the target binds its className through a module.
   moduleEdits: ModuleEdit[]
+  // Imported styled-component mutations deferred to a cross-file template edit (see
+  // StyledEdit). Empty unless the target is a `<Card>` imported from a relative module.
+  styledEdits: StyledEdit[]
 }
 
 // The arbitrary-token bracket content (`text-[color:var(--x)]` → `color:var(--x)`),
@@ -365,14 +378,15 @@ function detectModuleBinding(
 }
 
 // A styled-components / emotion target for the located element: the source range of
-// a tagged-template body we can edit IN PLACE (same file), or a marker that the
-// element is styled but its styles aren't safely editable here (an interpolated
-// template, or the object-syntax form) — those fail closed to inline. Cross-file
-// imported styled components are intentionally NOT resolved here (we can't tell an
-// imported `<Card>` is even styled without reading the other file) — a deferred
-// follow-up (Phase 4D); such elements return null and route normally.
+// a same-file tagged-template body we edit IN PLACE; an `import` marker for a
+// `<Card>` imported from a relative module (the server resolves + edits it, since
+// the body lives in another file); or `unsupported` when the styled form isn't
+// safely editable (an interpolated template, or the object-syntax form) — those
+// fail closed to inline. A capitalized tag that's neither a same-file styled def
+// nor a relative import returns null (route normally).
 type StyledTarget =
   | { kind: 'template'; bodyStart: number; bodyEnd: number; body: string }
+  | { kind: 'import'; specifier: string; exportName: string }
   | { kind: 'unsupported'; reason: string }
 
 // Walk a styled tag-expression chain down to its root identifier: styled.div →
@@ -409,7 +423,11 @@ function asStyledDef(init: Node | null | undefined): { template: TemplateLiteral
 // source range + text. An interpolated or multi-quasi template can't be spliced
 // safely (offsets shift around dynamic chunks), so it's marked unsupported and
 // fails closed to inline.
-function templateTarget(tpl: TemplateLiteral, source: string, dynReason: string): StyledTarget {
+function templateTarget(
+  tpl: TemplateLiteral,
+  source: string,
+  dynReason: string,
+): { kind: 'template'; bodyStart: number; bodyEnd: number; body: string } | { kind: 'unsupported'; reason: string } {
   if (tpl.expressions.length !== 0 || tpl.quasis.length !== 1) return { kind: 'unsupported', reason: dynReason }
   const q = tpl.quasis[0]
   return { kind: 'template', bodyStart: q.start!, bodyEnd: q.end!, body: source.slice(q.start!, q.end!) }
@@ -432,11 +450,35 @@ function findStyledDef(ast: File, name: string): { template: TemplateLiteral } |
   return found
 }
 
+// The module a local name is imported from, plus the name it's exported under at the
+// source (`default` for a default import, the ORIGINAL name for `import { X as Y }`).
+// Null when `name` isn't imported (a same-file binding) or is a namespace import
+// (`import * as ui` → `<ui.Card>` is a member tag we don't handle). Mirrors
+// findModuleImports but keyed by the local binding, for any specifier.
+function findImportBinding(ast: File, name: string): { specifier: string; exportName: string } | null {
+  let found: { specifier: string; exportName: string } | null = null
+  traverse(ast, {
+    ImportDeclaration(path) {
+      if (found) return
+      const specifier = path.node.source.value
+      for (const s of path.node.specifiers) {
+        if (s.local.name !== name) continue
+        if (s.type === 'ImportDefaultSpecifier') found = { specifier, exportName: 'default' }
+        else if (s.type === 'ImportSpecifier') {
+          found = { specifier, exportName: s.imported.type === 'Identifier' ? s.imported.name : s.imported.value }
+        }
+      }
+    },
+  })
+  return found
+}
+
 // If the located element is a styled-components / emotion target — an emotion `css`
-// prop holding a `css`…`` template, or a `<Card>` whose tag resolves to a same-file
-// `styled.*` definition — return the editable template range (or an unsupported
-// marker). Else null (a host element, a plain component, or an imported component we
-// don't resolve cross-file). Per-element, so a file can mix styled + Tailwind targets.
+// prop holding a `css`…`` template, a `<Card>` whose tag resolves to a same-file
+// `styled.*` definition, or a `<Card>` imported from a RELATIVE module (resolved +
+// edited server-side) — return the editable range / import / unsupported marker.
+// Else null (a host element, a plain component, or a package/alias import we won't
+// touch). Per-element, so a file can mix styled + Tailwind targets.
 function detectStyledBinding(opening: JSXOpeningElement, ast: File, source: string): StyledTarget | null {
   // emotion css prop: <div css={css`…`}> — the template sits right at the JSX site.
   const cssAttr = findAttr(opening, 'css')
@@ -447,13 +489,91 @@ function detectStyledBinding(opening: JSXOpeningElement, ast: File, source: stri
     }
     if (ex.type === 'ObjectExpression') return { kind: 'unsupported', reason: 'css prop is an object' }
   }
-  // styled component: a capitalized tag (`<Card>`) bound to a same-file styled def.
+  // styled component: a capitalized tag (`<Card>`).
   const tag = openingTag(opening)
   if (!tag || tag[0] === tag[0].toLowerCase()) return null // host element / member name — not a styled component
+  // Same-file styled def — edit its template in place.
   const def = findStyledDef(ast, tag)
-  if (!def) return null // imported (cross-file, 4D) or a plain component — route normally
-  if ('object' in def) return { kind: 'unsupported', reason: 'styled object syntax' }
-  return templateTarget(def.template, source, 'styled template has interpolations')
+  if (def) {
+    if ('object' in def) return { kind: 'unsupported', reason: 'styled object syntax' }
+    return templateTarget(def.template, source, 'styled template has interpolations')
+  }
+  // Imported from a relative module — defer to the server to resolve + edit. We can't
+  // tell here whether the import is actually styled (that needs the other file), so
+  // we speculate on every relative-imported capitalized component; the server warns
+  // and leaves it unchanged if the export turns out not to be styled. Package/alias
+  // imports (non-relative) are out of scope — route normally (inline).
+  const imp = findImportBinding(ast, tag)
+  if (imp && imp.specifier.startsWith('.')) {
+    return { kind: 'import', specifier: imp.specifier, exportName: imp.exportName }
+  }
+  return null
+}
+
+// A `export { local as exportName } from './spec'` re-export of `exportName`: the
+// module + the name it's exported under THERE, so a caller can follow the chain
+// through a barrel (`components/index.ts`). Only re-exports WITH a source (`from`)
+// need following — a sourceless `export { X }` re-exports a local binding that
+// findStyledDef already sees. `export *` barrels aren't followed (can't know which
+// star-source owns the name without searching them all). Null if not re-exported.
+function findReExport(ast: File, exportName: string): { specifier: string; exportName: string } | null {
+  let found: { specifier: string; exportName: string } | null = null
+  traverse(ast, {
+    ExportNamedDeclaration(path) {
+      if (found || !path.node.source) return
+      for (const s of path.node.specifiers) {
+        if (s.type !== 'ExportSpecifier') continue
+        const exported = s.exported.type === 'Identifier' ? s.exported.name : s.exported.value
+        if (exported === exportName) found = { specifier: path.node.source.value, exportName: s.local.name }
+      }
+    },
+  })
+  return found
+}
+
+// Server-side resolver for a StyledEdit: in a MODULE's source, locate the styled
+// export `exportName` and return its editable template range. Handles `export const
+// X = styled.div`…``, `export default styled.div`…``, and `export default X` where
+// `const X = styled…`. When the export is a re-export FROM another module (a barrel),
+// returns a `reexport` marker so the server can follow it one hop further. Returns an
+// `unsupported` marker for an interpolated or object-syntax export, or null when
+// there's no such styled export (the name isn't a styled component here). PURE — the
+// server hands it the file source; this only parses + locates, no I/O.
+export type StyledExportLoc =
+  | { bodyStart: number; bodyEnd: number; body: string }
+  | { reexport: { specifier: string; exportName: string } }
+  | { unsupported: string }
+  | null
+export function findStyledExport(source: string, exportName: string): StyledExportLoc {
+  let ast: File
+  try { ast = parseFile(source) } catch { return null }
+  const toLoc = (def: { template: TemplateLiteral } | { object: true } | null): StyledExportLoc => {
+    if (!def) return null
+    if ('object' in def) return { unsupported: 'styled object syntax' }
+    const t = templateTarget(def.template, source, 'styled template has interpolations')
+    return t.kind === 'template' ? { bodyStart: t.bodyStart, bodyEnd: t.bodyEnd, body: t.body } : { unsupported: t.reason }
+  }
+  if (exportName === 'default') {
+    let loc: StyledExportLoc = null
+    traverse(ast, {
+      ExportDefaultDeclaration(path) {
+        if (loc) return
+        const d = path.node.declaration
+        // `export default X` (name → find the const) or `export default styled.div`…``.
+        loc = d.type === 'Identifier' ? toLoc(findStyledDef(ast, d.name)) : toLoc(asStyledDef(d as Node))
+      },
+    })
+    if (loc) return loc
+    const re = findReExport(ast, 'default')
+    return re ? { reexport: re } : null
+  }
+  // A named export resolves to a same-file `const exportName = styled…` declarator
+  // (whether exported inline via `export const` or separately via `export { X }`),
+  // else a re-export `export { X } from './…'` we follow one hop (a barrel file).
+  const def = findStyledDef(ast, exportName)
+  if (def) return toLoc(def)
+  const re = findReExport(ast, exportName)
+  return re ? { reexport: re } : null
 }
 
 export function computeStyleEdit(
@@ -468,7 +588,7 @@ export function computeStyleEdit(
 ): StyleEditResult {
   const warnings: string[] = []
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
-  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [], moduleEdits: [] }
+  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [], moduleEdits: [], styledEdits: [] }
 
   // The host's class writer (Tailwind today) — owns how a value becomes a class
   // token, how to recognize an existing one, and which tokens are theme-bound.
@@ -481,11 +601,11 @@ export function computeStyleEdit(
   } catch (e) {
     // A file we can't parse (exotic syntax, a transient half-saved state) becomes
     // a skipped element with a warning — never a failed batch for its siblings.
-    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`], varEdits: [], moduleEdits: [] }
+    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`], varEdits: [], moduleEdits: [], styledEdits: [] }
   }
   const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
   if (!opening) {
-    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`], varEdits: [], moduleEdits: [] }
+    return { newContent: source, changed: false, warnings: [`no JSX element found at line ${line}`], varEdits: [], moduleEdits: [], styledEdits: [] }
   }
 
   const classInfo = analyzeClassName(opening)
@@ -510,8 +630,11 @@ export function computeStyleEdit(
   // Mutations on a CSS-modules-bound element; the server sets them in the module's
   // `.className` rule (see ModuleEdit). Collected across the loop below.
   const moduleEdits: ModuleEdit[] = []
-  // A styled/emotion target's template body, mutated across the loop and emitted as
-  // a single in-place patch below (same file — no deferred intent needed).
+  // Mutations on an IMPORTED styled component; the server resolves the module +
+  // edits its template (see StyledEdit). Collected across the loop below.
+  const styledEdits: StyledEdit[] = []
+  // A SAME-FILE styled/emotion target's template body, mutated across the loop and
+  // emitted as a single in-place patch below (no deferred intent needed).
   let styledBody = styledTarget?.kind === 'template' ? styledTarget.body : ''
   let styledTouched = false
 
@@ -609,6 +732,14 @@ export function computeStyleEdit(
         }
         continue
       }
+      // Imported styled component — defer to the server (it resolves the module and
+      // edits the export's template). One intent per CSS key, like ModuleEdit.
+      if (styledTarget.kind === 'import') {
+        for (const key of spec.css) {
+          styledEdits.push({ specifier: styledTarget.specifier, exportName: styledTarget.exportName, cssProp: key, value: m.value })
+        }
+        continue
+      }
       warnings.push(`${m.property}: ${styledTarget.reason} — wrote inline style instead`)
       routeInline(m, spec)
       continue
@@ -664,19 +795,19 @@ export function computeStyleEdit(
   }
 
   if (patches.length === 0) {
-    // No JSX patch — but a var edit or a module rule edit (in another file) may
-    // still be the real change, so don't report "nothing to change" when those
-    // carry the work.
-    const deferred = varEdits.length > 0 || moduleEdits.length > 0
+    // No JSX patch — but a var edit, a module rule edit, or an imported-styled edit
+    // (all in another file) may still be the real change, so don't report "nothing
+    // to change" when those carry the work.
+    const deferred = varEdits.length > 0 || moduleEdits.length > 0 || styledEdits.length > 0
     const w = deferred ? warnings : [...warnings, 'nothing to change']
-    return { newContent: source, changed: false, warnings: w, varEdits, moduleEdits }
+    return { newContent: source, changed: false, warnings: w, varEdits, moduleEdits, styledEdits }
   }
 
   // Apply patches right-to-left so earlier offsets stay valid.
   patches.sort((a, b) => b.start - a.start)
   let out = source
   for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
-  return { newContent: out, changed: true, warnings, varEdits, moduleEdits }
+  return { newContent: out, changed: true, warnings, varEdits, moduleEdits, styledEdits }
 }
 
 // ============================================================
