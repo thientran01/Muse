@@ -69,6 +69,11 @@ export default {
         'diff-del': 'rgb(var(--muse-diff-del-tint) / <alpha-value>)',
         'diff-del-text': 'rgb(var(--muse-diff-del-text) / <alpha-value>)',
       },
+      // A strong ease-out (Emil: the built-in curves are too weak) for the docs
+      // site's interactions — press feedback, the feedback panel, page entrances.
+      transitionTimingFunction: {
+        'out-strong': 'cubic-bezier(0.23, 1, 0.32, 1)',
+      },
       // Muse motion — keyframes describe WHAT moves; the `animation` block below
       // binds each to a duration + easing from the EASE/DUR tokens at the top of
       // this file (the single source of truth, per Emil's "encode the rules").
@@ -104,6 +109,16 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.95)' }, // never scale from <0.95 (Emil tip #2); matches the other entrances
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        // Docs-site page entrance on route change — a small fade + rise.
+        'site-fade-up': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        // Docs-site popover (feedback panel) — scales up from ~0.96, never 0.
+        'site-pop': {
+          '0%': { opacity: '0', transform: 'scale(0.96)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
       },
       // NOTE: the panel's open AND close are CSS *transitions* (muse.css
       // `.muse-panel-surface` + `@starting-style` + `[data-closing]`), NOT
@@ -118,6 +133,9 @@ export default {
         // FAB "catch" on collapse — 40ms delay so it emerges as the panel falls
         // in. (The panel collapse itself is a transition; see muse.css.)
         'muse-fab-catch': `muse-fab-catch ${DUR.mid} ${EASE.out} 40ms backwards`,
+        // Docs-site motion (strong ease-out, sub-300ms).
+        'site-in': 'site-fade-up 240ms cubic-bezier(0.23, 1, 0.32, 1)',
+        'site-pop': 'site-pop 180ms cubic-bezier(0.23, 1, 0.32, 1)',
       },
     },
   },
