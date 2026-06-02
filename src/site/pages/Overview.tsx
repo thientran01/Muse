@@ -22,13 +22,13 @@ export function Overview() {
       <div className="mt-7 flex flex-wrap gap-3">
         <a
           href="#/install"
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300 dark:focus-visible:ring-[#e3a384]/50"
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition duration-150 ease-out-strong hover:bg-stone-700 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 motion-reduce:active:scale-100 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300 dark:focus-visible:ring-[#e3a384]/50"
         >
           Get started
         </a>
         <a
           href="#/how"
-          className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800 dark:focus-visible:ring-[#e3a384]/50"
+          className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition duration-150 ease-out-strong hover:bg-stone-50 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 motion-reduce:active:scale-100 dark:border-stone-700 dark:bg-[#201d16] dark:text-stone-200 dark:hover:bg-stone-800 dark:focus-visible:ring-[#e3a384]/50"
         >
           See how it works
         </a>

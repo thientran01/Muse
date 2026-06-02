@@ -99,7 +99,11 @@ export default function SiteApp() {
         {/* Main */}
         <main className="min-w-0 flex-1 px-6 py-10 md:px-12 md:py-14">
           <div className="mx-auto max-w-2xl">
-            <Page />
+            {/* Keyed by route so the content re-mounts and the entrance plays on
+                each navigation (subtle fade + rise, strong ease-out). */}
+            <div key={page} className="animate-site-in motion-reduce:animate-none">
+              <Page />
+            </div>
             <footer className="mt-20 border-t border-stone-200 pt-6 text-[13px] text-stone-600 dark:border-stone-800 dark:text-stone-400">
               Muse, visual editing for the app you already have.
             </footer>
