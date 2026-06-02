@@ -7,37 +7,41 @@ export function Features() {
         What you can do
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
-        Canvas Mode is the main event: grab any element and shape it by hand. There is also a chat
-        partner for the times you would rather describe a change than make it. Everything below is
-        live, so press <Kbd>L</Kbd> and go.
+        Canvas Mode is the main way to work: select an element and shape it by hand. A chat partner
+        handles the changes you would rather describe than drag. Everything below is live, so press{' '}
+        <Kbd>L</Kbd> and start editing.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Canvas Mode
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Select something and edit it directly. No model, no API key, no latency. It just happens, and
-        every change is written to your source and is undoable.
+        Select an element and edit it directly. Spacing, size, type, color, copy, and order are all
+        draggable or clickable, and each change writes to your source and stays on the undo stack. A
+        direct edit is a known transform, so Muse applies it without a model call: instant, key-free,
+        and reversible.
       </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Spacing and layout</h3>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Drag padding, margin, and gap bands right on the element. Resize it. Reorder its siblings.
+            Drag padding, margin, and gap bands on the element itself, resize it from the corners, or
+            drag it among its siblings to reorder.
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Type, color, and text</h3>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Scrub size and weight, pick colors with a built-in picker, double-click to rewrite the copy.
+            Scrub size and weight, pick colors with a built-in picker, and double-click to rewrite the
+            copy in place.
           </p>
         </div>
       </div>
 
       <Callout tone="try">
-        <strong>Go wild on this card.</strong> Recolor the button, bump the heading, tighten the
-        spacing, rename it. It is just markup, and it is all yours until you refresh.
+        <strong>Go wild on this card.</strong> Recolor the button, push the heading bigger, tighten the
+        spacing, rename it. It is plain markup, and it stays yours until you refresh.
       </Callout>
 
       {/* Editable playground card (replaces the old pricing card). */}
@@ -52,7 +56,7 @@ export function Features() {
           </div>
         </div>
         <p className="mt-4 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-          A plain little card with a few moving parts, here so you have something real to push around.
+          A small card with a few moving parts, here to give you something real to push around.
         </p>
         <div className="mt-5 flex gap-3">
           <button type="button" className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300">
@@ -65,23 +69,23 @@ export function Features() {
       </div>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Or just describe it
+        Or describe it
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Some changes are easier to say than to drag. "Make this card feel warmer and less boxy." Muse
-        comes back with a few distinct directions, each a real edit you can preview in place, then you
-        pick one. If the ask is genuinely vague, it asks one quick question instead of guessing. The
-        chat is the supporting act here. Canvas is where you will spend your time.
+        Some changes read better as a sentence than a drag. Tell Muse to make a card feel warmer and
+        less boxy and it answers with a few directions, each a real edit you can preview in place before
+        you commit to one. When a request is genuinely open-ended, it asks a single question first. The
+        agent carries intent; Canvas carries the hands-on work.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Keep edits on brand
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it on every chat edit, so the AI
-        reaches for your real tokens instead of guessing a hex. It follows Google's{' '}
+        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it before every chat edit, so the
+        model reaches for your real tokens rather than a guessed hex. It follows Google's{' '}
         <a className="underline" href="https://github.com/google-labs-code/design.md">DESIGN.md format</a>:
-        a little YAML up top for colors, type, and spacing, then prose for the vibe.
+        a little YAML up top for colors, type, and spacing, then prose for the feel.
       </p>
       <CodeBlock label="DESIGN.md">{`---
 colors:
@@ -94,8 +98,8 @@ typography:
 ## Brand & Style
 Warm and tool-like. One brick accent, used sparingly.`}</CodeBlock>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Do not want to write one by hand? Muse can draft it from your code with{' '}
-        <Code>npm run design:gen</Code>, then you tidy it up.
+        Muse can draft one from your code with <Code>npm run design:gen</Code>, then you refine it by
+        hand.
       </p>
     </article>
   )
