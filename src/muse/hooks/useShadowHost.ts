@@ -27,7 +27,11 @@ export function useShadowHost(): HTMLElement | null {
     host.setAttribute('data-muse-ui', '')
     // Light-DOM host: out of layout flow, never intercepts page clicks. The chrome
     // inside re-enables pointer-events per interactive element (as it always has).
-    host.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;'
+    // Max z-index so the overlay stacks ABOVE the host's own positioned chrome (a
+    // fixed header/nav would otherwise paint over the top banner): the inner z-[…]
+    // values only order things WITHIN the shadow; the host's z-index is what places
+    // the whole overlay in the page's stacking order.
+    host.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;z-index:2147483647;'
 
     const shadow = host.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
