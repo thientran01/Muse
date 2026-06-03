@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CaretLeft } from '@phosphor-icons/react'
 import './muse.css'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { EPHEMERAL, MOCK } from './config'
@@ -648,15 +649,25 @@ export function MuseOverlay() {
 
   // --- Panel tucks aside ---
   // When the element handed to the agent sits under the panel, the panel slides off
-  // the right edge into the void, leaving a small tab peeking. The element underneath
-  // is fully visible (you can read it, double-click to edit it). Hover the tab — or
-  // focus anything inside — and the panel pulls back to home; move away and it tucks
-  // again. It stays edge-anchored the whole time, so it never floats mid-screen.
+  // the right edge, leaving a small tab peeking; the element underneath is fully
+  // visible (read it, double-click to edit). Hover the tab — or focus anything inside
+  // — and it pulls back to home; move away and it tucks again. It stays edge-anchored
+  // the whole time, so it never floats mid-screen.
+  //
+  // Engagement is read off a FIXED hysteresis zone, NOT the panel's own
+  // mouseenter/leave: the panel MOVES when it pulls back, so hovering the moving
+  // element let the cursor fall just outside it and flip-flop. Instead — ENTER by
+  // crossing into the peek strip, STAY anywhere over the home footprint out to the
+  // screen edge (so the pulled-back panel never slides out from under the cursor),
+  // and only tuck after a short grace delay so it sticks.
   const PEEK = 44 // px of the panel left poking past the right edge when tucked
   const panelWrapRef = useRef<HTMLDivElement>(null)
   const tuckXRef = useRef(0)
+  const engagedRef = useRef(false)
+  const tuckTimerRef = useRef(0)
+  const zoneRef = useRef<{ peekLeft: number; homeLeft: number; edge: number; top: number; bottom: number } | null>(null)
   const [tuckX, setTuckX] = useState(0) // resting tuck offset (0 = home, >0 = tucked right)
-  const [panelHover, setPanelHover] = useState(false)
+  const [engaged, setEngagedState] = useState(false) // pulled back to home by hover
   const [panelFocus, setPanelFocus] = useState(false)
 
   useEffect(() => {
@@ -667,15 +678,53 @@ export function MuseOverlay() {
       tuckXRef.current = x
       setTuckX(x)
     }
+    const clearClose = () => {
+      if (tuckTimerRef.current) {
+        clearTimeout(tuckTimerRef.current)
+        tuckTimerRef.current = 0
+      }
+    }
+    // Engage instantly; disengage only after a short grace, so a quick excursion off
+    // the panel (or the brief gap while it slides) doesn't tuck it.
+    const engage = (v: boolean) => {
+      if (v) {
+        clearClose()
+        if (!engagedRef.current) {
+          engagedRef.current = true
+          setEngagedState(true)
+        }
+      } else if (engagedRef.current && !tuckTimerRef.current) {
+        tuckTimerRef.current = window.setTimeout(() => {
+          tuckTimerRef.current = 0
+          engagedRef.current = false
+          setEngagedState(false)
+        }, 140)
+      }
+    }
+
     if (!agentOpen || !node || !wrap) {
       setTuck(0)
+      zoneRef.current = null
+      clearClose()
+      engagedRef.current = false
+      setEngagedState(false)
       return
+    }
+    // A fresh selection starts tucked (revealing the element); hover re-engages.
+    clearClose()
+    if (engagedRef.current) {
+      engagedRef.current = false
+      setEngagedState(false)
     }
 
     const M = 24 // the wrapper's bottom-6 / right-6 inset (1.5rem)
+    const PAD = 12 // vertical slack on the stay-zone so edge wobble doesn't disengage
 
     const recompute = () => {
-      if (!node.isConnected) return setTuck(0)
+      if (!node.isConnected) {
+        zoneRef.current = null
+        return setTuck(0)
+      }
       // Resting rect from layout size (offset*, transform-independent) + the fixed
       // bottom-right inset, so the open/close scale animation can't perturb it.
       const w = wrap.offsetWidth
@@ -685,11 +734,31 @@ export function MuseOverlay() {
       // is positioned in and that getBoundingClientRect reports in.
       const vw = document.documentElement.clientWidth
       const vh = document.documentElement.clientHeight
+      const homeLeft = vw - M - w
+      const top = vh - M - h
+      const bottom = vh - M
       const t = node.getBoundingClientRect()
-      const overlaps =
-        vw - M - w < t.right && vw - M > t.left && vh - M - h < t.bottom && vh - M > t.top
-      // Tucked = slide right until only PEEK px remain on-screen; 0 when not in the way.
-      setTuck(overlaps ? w + M - PEEK : 0)
+      const overlaps = homeLeft < t.right && vw - M > t.left && top < t.bottom && bottom > t.top
+      if (!overlaps) {
+        zoneRef.current = null
+        engage(false)
+        return setTuck(0)
+      }
+      setTuck(w + M - PEEK)
+      // ENTER via the peek strip; STAY over the whole home footprint out to the
+      // screen edge — fixed bounds, so the moving panel can't flip-flop hover.
+      zoneRef.current = { peekLeft: vw - PEEK, homeLeft, edge: vw, top: top - PAD, bottom: bottom + PAD }
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const z = zoneRef.current
+      if (!z) return
+      const inBand = e.clientY >= z.top && e.clientY <= z.bottom
+      if (engagedRef.current || tuckTimerRef.current) {
+        engage(inBand && e.clientX >= z.homeLeft && e.clientX <= z.edge)
+      } else if (inBand && e.clientX >= z.peekLeft && e.clientX <= z.edge) {
+        engage(true)
+      }
     }
 
     recompute()
@@ -697,17 +766,33 @@ export function MuseOverlay() {
     ro.observe(wrap)
     window.addEventListener('scroll', recompute, true)
     window.addEventListener('resize', recompute)
+    document.addEventListener('pointermove', onPointerMove, true)
     return () => {
       ro.disconnect()
+      clearClose()
       window.removeEventListener('scroll', recompute, true)
       window.removeEventListener('resize', recompute)
+      document.removeEventListener('pointermove', onPointerMove, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentOpen, single?.key])
 
-  // Pulled fully back to home while hovering or typing in it; otherwise it rests
-  // tucked off the right edge so the element underneath stays visible.
-  const panelTx = panelHover || panelFocus ? 0 : tuckX
+  // Keep the panel home (not tucked) while the agent is working and for a beat
+  // after, so a fresh selection's read and the agent's reply aren't tucked away
+  // before they can be seen. Refreshed on a new selection, a new thread message,
+  // or a loading flip.
+  const [holdOpen, setHoldOpen] = useState(false)
+  useEffect(() => {
+    setHoldOpen(true)
+    const id = window.setTimeout(() => setHoldOpen(false), 1800)
+    return () => clearTimeout(id)
+  }, [agentOpen, single?.key, thread.length, loading])
+
+  // Pulled fully back to home while engaged (hover), typing in it, or actively
+  // working (loading / hold); otherwise it rests tucked off the right edge so the
+  // element underneath stays visible. `tucked` drives the peek-tab affordance.
+  const panelTx = engaged || panelFocus || loading || holdOpen ? 0 : tuckX
+  const tucked = panelTx > 0
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
@@ -740,18 +825,27 @@ export function MuseOverlay() {
         <div
           ref={panelWrapRef}
           // Tucks off the right edge when the agent's element is underneath it, and
-          // pulls back on hover/focus (see the effect above). pointer-events-auto so
-          // the peeking tab is hoverable. A quiet ease-out so the move is felt, not
-          // watched.
-          onMouseEnter={() => setPanelHover(true)}
-          onMouseLeave={() => setPanelHover(false)}
+          // pulls back when the cursor enters the fixed hover zone (tracked by the
+          // effect above) or focus lands inside. pointer-events-auto so the peeking
+          // tab is clickable; a quiet ease-out so the move is felt, not watched.
           onFocus={() => setPanelFocus(true)}
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPanelFocus(false)
           }}
+          data-muse-dock
           className="pointer-events-auto absolute bottom-6 right-6 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
           style={{ transform: `translate3d(${panelTx}px, 0, 0)` }}
         >
+          {/* Peek-tab handle: a chevron on the panel's left edge that fades in while
+              tucked, so the sliver reads as "pull me out", not "closed". */}
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute left-1.5 top-1/2 z-10 flex h-9 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-surface-soft text-fg-muted shadow-md shadow-black/10 ring-1 ring-line/10 transition-opacity duration-200 ${
+              tucked ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <CaretLeft size={13} weight="bold" />
+          </div>
           <MusePanel
             mock={MOCK}
             closing={closing}
