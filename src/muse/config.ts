@@ -7,11 +7,14 @@
 //  `undefined`, so reading `import.meta.env.VITE_X` throws. Every config value
 //  is therefore resolved through a guarded reader that checks, in order:
 //    1. import.meta.env   (Vite — guarded so non-Vite bundlers don't choke)
-//    2. window.__MUSE__   (a plain object any host can set before mount)
+//    2. window.__MUSE__   (a plain object any host sets BEFORE the bundle loads)
 //    3. process.env       (Node / SSR safety)
-//  The host can also override at runtime via configureMuse() (e.g. from a
-//  <MuseOverlay apiBase=…/> prop). Defaults give a real host with no config the
-//  production behavior: live backend, real writes, same-origin API.
+//  MOCK and EPHEMERAL are resolved ONCE at import (they're consts), so a host
+//  that wants them on must set window.__MUSE__ before this module first loads.
+//  apiBase is the only value overridable after load — via configureMuse() (e.g.
+//  a <MuseOverlay apiBase=…/> prop), since it's read lazily at fetch time.
+//  Defaults give a real host with no config the production behavior: live
+//  backend, real writes, same-origin API.
 // ============================================================
 
 // Friendly shape a non-Vite host sets as `window.__MUSE__` before the overlay
@@ -51,8 +54,9 @@ function flag(viteKey: string, globalKey: 'mock' | 'ephemeral', procKey: string)
 }
 
 // MOCK mode: when on, the overlay runs the whole flow on fixtures — no Claude API
-// calls, no file writes — so the UI can be polished for free. Vite: VITE_MUSE_MOCK=1
-// in .env.local (then restart). Any host: window.__MUSE__ = { mock: true }.
+// calls, no file writes — so the UI can be polished for free. Resolved at import:
+// Vite VITE_MUSE_MOCK=1 in .env.local (then restart), or set window.__MUSE__ =
+// { mock: true } BEFORE the overlay bundle loads.
 export const MOCK = flag('VITE_MUSE_MOCK', 'mock', 'MUSE_MOCK')
 
 // EPHEMERAL mode: Canvas Mode edits apply in-browser only — no server style/
@@ -66,9 +70,10 @@ export const EPHEMERAL = flag('VITE_MUSE_EPHEMERAL', 'ephemeral', 'MUSE_EPHEMERA
 // ---- API base ----------------------------------------------------------------
 // Base URL the overlay prepends to every /api/muse/* call. '' = same-origin —
 // correct for the Vite dev plugin AND a same-origin Next.js dev API route. Point
-// it at a standalone muse-server (e.g. 'http://localhost:4747') for hosts whose
-// bundler can't serve the backend in-process. Read LAZILY (getApiBase) so a
-// mount-time configureMuse() override wins over the import-time default.
+// it at a standalone muse-server ORIGIN (e.g. 'http://localhost:4747' — not a
+// full /api/muse path) for hosts whose bundler can't serve the backend
+// in-process. The env sources are captured at import, but getApiBase() reads
+// `state` per call, so a mount-time configureMuse() override still wins.
 const state = {
   apiBase: (museGlobal()?.apiBase ?? viteVar('VITE_MUSE_API_BASE') ?? procVar('MUSE_API_BASE') ?? '')
     .replace(/\/+$/, ''),
