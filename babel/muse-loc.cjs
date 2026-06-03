@@ -37,6 +37,19 @@ function museLoc({ types: t }) {
         if (process.env.NODE_ENV === 'production') return
 
         const node = path.node
+        // <Fragment> / <React.Fragment> can't carry props — stamping it throws a
+        // React error ("Invalid prop data-muse-loc supplied to React.Fragment").
+        // (A shorthand <> is a JSXFragment, not a JSXOpeningElement, so it's never
+        // visited here.) Fragments don't reach the DOM, so there's nothing to locate.
+        const name = node.name
+        if (
+          (t.isJSXIdentifier(name) && name.name === 'Fragment') ||
+          (t.isJSXMemberExpression(name) &&
+            t.isJSXIdentifier(name.property) &&
+            name.property.name === 'Fragment')
+        ) {
+          return
+        }
         if (!node.loc) return
         const filename = (state && state.filename) || ''
         if (!filename) return
