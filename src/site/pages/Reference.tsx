@@ -44,13 +44,14 @@ export function Reference() {
         real, mergeable code.
       </P>
       <P>
-        <strong>React 18.</strong> The fiber debug-source trick relies on a semi-private API that React
-        19 removed, so React 18 is pinned on purpose.
+        <strong>Source under src/.</strong> Writes are bounded to your project's <Code>src/</Code>
+        directory, so the components you want to edit need to live there. Next.js App Router projects can
+        use the <Code>src/app</Code> layout.
       </P>
       <P>
-        <strong>Built for utility classes.</strong> Canvas edits Tailwind classes in your markup,
-        so apps that route everything through CSS variables or styled-components give it less to grab.
-        Broader styling support is on the way.
+        <strong>Styling.</strong> Canvas edits Tailwind utility classes, inline styles, CSS variables,
+        CSS Modules, and styled-components or emotion. It picks the writer that matches your project, so
+        most styling systems are covered rather than Tailwind alone.
       </P>
     </article>
   )
