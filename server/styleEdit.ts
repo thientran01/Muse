@@ -849,7 +849,12 @@ export function computeStyleEdit(
       routeInline(m, spec)
       continue
     }
-    const useTailwind = strategy === 'tailwind-first' && classEditable
+    // On a Tailwind host, a CLASSLESS element (no className attribute at all — e.g.
+    // `<p style={body}>` with a shared style object, a very common pattern) can have
+    // a utility class AUTHORED. Only a NON-editable className (an expression we can't
+    // safely touch) stays on the inline path. Without this, such elements divert to
+    // inline and skip ("style is not an object literal"), so no edit is ever written.
+    const useTailwind = strategy === 'tailwind-first' && (classEditable || classInfo === null)
     // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
     // className.
@@ -872,11 +877,18 @@ export function computeStyleEdit(
 
   const patches: Patch[] = []
 
-  if (classTouched && classInfo?.editable) {
-    const ci = classInfo as { start: number; end: number; delimiter: 'string' | 'template' }
+  if (classTouched) {
     const next = classTokens.join(' ')
-    const text = ci.delimiter === 'template' ? `{\`${next}\`}` : `"${next}"`
-    patches.push({ start: ci.start, end: ci.end, text })
+    if (classInfo?.editable) {
+      const ci = classInfo as { start: number; end: number; delimiter: 'string' | 'template' }
+      const text = ci.delimiter === 'template' ? `{\`${next}\`}` : `"${next}"`
+      patches.push({ start: ci.start, end: ci.end, text })
+    } else if (classInfo === null) {
+      // No className attribute yet — author one (a class edit on a classless element).
+      // Insert right after the tag name, mirroring the style-insert below.
+      const at = opening.name.end as number
+      patches.push({ start: at, end: at, text: ` className="${next}"` })
+    }
   }
 
   if (styleTouched) {
