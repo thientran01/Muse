@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CaretLeft } from '@phosphor-icons/react'
 import './muse.css'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { EPHEMERAL, MOCK } from './config'
@@ -663,7 +664,7 @@ export function MuseOverlay() {
   const panelWrapRef = useRef<HTMLDivElement>(null)
   const tuckXRef = useRef(0)
   const engagedRef = useRef(false)
-  const closeTimerRef = useRef(0)
+  const tuckTimerRef = useRef(0)
   const zoneRef = useRef<{ peekLeft: number; homeLeft: number; edge: number; top: number; bottom: number } | null>(null)
   const [tuckX, setTuckX] = useState(0) // resting tuck offset (0 = home, >0 = tucked right)
   const [engaged, setEngagedState] = useState(false) // pulled back to home by hover
@@ -678,9 +679,9 @@ export function MuseOverlay() {
       setTuckX(x)
     }
     const clearClose = () => {
-      if (closeTimerRef.current) {
-        clearTimeout(closeTimerRef.current)
-        closeTimerRef.current = 0
+      if (tuckTimerRef.current) {
+        clearTimeout(tuckTimerRef.current)
+        tuckTimerRef.current = 0
       }
     }
     // Engage instantly; disengage only after a short grace, so a quick excursion off
@@ -692,9 +693,9 @@ export function MuseOverlay() {
           engagedRef.current = true
           setEngagedState(true)
         }
-      } else if (engagedRef.current && !closeTimerRef.current) {
-        closeTimerRef.current = window.setTimeout(() => {
-          closeTimerRef.current = 0
+      } else if (engagedRef.current && !tuckTimerRef.current) {
+        tuckTimerRef.current = window.setTimeout(() => {
+          tuckTimerRef.current = 0
           engagedRef.current = false
           setEngagedState(false)
         }, 140)
@@ -753,7 +754,7 @@ export function MuseOverlay() {
       const z = zoneRef.current
       if (!z) return
       const inBand = e.clientY >= z.top && e.clientY <= z.bottom
-      if (engagedRef.current || closeTimerRef.current) {
+      if (engagedRef.current || tuckTimerRef.current) {
         engage(inBand && e.clientX >= z.homeLeft && e.clientX <= z.edge)
       } else if (inBand && e.clientX >= z.peekLeft && e.clientX <= z.edge) {
         engage(true)
@@ -776,9 +777,22 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentOpen, single?.key])
 
-  // Pulled fully back to home while engaged (hover) or typing in it; otherwise it
-  // rests tucked off the right edge so the element underneath stays visible.
-  const panelTx = engaged || panelFocus ? 0 : tuckX
+  // Keep the panel home (not tucked) while the agent is working and for a beat
+  // after, so a fresh selection's read and the agent's reply aren't tucked away
+  // before they can be seen. Refreshed on a new selection, a new thread message,
+  // or a loading flip.
+  const [holdOpen, setHoldOpen] = useState(false)
+  useEffect(() => {
+    setHoldOpen(true)
+    const id = window.setTimeout(() => setHoldOpen(false), 1800)
+    return () => clearTimeout(id)
+  }, [agentOpen, single?.key, thread.length, loading])
+
+  // Pulled fully back to home while engaged (hover), typing in it, or actively
+  // working (loading / hold); otherwise it rests tucked off the right edge so the
+  // element underneath stays visible. `tucked` drives the peek-tab affordance.
+  const panelTx = engaged || panelFocus || loading || holdOpen ? 0 : tuckX
+  const tucked = panelTx > 0
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
@@ -818,9 +832,20 @@ export function MuseOverlay() {
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPanelFocus(false)
           }}
+          data-muse-dock
           className="pointer-events-auto absolute bottom-6 right-6 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
           style={{ transform: `translate3d(${panelTx}px, 0, 0)` }}
         >
+          {/* Peek-tab handle: a chevron on the panel's left edge that fades in while
+              tucked, so the sliver reads as "pull me out", not "closed". */}
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute left-1.5 top-1/2 z-10 flex h-9 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-surface-soft text-fg-muted shadow-md shadow-black/10 ring-1 ring-line/10 transition-opacity duration-200 ${
+              tucked ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <CaretLeft size={13} weight="bold" />
+          </div>
           <MusePanel
             mock={MOCK}
             closing={closing}

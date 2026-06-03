@@ -14,7 +14,7 @@
 //  Environment variables (all optional except MUSE_ROOT if cwd ≠ project root):
 //    MUSE_ROOT          Project root (default: cwd)
 //    MUSE_PORT          Port to listen on (default: 4747)
-//    MUSE_CORS_ORIGIN   Allowed origin (default: "*", restrict in production)
+//    MUSE_CORS_ORIGIN   Allowed origin (default: localhost-only; set to "*" to allow any)
 //    ANTHROPIC_API_KEY  For the /observe endpoint (Haiku) and api backend /chat
 //    MUSE_BACKEND       "claude-cli" (default) | "anthropic"
 //    MUSE_MODEL         Model for /chat anthropic backend
@@ -29,13 +29,25 @@ import { createMuseContext, createMuseHandlers, type Handler } from './museCore'
 
 const port = parseInt(process.env.MUSE_PORT ?? '4747', 10)
 const root = process.env.MUSE_ROOT ?? process.cwd()
-const corsOrigin = process.env.MUSE_CORS_ORIGIN ?? '*'
+// MUSE_CORS_ORIGIN overrides the default. Without it, only localhost/127.0.0.1 origins
+// are allowed — this prevents a malicious tab from writing to source files via the
+// write endpoints. Set MUSE_CORS_ORIGIN='*' to revert to permissive (old default).
+const corsOverride = process.env.MUSE_CORS_ORIGIN ?? null
+const LOCALHOST_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
 
 const ctx = createMuseContext(process.env as Record<string, string | undefined>, root)
 const handlers = createMuseHandlers(ctx)
 
-function addCors(res: ServerResponse) {
-  res.setHeader('Access-Control-Allow-Origin', corsOrigin)
+function addCors(req: IncomingMessage, res: ServerResponse) {
+  const origin = req.headers.origin ?? ''
+  if (corsOverride) {
+    // Explicit env override: use as-is (e.g. MUSE_CORS_ORIGIN='*' for permissive dev).
+    res.setHeader('Access-Control-Allow-Origin', corsOverride)
+  } else if (!origin || LOCALHOST_RE.test(origin)) {
+    // Default: allow localhost origins only; no-origin (same-origin) requests pass too.
+    res.setHeader('Access-Control-Allow-Origin', origin || '*')
+  }
+  // No ACAO header for other origins → browser blocks the request.
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
@@ -56,7 +68,7 @@ const ROUTES = new Map<string, Handler>([
 ])
 
 const server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {
-  addCors(res)
+  addCors(req, res)
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204
@@ -90,5 +102,6 @@ server.listen(port, () => {
   console.log(`[muse] standalone server  http://localhost:${port}`)
   console.log(`[muse] root              ${root}`)
   console.log(`[muse] backend           ${ctx.backend}`)
-  console.log(`[muse] cors origin       ${corsOrigin}`)
+  console.log(`[muse] cors origin       ${corsOverride ?? 'localhost-only (default)'}`)
+  if (!corsOverride) console.log(`[muse] tip: set MUSE_CORS_ORIGIN='*' to allow any dev origin`)
 })

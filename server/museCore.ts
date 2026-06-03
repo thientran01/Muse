@@ -756,7 +756,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, ctx: MuseCo
     if (ctx.backend !== 'claude-cli' && !ctx.apiKey) {
       return sendJson(res, 500, {
         error:
-          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the repo root (ANTHROPIC_API_KEY=sk-ant-...) and restart the dev server.',
+          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the project root (ANTHROPIC_API_KEY=sk-ant-...) or export it in your shell, then restart the server.',
       })
     }
 
@@ -837,7 +837,7 @@ async function handleObserve(req: IncomingMessage, res: ServerResponse, ctx: Mus
     if (!ctx.apiKey) {
       return sendJson(res, 500, {
         error:
-          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the repo root (ANTHROPIC_API_KEY=sk-ant-...) and restart the dev server.',
+          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the project root (ANTHROPIC_API_KEY=sk-ant-...) or export it in your shell, then restart the server.',
       })
     }
 
