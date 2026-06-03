@@ -201,6 +201,7 @@ export function CanvasMode({
   // the normal server path (where undo restores file content).
   const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string>; before: Map<HTMLElement, string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
+  const stripObsRef = useRef<MutationObserver | null>(null)
   // Canvas renders its OWN [data-muse-ui] root (separate from the chat overlay's),
   // so it needs its own data-theme or muse.css's dark defaults win on a light host.
   // This ref doubles as the portal target for popovers that must escape the panel's
@@ -243,6 +244,42 @@ export function CanvasMode({
     if (!p) return
     stripInline(p.nodes, p.keys)
     previewRef.current = null
+  }
+
+  const cancelStripWatch = () => {
+    if (stripObsRef.current) { stripObsRef.current.disconnect(); stripObsRef.current = null }
+    if (clearTimerRef.current) { clearTimeout(clearTimerRef.current); clearTimerRef.current = null }
+  }
+  // After a source write, keep the inline preview until the host RE-RENDERS the
+  // element from the new source, THEN strip it. A fixed 160ms timer stripped too
+  // early on slower HMR (Next/Turbopack does an RSC refresh, not instant Vite HMR),
+  // so the element snapped back to its old look until a re-select re-read it. Watch
+  // for the re-render — the node's class/style mutating in place (Fast Refresh) OR
+  // the node being replaced/removed (RSC) — and strip then. The preview value equals
+  // the committed value, so it stays visually correct while we wait; a generous
+  // fallback strips anyway so it can't linger if no re-render ever fires.
+  const stripAfterRerender = (snap: { nodes: HTMLElement[]; keys: Set<string> }) => {
+    cancelStripWatch()
+    const nodes = snap.nodes
+    const finish = () => {
+      cancelStripWatch()
+      stripInline(snap.nodes, snap.keys)
+      bump((v) => v + 1)
+    }
+    const obs = new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === 'attributes' && nodes.includes(r.target as HTMLElement)) return finish()
+        if (r.type === 'childList') {
+          for (const n of r.removedNodes) if (nodes.includes(n as HTMLElement)) return finish()
+        }
+      }
+    })
+    for (const n of nodes) {
+      obs.observe(n, { attributes: true, attributeFilter: ['class', 'style'] })
+      if (n.parentNode) obs.observe(n.parentNode, { childList: true })
+    }
+    stripObsRef.current = obs
+    clearTimerRef.current = window.setTimeout(finish, 5000)
   }
 
   // Re-read computed values + reposition when the target or revision changes.
@@ -412,7 +449,7 @@ export function CanvasMode({
   }, [selected, reorderable])
 
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
-  useEffect(() => () => { if (clearTimerRef.current) clearTimeout(clearTimerRef.current) }, [])
+  useEffect(() => () => cancelStripWatch(), [])
 
   // Show a brief "can't edit this" hint at the click point on an unmappable click.
   useEffect(() => {
@@ -568,11 +605,8 @@ export function CanvasMode({
       // so a fresh scrub starts clean. Cancel any prior pending strip.
       const snap = previewRef.current
       previewRef.current = null
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
-      clearTimerRef.current = window.setTimeout(() => {
-        if (snap) stripInline(snap.nodes, snap.keys)
-        bump((v) => v + 1)
-      }, 160)
+      if (snap) stripAfterRerender(snap)
+      else bump((v) => v + 1)
     } catch (e) {
       clearPreview()
       setError((e as Error).message)
