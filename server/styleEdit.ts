@@ -381,11 +381,13 @@ const BOX_SHORTHANDS: Record<string, [string, string, string, string]> = {
 
 // Expand a 1–4 token box value into [top, right, bottom, left] per the CSS shorthand
 // rule: 1→all, 2→[v,h], 3→[t,h,b], 4→[t,r,b,l]. Returns null for a value we can't
-// safely tokenize on whitespace — a var()/calc()/anything with parens has internal
-// spaces that aren't side boundaries, so the caller leaves the shorthand intact.
+// safely tokenize on whitespace, so the caller leaves the shorthand intact:
+//   • parens — var()/calc()/etc. have internal spaces that aren't side boundaries.
+//   • `!important` — a declaration suffix the parser captured into the value string;
+//     splitting it would emit a side whose value is literally "!important" (broken).
 function expandBoxValue(value: string): [string, string, string, string] | null {
   const v = value.trim()
-  if (v.includes('(')) return null // var()/calc()/etc — don't split internal spaces
+  if (v.includes('(') || v.includes('!')) return null
   const t = v.split(/\s+/).filter(Boolean)
   if (t.length === 0 || t.length > 4) return null
   const [a, b = a, c = a, d = b] = t
@@ -398,7 +400,10 @@ function expandBoxValue(value: string): [string, string, string, string] | null 
 // overrides an earlier one) so the scrubbed longhand still wins without the mix. The
 // expansion is emitted at the LAST family key's position; other family keys are folded
 // in. `touched` are the css keys THIS edit wrote — we only normalize a family the edit
-// actually touched, leaving a user's own pre-existing mix (their code) byte-identical.
+// actually touched, so a family the edit never went near stays byte-identical. (When
+// the edit DOES touch a family that already had its own shorthand+longhand mix, we
+// expand that too — but last-write-wins preserves the author's winning value, and that
+// mix was already tripping the React 19 warning, so resolving it is the right call.)
 function expandConflictingShorthands(
   props: Array<[string, string]>,
   touched: Set<string>,
