@@ -158,7 +158,15 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // popover + box-model overlay, scrubs live (inline style), and commits each
 // change to source deterministically — landing in the same undo/redo history as
 // chat edits.
-export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscalate?: (el: SelectedElement) => void }) {
+export function CanvasMode({
+  onExit,
+  onEscalate,
+  onTuckTarget,
+}: {
+  onExit: () => void
+  onEscalate?: (el: SelectedElement) => void
+  onTuckTarget?: (node: HTMLElement | null) => void
+}) {
   const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, selectElement, editing, exitEditing, miss } =
     useCanvasMode({ onEscalate })
   const [revision, bump] = useState(0)
@@ -199,6 +207,16 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
   // overflow (the color picker).
   const rootRef = useRef<HTMLDivElement>(null)
   useHostTheme(rootRef)
+
+  // Tell the overlay which element the agent panel should tuck away from: ONLY a
+  // plain-click (Canvas) selection — that's a direct-manipulation intent, so the
+  // panel should yield. A Shift-click hands the element to the agent (panelDeferred),
+  // so we report null and the panel stays put (you asked for the agent). Clear on
+  // unmount so a stale node can't keep the panel tucked while it's closing.
+  useEffect(() => {
+    onTuckTarget?.(selected && !panelDeferred ? selected.node : null)
+  }, [selected, panelDeferred, onTuckTarget])
+  useEffect(() => () => onTuckTarget?.(null), [onTuckTarget])
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
   const startedRef = useRef(false)
