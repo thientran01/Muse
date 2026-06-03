@@ -12,18 +12,19 @@ export function HowItWorks() {
 
       <H2 id="mapping">From a click to a source file</H2>
       <P>
-        In development, <Code>@vitejs/plugin-react</Code> stamps every React fiber with where it came
-        from: file, line, and column, under <Code>_debugSource</Code>. Every DOM node points back to its
-        fiber, so Muse walks up from whatever you clicked until it reaches that location. This demo keeps
-        the debug info in its build on purpose, which is why selection works here.
+        In development, a small build-time plugin stamps every element with where it came from: file,
+        line, and column, in a <Code>data-muse-loc</Code> attribute. Muse reads that straight off the node
+        you clicked, so a click resolves to an exact source position without leaning on React internals.
+        That is what keeps it working across React 18 and 19 and any bundler that can run the plugin.
+        Where the attribute is missing, it falls back to React's fiber debug source.
       </P>
 
-      <H2 id="backend">Why a Vite plugin</H2>
+      <H2 id="backend">The backend</H2>
       <P>
-        Reading and writing source needs filesystem access. A standalone server would mean CORS and a
-        second process to run, and a cloud function would sit too far from your local files. So Muse
-        hangs its endpoints off the Vite dev server you already have: one command, same origin,
-        development only.
+        Reading and writing source needs filesystem access, so Muse runs a small development-only backend
+        with the same handlers behind every host. On Vite it rides the dev server you already have; on
+        Next.js it is a development API route; for anything else a tiny local server fills in. Same origin
+        where it can be, one extra process where it cannot, development only either way.
       </P>
 
       <H2 id="canvas-engine">Why Canvas edits are instant</H2>
