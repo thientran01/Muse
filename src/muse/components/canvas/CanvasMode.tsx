@@ -46,7 +46,7 @@ function readValues(node: HTMLElement): CanvasValues {
     },
     // Direct text content (not just descendants) → this element styles visible text.
     rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
-    color: { text: rgbToHex(cs.color), background: rgbToHex(cs.backgroundColor), border: rgbToHex(cs.borderColor) },
+    color: { text: rgbToHex(cs.color), background: effectiveBgHex(node), border: rgbToHex(cs.borderColor) },
     // A var-themed channel reads its color from a CSS variable in the source class
     // (e.g. text-[color:var(--c-on-bg)]) — Muse leaves those alone, so mark read-only.
     colorThemed: {
@@ -67,11 +67,47 @@ function directText(node: HTMLElement): string {
     .join('')
 }
 
+// Parse an rgb()/rgba() string into channels + alpha (alpha defaults to 1).
+function parseRgba(c: string): { r: number; g: number; b: number; a: number } | null {
+  const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?/)
+  if (!m) return null
+  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] }
+}
+
+const hex2 = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0')
+
 // rgb()/rgba() → #rrggbb for the color picker's current value (alpha dropped).
 function rgbToHex(c: string): string {
-  const m = c.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-  if (!m) return '#000000'
-  return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
+  const p = parseRgba(c)
+  if (!p) return '#000000'
+  return '#' + hex2(p.r) + hex2(p.g) + hex2(p.b)
+}
+
+// The EFFECTIVE background a designer actually sees: the element's own background
+// composited over whatever shows through it. Dropping the alpha makes a transparent
+// or low-opacity fill (e.g. a `hover:bg-white/5` nav item over a dark page) read as
+// a misleading solid #ffffff / #000000. Walk ancestors collecting background layers
+// until an opaque one, then composite them bottom-up so the result is what's on
+// screen at that spot.
+function effectiveBgHex(node: HTMLElement): string {
+  const layers: Array<{ r: number; g: number; b: number; a: number }> = []
+  let el: HTMLElement | null = node
+  while (el) {
+    const c = parseRgba(getComputedStyle(el).backgroundColor)
+    if (c && c.a > 0) {
+      layers.push(c)
+      if (c.a >= 1) break // opaque backdrop — nothing below it shows through
+    }
+    el = el.parentElement
+  }
+  const bottom = layers[layers.length - 1]
+  let base = bottom && bottom.a >= 1 ? { r: bottom.r, g: bottom.g, b: bottom.b } : { r: 255, g: 255, b: 255 }
+  // Composite each layer above the base, from just-above-base up to the element.
+  for (let i = (bottom && bottom.a >= 1 ? layers.length - 2 : layers.length - 1); i >= 0; i--) {
+    const { r, g, b, a } = layers[i]
+    base = { r: r * a + base.r * (1 - a), g: g * a + base.g * (1 - a), b: b * a + base.b * (1 - a) }
+  }
+  return '#' + hex2(base.r) + hex2(base.g) + hex2(base.b)
 }
 
 // Every live DOM node that renders from the SAME source location as `el` — i.e.
