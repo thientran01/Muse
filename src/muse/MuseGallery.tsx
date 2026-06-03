@@ -11,6 +11,7 @@ import { MusePanel } from './components/MusePanel'
 import { HoverHighlight, SelectBanner } from './components/SelectionOverlay'
 import { MessageApplied } from './components/messages/MessageApplied'
 import { MessageClarify } from './components/messages/MessageClarify'
+import { MessageDesign } from './components/messages/MessageDesign'
 import { MessageObservation } from './components/messages/MessageObservation'
 import { MessageOptionSet } from './components/messages/MessageOptionSet'
 import { MessageTargetHandoff } from './components/messages/MessageTargetHandoff'
@@ -72,6 +73,21 @@ const fxOptions: ProposedOption[] = [
     ],
   },
 ]
+// A tiny brief so the design 'view' card renders a name + swatches + type.
+const fxDesignMd = `---
+name: Acme Design System
+colors:
+  brand: "#ff6b35"
+  ink: "#0f1f1a"
+  paper: "#f5f1e8"
+typography:
+  display: { fontFamily: "Inter" }
+  body: { fontFamily: "Inter" }
+---
+
+## Brand & Style
+Warm and confident. One bright accent on a paper canvas, Inter throughout.`
+
 const fxElement2: SelectedElement = {
   fileName: 'src/demo/CTA.tsx',
   line: 12,
@@ -432,6 +448,38 @@ export function MuseGallery() {
             <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300 ring-1 ring-rose-500/20">
               Muse did not return an action. Try rephrasing.
             </p>
+          </ThreadFrame>
+        </Cell>
+
+        <Cell title="Design — offer (generator ready)">
+          <ThreadFrame target={fxElement}>
+            <MessageDesign status="offer" onGenerate={noop} />
+          </ThreadFrame>
+        </Cell>
+
+        <Cell title="Design — offer (needs setup)">
+          <ThreadFrame target={fxElement}>
+            <MessageDesign
+              status="offer"
+              generator={{
+                available: false,
+                reason:
+                  'The generator script (scripts/gen-design-md.mjs) isn’t vendored in this project. Re-run the Muse install skill to add it.',
+              }}
+              onGenerate={noop}
+            />
+          </ThreadFrame>
+        </Cell>
+
+        <Cell title="Design — generating">
+          <ThreadFrame target={fxElement}>
+            <MessageDesign status="generating" onGenerate={noop} />
+          </ThreadFrame>
+        </Cell>
+
+        <Cell title="Design — view (brief on file)">
+          <ThreadFrame target={fxElement}>
+            <MessageDesign status="view" content={fxDesignMd} path="DESIGN.md" onGenerate={noop} />
           </ThreadFrame>
         </Cell>
       </div>

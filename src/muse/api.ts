@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   ChatResponse,
   ClarifyingQuestion,
+  DesignGeneratorStatus,
   FileEdit,
   ObserveResult,
   Reorderable,
@@ -265,7 +266,15 @@ const MOCK_TOKENS: DesignToken[] = [
   { name: '--radius-lg', value: '16px', isColor: false, file: 'src/index.css' },
 ]
 
-export type DesignGet = { exists: boolean; content?: string; path?: string }
+export type DesignGet = {
+  exists: boolean
+  content?: string
+  path?: string
+  // Whether "Generate design system" can run here. Omitted by mock mode / older
+  // servers — callers treat absent as available (the generate path still errors
+  // gracefully if it can't run).
+  generator?: DesignGeneratorStatus
+}
 
 // Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.
 export async function museDesignGet(): Promise<DesignGet> {

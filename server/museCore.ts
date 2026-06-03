@@ -612,16 +612,55 @@ export const PROPOSE_OPTIONS_TOOL: Anthropic.Tool = {
 
 // ---- CLI backend helpers -------------------------------------------------------
 
-function resolveClaudeBin(): string {
+// Resolve the `claude` CLI on PATH, or null if it isn't installed. `where`/`which`
+// exits non-zero when nothing matches, so a thrown error (or no hits) means absent.
+// Memoized: this spawns a child process, and GET /api/muse/design calls it on every
+// design-card open — caching keeps that off the event loop after the first probe.
+// (A dev's PATH doesn't change mid-session; a server restart re-probes.)
+let claudeBinCache: { value: string | null } | null = null
+function findClaudeBin(): string | null {
+  if (claudeBinCache) return claudeBinCache.value
   const finder = process.platform === 'win32' ? 'where' : 'which'
+  let value: string | null
   try {
     const out = execFileSync(finder, ['claude'], { encoding: 'utf8' })
     const hits = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-    const exe = hits.find((h) => /\.exe$/i.test(h))
-    return exe || hits[0] || 'claude'
+    value = hits.find((h) => /\.exe$/i.test(h)) || hits[0] || null
   } catch {
-    return 'claude'
+    value = null
   }
+  claudeBinCache = { value }
+  return value
+}
+
+function resolveClaudeBin(): string {
+  // Fall back to the bare name so a spawn still attempts (and fails with a clear
+  // message) on the off chance `where`/`which` is itself unavailable.
+  return findClaudeBin() ?? 'claude'
+}
+
+// Path to the design-brief generator script, if it was vendored into the host.
+function designGeneratorScript(root: string): string {
+  return path.resolve(root, 'scripts/gen-design-md.mjs')
+}
+
+// Pure decision: why the generator can't run given its two prerequisites, or null
+// if it can. Split out from the filesystem/PATH probes so it's unit-testable (see
+// scripts/check-design-generator.ts). The generator needs BOTH its script vendored
+// AND the `claude` CLI on PATH (it shells out to your logged-in subscription).
+export function generatorBlockerFor(scriptExists: boolean, claudeOnPath: boolean): string | null {
+  if (!scriptExists) {
+    return 'The generator script (scripts/gen-design-md.mjs) isn’t vendored in this project. Re-run the Muse install skill to add it.'
+  }
+  if (!claudeOnPath) {
+    return 'The `claude` CLI isn’t on PATH. Install Claude Code and log in (`claude auth status`) so Muse can generate a brief on your subscription.'
+  }
+  return null
+}
+
+// Why the "Generate design system" button can't run on this host, or null if it can.
+function designGeneratorBlocker(root: string): string | null {
+  return generatorBlockerFor(fs.existsSync(designGeneratorScript(root)), findClaudeBin() !== null)
 }
 
 const CLI_SYSTEM_PROMPT = `${MUSE_SYSTEM_PROMPT}
@@ -1584,10 +1623,11 @@ async function handleDesignGenerate(req: IncomingMessage, res: ServerResponse, c
     return sendJson(res, 409, { error: 'A design brief is already being generated — hang on.' })
   }
   try {
-    const scriptPath = path.resolve(ctx.root, 'scripts/gen-design-md.mjs')
-    if (!fs.existsSync(scriptPath)) {
-      return sendJson(res, 500, { error: 'Generator not found at scripts/gen-design-md.mjs.' })
+    const blocker = designGeneratorBlocker(ctx.root)
+    if (blocker) {
+      return sendJson(res, 500, { error: blocker })
     }
+    const scriptPath = designGeneratorScript(ctx.root)
     const outPath = resolveDesignPath(ctx.root, ctx.designMdOverride).path
     const args = [
       scriptPath, ctx.root, '--concise', '--force', '--out', outPath,
@@ -1622,7 +1662,11 @@ async function handleDesign(_req: IncomingMessage, res: ServerResponse, ctx: Mus
   try {
     const { path: p, exists } = resolveDesignPath(ctx.root, ctx.designMdOverride)
     const content = exists ? loadDesignBrief(ctx.root, ctx.designMdOverride) : null
-    return sendJson(res, 200, { exists: !!content, content: content ?? undefined, path: relOf(ctx.root, p) })
+    // Tell the client whether "Generate design system" can actually run, so it
+    // can show a setup hint up front instead of a button that errors on click.
+    const blocker = designGeneratorBlocker(ctx.root)
+    const generator = blocker ? { available: false, reason: blocker } : { available: true }
+    return sendJson(res, 200, { exists: !!content, content: content ?? undefined, path: relOf(ctx.root, p), generator })
   } catch (err) {
     console.error('[muse] /design error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })

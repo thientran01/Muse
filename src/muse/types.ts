@@ -176,6 +176,11 @@ export type ChatMessage =
 // user should *see* becomes a ThreadMessage, even ones that don't appear in
 // the transcript (target handoffs, applied confirmations, errors).
 //
+// Whether the design-brief generator can run on this host. `available: false`
+// carries a human reason (script not vendored, or the `claude` CLI isn't on PATH)
+// so the UI shows a setup hint instead of a button that errors after the click.
+export type DesignGeneratorStatus = { available: boolean; reason?: string }
+
 // Bubbles are append-only history; the most recent `clarify` / `option-set`
 // is the "active" one (renders its action UI) — older ones freeze when a
 // new turn moves past them.
@@ -215,4 +220,5 @@ export type ThreadMessage =
   | { id: string; kind: 'history'; action: 'undo' | 'redo' | 'revert'; label?: string }
   // The app's design system (DESIGN.md). `offer` → no brief yet, prompt to make
   // one; `generating` → the LLM is writing it; `view` → show the brief (content set).
-  | { id: string; kind: 'design'; status: 'offer' | 'generating' | 'view'; content?: string; path?: string }
+  // `generator` reports whether the "Generate" button can run (script + claude CLI).
+  | { id: string; kind: 'design'; status: 'offer' | 'generating' | 'view'; content?: string; path?: string; generator?: DesignGeneratorStatus }

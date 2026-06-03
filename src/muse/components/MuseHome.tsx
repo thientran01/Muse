@@ -87,6 +87,7 @@ export function MuseHome({
               status={m.status}
               content={m.content}
               path={m.path}
+              generator={m.generator}
               onGenerate={() => onGenerateDesign(m.id)}
             />
           )
