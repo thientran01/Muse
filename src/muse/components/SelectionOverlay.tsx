@@ -39,7 +39,7 @@ export function HoverHighlight({
   return (
     <>
       <div
-        className={`pointer-events-none absolute rounded-md ring-2 ring-accent transition-all duration-100 ease-in-out motion-reduce:transition-none ${
+        className={`pointer-events-none absolute rounded-md ring-2 ring-accent transition-[top,left,width,height,background-color] duration-100 ease-in-out motion-reduce:transition-none ${
           shiftHeld ? 'bg-accent/20' : 'bg-accent/10'
         }`}
         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
