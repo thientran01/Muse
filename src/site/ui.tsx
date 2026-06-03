@@ -1,7 +1,7 @@
 // Shared presentational building blocks for the docs site. Styled with literal
 // Tailwind utility classes (warm stone palette + brick accent, light/dark via the
 // `dark` class on <html>) so the look stays cohesive. The editable page CONTENT is
-// written inline in each page (see pages/*) so Canvas Mode can map and edit it;
+// written inline in each page (see pages/*) so Canvas can map and edit it;
 // these are the surrounding chrome (code blocks, callouts, keys).
 import type { ReactNode } from 'react'
 

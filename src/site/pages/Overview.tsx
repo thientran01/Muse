@@ -1,4 +1,4 @@
-import { Callout, Kbd } from '../ui'
+import { Callout } from '../ui'
 
 // Content is written inline (literal classes + literal text) on purpose: it makes
 // every heading, paragraph, button, and card here selectable AND editable by Canvas
@@ -35,38 +35,38 @@ export function Overview() {
       </div>
 
       <Callout tone="try">
-        <strong>This page is the playground.</strong> Press <Kbd>L</Kbd> to open Canvas Mode and start
-        editing the page you are reading: drag the spacing, scrub the type, recolor a button, rewrite a
-        line of copy, then step back through it with Ctrl+Z and Ctrl+Shift+Z. Edits live in your browser
-        and clear when you refresh. Run Muse locally and the same moves rewrite your source files.
+        <strong>This page is the playground.</strong> Open Muse from the button in the corner, then click
+        anything on this page to shape it: drag the spacing, recolor a button, rewrite text, then step back through it with Ctrl+Z and Ctrl+Shift+Z. Hold Shift and click instead
+        to hand an element to the chat partner. Edits live in your browser and clear when you refresh. Run
+        Muse locally and the same moves rewrite your source files.
       </Callout>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Canvas Mode
+        Canvas
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Select an element and a small toolbar wraps around it. You drag its padding, scrub the font
+        Click an element and a small toolbar wraps around it. You drag its padding, scrub the font
         size, pick a new color, double-click to rewrite the text, or drag it past a sibling to reorder.
         Every move maps to that element in your source and writes straight back to it, so you stay in
         the running product the whole time and leave with the real code.
       </p>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
         A direct edit is a known transform, so Muse resolves it without a model call. A drag is a number
-        changing; it lands instantly and costs nothing.
+        changing, so it lands instantly and costs nothing.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Or describe it
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Some changes read better as a sentence than a drag. Tell Muse to make a card feel warmer and
-        less boxy and it answers with a few directions, each a real edit you can preview in place before
-        committing to one. The agent carries intent and ambiguity; Canvas carries the precise,
-        hands-on work.
+        Some changes read better as a sentence than a drag. Shift-click an element to hand it to the chat
+        partner, tell Muse to make a card feel warmer and less boxy, and it answers with a few directions,
+        each a real edit you can preview in place before committing to one. The agent carries intent and
+        ambiguity, while Canvas carries the precise, hands-on work.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        How it goes
+        Edit loop
       </h2>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
@@ -79,8 +79,8 @@ export function Overview() {
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">2. Edit</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Shape it by hand in Canvas Mode, or describe the change and pick from a few directions Muse
-            drafts.
+            Shape it by hand with Canvas, or Shift-click to describe the change and pick from a few
+            directions Muse drafts.
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
@@ -100,12 +100,6 @@ export function Overview() {
         in front of you, and edits the source behind it. What you get out is your own code in your own
         repo, ready to commit.
       </p>
-
-      <Callout>
-        <strong>A note on this demo.</strong> It runs entirely in your browser, so edits reset on
-        refresh, and the chat replies from a canned script to keep it free. Running Muse on your own app
-        is where it writes real code. See <a className="underline" href="#/install">Install</a>.
-      </Callout>
     </article>
   )
 }

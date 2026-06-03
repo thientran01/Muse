@@ -13,6 +13,7 @@ import { MessageTargetHandoff } from './components/messages/MessageTargetHandoff
 import { MessageThinking } from './components/messages/MessageThinking'
 import { MessageUser } from './components/messages/MessageUser'
 import { UfoIcon } from './components/UfoIcon'
+import { HomeToolbarPrototypes } from './components/launcher/HomeToolbarPrototypes'
 import { PropertiesPanel, type CanvasValues } from './components/canvas/PropertiesPanel'
 import { ColorPicker } from './components/canvas/ColorPicker'
 import type { CanvasElement } from './types'
@@ -278,6 +279,8 @@ export function MuseGallery() {
           here and in the live overlay.
         </p>
       </header>
+
+      <HomeToolbarPrototypes />
 
       <PanelDensity />
 

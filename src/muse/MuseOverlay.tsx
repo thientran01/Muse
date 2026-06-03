@@ -513,6 +513,7 @@ export function MuseOverlay() {
       museStore.setState((s) => ({ past: s.past.slice(0, -1), future: [entry, ...s.future], applied: false }))
       setOpen(true)
       setSelection(entry.elements)
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'undo', label: entry.label })
       return
     }
     museStore.setState({ historyLoading: true, error: null })
@@ -525,6 +526,7 @@ export function MuseOverlay() {
       }))
       setOpen(true) // surface the panel onto the reverted element (may fire from the idle bar)
       setSelection(entry.elements)
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'undo', label: entry.label })
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
     } finally {
@@ -540,6 +542,7 @@ export function MuseOverlay() {
       museStore.setState((s) => ({ future: s.future.slice(1), past: [...s.past, entry], applied: true }))
       setOpen(true)
       setSelection(entry.elements)
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'redo', label: entry.label })
       return
     }
     museStore.setState({ historyLoading: true, error: null })
@@ -552,6 +555,7 @@ export function MuseOverlay() {
       }))
       setOpen(true) // surface the panel onto the redone element (may fire from the idle bar)
       setSelection(entry.elements)
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'redo', label: entry.label })
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
     } finally {
@@ -571,6 +575,7 @@ export function MuseOverlay() {
         node.style.cssText = s.beforeStyle
       }
       museStore.setState({ past: [], future: [], applied: false, showRevertConfirm: false })
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'revert' })
       return
     }
     museStore.setState({ historyLoading: true, error: null })
@@ -581,6 +586,7 @@ export function MuseOverlay() {
       }
       await museWrite([...earliest].map(([fileName, before]) => ({ fileName, newContent: before })))
       museStore.setState({ past: [], future: [], applied: false, showRevertConfirm: false })
+      museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'revert' })
     } catch (e) {
       museStore.setState({ error: (e as Error).message, showRevertConfirm: false })
     } finally {
@@ -640,6 +646,69 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closing, pending, allAnswered, loading])
 
+  // --- Panel tucks aside ---
+  // When the element handed to the agent sits under the panel, the panel slides off
+  // the right edge into the void, leaving a small tab peeking. The element underneath
+  // is fully visible (you can read it, double-click to edit it). Hover the tab — or
+  // focus anything inside — and the panel pulls back to home; move away and it tucks
+  // again. It stays edge-anchored the whole time, so it never floats mid-screen.
+  const PEEK = 44 // px of the panel left poking past the right edge when tucked
+  const panelWrapRef = useRef<HTMLDivElement>(null)
+  const tuckXRef = useRef(0)
+  const [tuckX, setTuckX] = useState(0) // resting tuck offset (0 = home, >0 = tucked right)
+  const [panelHover, setPanelHover] = useState(false)
+  const [panelFocus, setPanelFocus] = useState(false)
+
+  useEffect(() => {
+    const node = single?.node as HTMLElement | undefined
+    const wrap = panelWrapRef.current
+    const setTuck = (x: number) => {
+      if (Math.abs(tuckXRef.current - x) < 0.5) return
+      tuckXRef.current = x
+      setTuckX(x)
+    }
+    if (!agentOpen || !node || !wrap) {
+      setTuck(0)
+      return
+    }
+
+    const M = 24 // the wrapper's bottom-6 / right-6 inset (1.5rem)
+
+    const recompute = () => {
+      if (!node.isConnected) return setTuck(0)
+      // Resting rect from layout size (offset*, transform-independent) + the fixed
+      // bottom-right inset, so the open/close scale animation can't perturb it.
+      const w = wrap.offsetWidth
+      const h = wrap.offsetHeight
+      if (!w || !h) return
+      // Layout viewport (excludes the scrollbar gutter) — the space the fixed panel
+      // is positioned in and that getBoundingClientRect reports in.
+      const vw = document.documentElement.clientWidth
+      const vh = document.documentElement.clientHeight
+      const t = node.getBoundingClientRect()
+      const overlaps =
+        vw - M - w < t.right && vw - M > t.left && vh - M - h < t.bottom && vh - M > t.top
+      // Tucked = slide right until only PEEK px remain on-screen; 0 when not in the way.
+      setTuck(overlaps ? w + M - PEEK : 0)
+    }
+
+    recompute()
+    const ro = new ResizeObserver(recompute)
+    ro.observe(wrap)
+    window.addEventListener('scroll', recompute, true)
+    window.addEventListener('resize', recompute)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('scroll', recompute, true)
+      window.removeEventListener('resize', recompute)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentOpen, single?.key])
+
+  // Pulled fully back to home while hovering or typing in it; otherwise it rests
+  // tucked off the right edge so the element underneath stays visible.
+  const panelTx = panelHover || panelFocus ? 0 : tuckX
+
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
       {/* The single selection surface, live whenever Muse is open: hover
@@ -668,7 +737,21 @@ export function MuseOverlay() {
       )}
 
       {agentOpen && (
-        <div className="absolute bottom-6 right-6">
+        <div
+          ref={panelWrapRef}
+          // Tucks off the right edge when the agent's element is underneath it, and
+          // pulls back on hover/focus (see the effect above). pointer-events-auto so
+          // the peeking tab is hoverable. A quiet ease-out so the move is felt, not
+          // watched.
+          onMouseEnter={() => setPanelHover(true)}
+          onMouseLeave={() => setPanelHover(false)}
+          onFocus={() => setPanelFocus(true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPanelFocus(false)
+          }}
+          className="pointer-events-auto absolute bottom-6 right-6 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          style={{ transform: `translate3d(${panelTx}px, 0, 0)` }}
+        >
           <MusePanel
             mock={MOCK}
             closing={closing}

@@ -4,6 +4,7 @@ import type { Pending } from '../store'
 import { MessageApplied } from './messages/MessageApplied'
 import { MessageClarify } from './messages/MessageClarify'
 import { MessageDesign } from './messages/MessageDesign'
+import { MessageHistory } from './messages/MessageHistory'
 import { MessageObservation } from './messages/MessageObservation'
 import { MessageOptionSet } from './messages/MessageOptionSet'
 import { MessageTargetHandoff } from './messages/MessageTargetHandoff'
@@ -104,6 +105,8 @@ export function MuseThread({
             return <MessageApplied key={m.id} fileCount={m.fileCount} rationale={m.rationale} />
           case 'target-handoff':
             return <MessageTargetHandoff key={m.id} target={m.target} />
+          case 'history':
+            return <MessageHistory key={m.id} action={m.action} label={m.label} />
           case 'design':
             return (
               <MessageDesign
