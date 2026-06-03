@@ -213,18 +213,32 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
       // smaller) so a low element doesn't push the panel off the bottom. Falls back
       // to the max cap before the first measure. Prefer the element's top; only lift
       // it up when it would overflow, never above GAP.
-      const panelH = panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.7, 520)
+      const measured = panelRef.current?.offsetHeight
+      const panelH = measured ?? Math.min(window.innerHeight * 0.7, 520)
       const top = Math.max(GAP, Math.min(r.top, window.innerHeight - panelH - GAP))
       // Sit beside the element — to its RIGHT by default, flipped to its LEFT when
       // the right won't fit OR would cover the bottom-right dock / agent panel (it
-      // marks itself with data-muse-dock; read its live rect so the avoidance tracks
-      // its real size). If the left is also blocked, fall back to the best fit.
+      // marks itself with data-muse-dock). Two guards keep the flip from misfiring:
+      //   - CLAMP each dock rect to the viewport: the agent panel tucks off-screen
+      //     via a transform, so its raw rect runs past the edge — only its visible
+      //     footprint should push the panel aside.
+      //   - Skip avoidance until the panel's real height is measured: the first pass
+      //     uses the tall fallback cap, which would over-report vertical overlap and
+      //     flip for one frame before the rAF re-measure corrects it.
+      const vw = window.innerWidth
+      const vh = window.innerHeight
       const rightX = r.right + GAP
       const leftX = Math.max(GAP, r.left - GAP - PANEL_W)
-      const docks = [...document.querySelectorAll('[data-muse-dock]')].map((d) => d.getBoundingClientRect())
+      const docks =
+        measured == null
+          ? []
+          : [...document.querySelectorAll('[data-muse-dock]')].map((d) => {
+              const b = d.getBoundingClientRect()
+              return { left: Math.max(0, b.left), right: Math.min(vw, b.right), top: Math.max(0, b.top), bottom: Math.min(vh, b.bottom) }
+            })
       const hitsDock = (x: number) =>
-        docks.some((d) => x < d.right && x + PANEL_W > d.left && top < d.bottom && top + panelH > d.top)
-      const fitsRight = rightX + PANEL_W <= window.innerWidth
+        docks.some((d) => d.right > d.left && x < d.right && x + PANEL_W > d.left && top < d.bottom && top + panelH > d.top)
+      const fitsRight = rightX + PANEL_W <= vw
       let left = rightX
       if (!fitsRight || hitsDock(rightX)) {
         left = leftX >= GAP && !hitsDock(leftX) ? leftX : fitsRight ? rightX : leftX
