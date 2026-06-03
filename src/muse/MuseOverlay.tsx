@@ -683,9 +683,14 @@ export function MuseOverlay() {
   const [tuckX, setTuckX] = useState(0) // resting tuck offset (0 = home, >0 = tucked right)
   const [engaged, setEngagedState] = useState(false) // pulled back to home by hover
   const [panelFocus, setPanelFocus] = useState(false)
+  // The element the panel should tuck away from: a PLAIN-click (Canvas) selection,
+  // reported up from CanvasMode. A Shift-click (agent) selection reports null — you
+  // asked for the agent, so the panel stays put. (Previously driven by the agent
+  // target, which made it tuck on the very Shift-click that opened the panel.)
+  const [tuckNode, setTuckNode] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
-    const node = single?.node as HTMLElement | undefined
+    const node = tuckNode ?? undefined
     const wrap = panelWrapRef.current
     const setTuck = (x: number) => {
       if (Math.abs(tuckXRef.current - x) < 0.5) return
@@ -789,7 +794,7 @@ export function MuseOverlay() {
       document.removeEventListener('pointermove', onPointerMove, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentOpen, single?.key])
+  }, [agentOpen, tuckNode])
 
   // Keep the panel home (not tucked) only while the agent is actively replying, plus
   // a short grace after, so a streaming reply isn't tucked away mid-thought. A fresh
@@ -818,7 +823,9 @@ export function MuseOverlay() {
           escalates the element to the agent panel below (firing the observe read).
           Unmounts at the start of the close so the chrome clears before the panel
           collapses. */}
-      {open && !closing && <CanvasMode onExit={requestClose} onEscalate={(el) => setSelection([el])} />}
+      {open && !closing && (
+        <CanvasMode onExit={requestClose} onEscalate={(el) => setSelection([el])} onTuckTarget={setTuckNode} />
+      )}
 
       {/* The dock — one pill that morphs between the FAB (closed) and the idle
           toolbar (manta · past proposals · design · X). Opening expands the FAB in
