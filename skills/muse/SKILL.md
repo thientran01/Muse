@@ -63,7 +63,13 @@ cp -r "$TMP/muse/src/muse"  ./src/muse           # overlay + deterministic engin
 cp -r "$TMP/muse/server"    ./muse-server         # museCore, musePlugin, webAdapter, standaloneServer, styleEdit
 cp -r "$TMP/muse/babel"     ./muse-babel          # muse-loc.cjs — the universal locator plugin
 cp "$TMP/muse/docs/HOSTING.md" ./muse-server/HOSTING.md   # the canonical wiring reference
+mkdir -p ./scripts && cp "$TMP/muse/scripts/gen-design-md.mjs" ./scripts/   # the "Generate design system" button (optional; needs the claude CLI)
 ```
+
+> The design-system generator (the **Generate design system** button) shells out to
+> the `claude` CLI, so it needs Claude Code installed + logged in on the host. Without
+> it that one button errors (everything else still works). museCore looks for the
+> script at `<root>/scripts/gen-design-md.mjs`.
 
 `src/muse/` is the client (overlay, components, hooks, store, `style/`, `muse.css`).
 `muse-server/` is dev-only and never ships to a production build. Adjust the
@@ -145,11 +151,14 @@ import { musePlugin } from './muse-server/musePlugin'
 ```
 
 **Track N — Next.js same-origin route.** Add `app/api/muse/[...muse]/route.ts`,
-gated to development (Muse writes to disk):
+gated to development (Muse writes to disk). First add a path alias so the import
+resolves to the **root-level** `muse-server/` (a Next `src/` project's default `@/`
+points at `src/`, not the root) — in `tsconfig.json` `compilerOptions.paths`:
+`"@muse-server/*": ["./muse-server/*"]`. Then:
 
 ```ts
-import { createMuseContext } from '@/muse-server/museCore'
-import { createMuseWebRouter } from '@/muse-server/webAdapter'
+import { createMuseContext } from '@muse-server/museCore'
+import { createMuseWebRouter } from '@muse-server/webAdapter'
 export const runtime = 'nodejs'          // museCore uses fs/child_process — never Edge
 export const dynamic = 'force-dynamic'
 const router = process.env.NODE_ENV !== 'production'
