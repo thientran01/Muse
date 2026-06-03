@@ -226,6 +226,20 @@ function resolveModuleSpecifier(root: string, fromAbs: string, specifier: string
 }
 
 const STYLED_MODULE_EXTS = ['.tsx', '.ts', '.jsx', '.js']
+// Given a base abs path (no extension), find the actual module file (exact, +ext, or
+// /index.ext), bounded to src/. Shared by the relative + alias specifier resolvers.
+function resolveModuleFileAbs(root: string, base: string): string | null {
+  const candidates = [
+    base,
+    ...STYLED_MODULE_EXTS.map((e) => base + e),
+    ...STYLED_MODULE_EXTS.map((e) => path.join(base, 'index' + e)),
+  ]
+  for (const c of candidates) {
+    const hit = resolveInSrc(root, c)
+    if (hit && fs.statSync(hit).isFile()) return hit
+  }
+  return null
+}
 function resolveStyledSpecifier(root: string, fromAbs: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null
   const base = path.resolve(path.dirname(fromAbs), specifier)
@@ -295,6 +309,19 @@ function collectSourceFiles(dir: string, acc: string[]): void {
 
 const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
 
+// Resolve a CALLER's import specifier to an absolute file, for the reverse scan. Handles
+// relative imports AND the common `@/…` path-alias convention (the Next/Vite default,
+// `@/* → ./src/*`, with a `<root>/*` fallback). Full tsconfig `paths` resolution is a
+// future enhancement; this covers the dominant single-alias setup the dogfood hosts use.
+function resolvePropImportSpecifier(root: string, fromAbs: string, specifier: string): string | null {
+  if (specifier.startsWith('.')) return resolveStyledSpecifier(root, fromAbs, specifier)
+  const alias = specifier.match(/^@\/(.+)$/)
+  if (alias) {
+    return resolveModuleFileAbs(root, path.join(root, 'src', alias[1])) ?? resolveModuleFileAbs(root, path.join(root, alias[1]))
+  }
+  return null
+}
+
 // The usage-site literal a clicked `{prop}` text resolves to: the file + the literal's
 // inner range + its current value. Reverse-scans src/ for `<Component prop="literal">`
 // callers whose import resolves to the CLICKED file, then disambiguates by the clicked
@@ -329,24 +356,38 @@ function resolvePropTextTarget(
     if (!content.includes(intent.propName) || !content.includes(clickedBase)) continue
     for (const u of findPropLiteralUsages(content, intent.componentExportName, intent.propName)) {
       // Keep only usages whose import actually resolves to the clicked file.
-      if (resolveStyledSpecifier(ctx.root, abs, u.specifier) !== clickedAbs) continue
+      if (resolvePropImportSpecifier(ctx.root, abs, u.specifier) !== clickedAbs) continue
       if (normalizeText(u.value) === want) {
         matches.push({ abs, rel: relOf(ctx.root, abs), valueStart: u.valueStart, valueEnd: u.valueEnd, currentValue: u.value })
       }
     }
   }
-  if (matches.length === 0) return { reason: 'this text comes from data, not static text' }
+  if (matches.length === 0) {
+    // The scan hit its file cap before finding a match — say so (and log) rather than a
+    // flat "comes from data" that hides the truncation (per the no-silent-caps rule).
+    if (files.length >= PROP_SCAN_FILE_CAP) {
+      console.warn(`[muse] prop-text scan hit the ${PROP_SCAN_FILE_CAP}-file cap; a usage may have been missed`)
+      return { reason: `searched ${PROP_SCAN_FILE_CAP}+ files without finding where this text is set` }
+    }
+    return { reason: 'this text comes from data, not static text' }
+  }
   // More than one usage with the SAME rendered text → can't tell them apart safely.
   if (matches.length > 1) return { reason: 'this text appears in more than one place — edit it at the source' }
   return matches[0]
 }
 
-// Replace a usage-site string-literal's inner value, preserving the quote char by
-// escaping it (and backslashes) in the new text. `valueStart`/`valueEnd` bound the text
-// INSIDE the quotes.
+// Replace a usage-site string-literal's inner value (`valueStart`/`valueEnd` bound the
+// text INSIDE the quotes). No JSX entity-encoding here — unlike JSXText, a string-literal
+// value reads `<`/`>`/`{`/`}` as plain chars — but we DO trim and escape what would break
+// the literal: backslashes, the quote char, and any newline (so the file stays parseable).
 function spliceStringLiteralValue(source: string, valueStart: number, valueEnd: number, newText: string): string {
   const quote = source[valueStart - 1] // the opening quote char (" or ')
-  const escaped = newText.replace(/\\/g, '\\\\').replace(new RegExp(quote, 'g'), '\\' + quote)
+  const escaped = newText
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(new RegExp(quote, 'g'), '\\' + quote)
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
   return source.slice(0, valueStart) + escaped + source.slice(valueEnd)
 }
 
