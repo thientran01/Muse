@@ -1,4 +1,8 @@
 import { useState, type ReactNode } from 'react'
+// The gallery renders Muse chrome in the LIGHT DOM (not the overlay's shadow root),
+// so it imports the tokens directly. The real overlay self-injects its CSS into the
+// shadow (see useShadowHost) and needs no global import.
+import './muse.css'
 import { ActiveTargetStrip } from './components/ActiveTargetStrip'
 import { Composer } from './components/Composer'
 import { MuseFab } from './components/MuseFab'

@@ -179,7 +179,10 @@ Then point the overlay at it (see §3): `configureMuse({ apiBase: 'http://localh
 
 ## 3. Mount the overlay
 
-Mount `<MuseOverlay/>` **dev-gated** in your tree. The overlay's config is bundler-neutral
+Mount `<MuseOverlay/>` **dev-gated** in your tree. No CSS import is needed — the overlay
+renders inside a **Shadow DOM** root and injects its own compiled styles there, so it's
+fully isolated from the host (it can't break the host's CSS, or be broken by it) and runs
+no Tailwind in the host. The config is bundler-neutral
 ([`src/muse/config.ts`](../src/muse/config.ts)): it reads `import.meta.env` (Vite),
 `window.__MUSE__` (any host), or `process.env`, and never throws off-Vite.
 
@@ -188,7 +191,6 @@ Mount `<MuseOverlay/>` **dev-gated** in your tree. The overlay's config is bundl
 
 import { MuseOverlay } from '@/muse/MuseOverlay'
 import { configureMuse } from '@/muse/config'
-import '@/muse/muse.css'
 
 // Only needed for the standalone-server backend; omit for same-origin routes.
 // configureMuse({ apiBase: 'http://localhost:4747' })
