@@ -18,8 +18,10 @@ into the project) and wires three pieces into the host:
 2. **Backend** — the dev-only `/api/muse/*` endpoints that rewrite source on disk.
 3. **Overlay** — `<MuseOverlay/>`, mounted dev-gated.
 
-The canonical, always-current wiring reference is **`docs/HOSTING.md`** in the
-Muse repo — vendor it (Step 1) and follow it when a host detail here is ambiguous.
+The canonical wiring reference is **`docs/HOSTING.md`** in the Muse repo — vendor
+it (Step 1) and follow its *concepts* when a host detail here is ambiguous. Its
+example file paths are illustrative; **this skill vendors to `src/muse/`,
+`muse-server/`, and `muse-babel/`**, so prefer the paths shown in these steps.
 
 ## Step 0 — Detect the host and pick a track
 
@@ -28,9 +30,11 @@ and React version, then follow the matching track in Steps 3–4. Do NOT stop on
 Next.js or React 19 — those are supported.
 
 - **Vite** — `vite` + `@vitejs/plugin-react` in deps, a `vite.config.{ts,js}`. → **Track V**.
-- **Next.js** — `next` in deps. Check the version: **16+** uses Turbopack by
-  default (→ **Track N**); **<16** uses webpack/SWC (→ **Track N**, but see the
-  webpack note). App Router (`app/`) is assumed.
+- **Next.js** — `next` in deps. **16+** defaults to Turbopack → **Track N**.
+  **15** defaults to webpack but can opt into Turbopack (a `--turbopack` flag in
+  the dev script): if Turbopack is in use → **Track N**; otherwise wire the locator
+  with the **Track W** webpack rule (the Next route backend in Step 4 still applies).
+  App Router (`app/`) is assumed.
 - **webpack / CRA / other** — `react-scripts`, a `webpack.config.*`, or anything
   else that runs Babel. → **Track W**.
 - **Can't tell / unsupported bundler** — fall back to the **standalone server**
@@ -196,16 +200,18 @@ the `EASE`/`DUR` values, and the `keyframes`/`animation` entries from
 Mount `<MuseOverlay/>` behind a dev gate. The overlay config is bundler-neutral.
 
 ```tsx
-// Next.js: this file must be a client component
-'use client'
-import { MuseOverlay } from './muse/MuseOverlay'        // adjust import path to your tree
+'use client'                                       // Next.js ONLY — omit on Vite / webpack
+import { MuseOverlay } from './muse/MuseOverlay'    // adjust import path to your tree
 import { configureMuse } from './muse/config'
 import './muse/muse.css'
-import './muse/muse.generated.css'                       // only if you used Branch A
+import './muse/muse.generated.css'                  // only if you used Branch A in Step 5
 
 // configureMuse({ apiBase: 'http://localhost:4747' })   // only for the standalone-server backend
 export function DevMuse() {
-  if (process.env.NODE_ENV === 'production') return null  // Vite: `if (!import.meta.env.DEV) return null`
+  // process.env.NODE_ENV is replaced at build time by Vite, Next, AND webpack —
+  // this one guard works on every host. (Do NOT swap in import.meta.env.DEV; it's
+  // undefined outside Vite.)
+  if (process.env.NODE_ENV === 'production') return null
   return <MuseOverlay />
 }
 ```
