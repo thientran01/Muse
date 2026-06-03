@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ClockCounterClockwise, FileText, X } from '@phosphor-icons/react'
+import { ClockCounterClockwise, FileText, Pause, Play, X } from '@phosphor-icons/react'
 import { museDesignGenerate, museDesignGet } from '../api'
 import type { ArchivedThread } from '../store'
 import type { HistoryControls } from '../MuseOverlay'
@@ -42,6 +42,8 @@ export function MuseToolbar({
   onPickHistory,
   hasHistory,
   historyControls,
+  animationsPaused,
+  onToggleAnimations,
 }: {
   // True = toolbar form (Muse open, idle); false = FAB form (Muse closed/collapsing).
   expanded: boolean
@@ -51,6 +53,8 @@ export function MuseToolbar({
   onPickHistory: (id: string) => void
   hasHistory: boolean
   historyControls: HistoryControls
+  animationsPaused: boolean
+  onToggleAnimations: () => void
 }) {
   const [pop, setPop] = useState<Pop>('none')
   const [design, setDesign] = useState<DesignState | null>(null)
@@ -88,7 +92,7 @@ export function MuseToolbar({
   }
 
   return (
-    <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-3">
+    <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
       {/* Undo/redo lives above the FAB when collapsed (with history) — same as the
           old idle corner; hidden once expanded (the agent panel carries its own). */}
       {!expanded && hasHistory && (
@@ -167,6 +171,12 @@ export function MuseToolbar({
           </IconBtn>
           <IconBtn label="Design system" onClick={openDesign}>
             <FileText size={17} />
+          </IconBtn>
+          <IconBtn
+            label={animationsPaused ? 'Resume animations' : 'Pause animations'}
+            onClick={onToggleAnimations}
+          >
+            {animationsPaused ? <Play size={17} /> : <Pause size={17} />}
           </IconBtn>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
           <IconBtn label="Close Muse" onClick={onClose}>

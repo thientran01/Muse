@@ -791,16 +791,19 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentOpen, single?.key])
 
-  // Keep the panel home (not tucked) while the agent is working and for a beat
-  // after, so a fresh selection's read and the agent's reply aren't tucked away
-  // before they can be seen. Refreshed on a new selection, a new thread message,
-  // or a loading flip.
+  // Keep the panel home (not tucked) only while the agent is actively replying, plus
+  // a short grace after, so a streaming reply isn't tucked away mid-thought. A fresh
+  // selection does NOT hold it open: handing an element to the agent should tuck the
+  // panel right away so you can see the element (hover the handle to read its read).
   const [holdOpen, setHoldOpen] = useState(false)
   useEffect(() => {
-    setHoldOpen(true)
-    const id = window.setTimeout(() => setHoldOpen(false), 1800)
+    if (loading) {
+      setHoldOpen(true)
+      return
+    }
+    const id = window.setTimeout(() => setHoldOpen(false), 1200)
     return () => clearTimeout(id)
-  }, [agentOpen, single?.key, thread.length, loading])
+  }, [loading])
 
   // Pulled fully back to home while engaged (hover), typing in it, or actively
   // working (loading / hold); otherwise it rests tucked off the right edge so the
@@ -849,7 +852,10 @@ export function MuseOverlay() {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPanelFocus(false)
           }}
           data-muse-dock
-          className="pointer-events-auto absolute bottom-6 right-6 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          // z above CanvasMode (z-999998) so the panel always sits OVER the canvas
+          // selection chrome (outline / handles / box-model bands) instead of it
+          // drawing across the panel.
+          className="pointer-events-auto absolute bottom-6 right-6 z-[999999] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
           style={{ transform: `translate3d(${panelTx}px, 0, 0)` }}
         >
           {/* Drawer handle. When tucked the panel sits FULLY off-screen and only this
