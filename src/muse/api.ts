@@ -1,4 +1,4 @@
-import { EPHEMERAL, MOCK } from './config'
+import { EPHEMERAL, MOCK, getApiBase } from './config'
 import { fxEdits, fxOriginals } from './fixtures'
 import { heuristicObservation } from './observation'
 import type {
@@ -21,13 +21,18 @@ import type {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Prepend the configured API base (default '' = same-origin) so the overlay can
+// target a same-origin backend (Vite plugin / Next dev API route) OR a standalone
+// muse-server on another origin. Resolved per-call so configureMuse() takes effect.
+const apiUrl = (path: string) => `${getApiBase()}${path}`
+
 export async function museChat(
   targets: SelectedElement[],
   messages: ChatMessage[],
 ): Promise<ChatResponse> {
   if (MOCK) return mockChat(targets, messages)
 
-  const res = await fetch('/api/muse/chat', {
+  const res = await fetch(apiUrl('/api/muse/chat'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -47,7 +52,7 @@ export async function museChat(
 export async function museObserve(target: SelectedElement): Promise<ObserveResult> {
   if (MOCK) return mockObserve(target)
 
-  const res = await fetch('/api/muse/observe', {
+  const res = await fetch(apiUrl('/api/muse/observe'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -73,7 +78,7 @@ export async function museWrite(files: FileEdit[]): Promise<void> {
     return
   }
 
-  const res = await fetch('/api/muse/write', {
+  const res = await fetch(apiUrl('/api/muse/write'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ files }),
@@ -95,7 +100,7 @@ export async function museStyleEdit(
   if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
   // Omitting `strategy` lets the server detect it from the host project (Tailwind →
   // utility classes, else inline). JSON.stringify drops the key when undefined.
-  const res = await fetch('/api/muse/style-edit', {
+  const res = await fetch(apiUrl('/api/muse/style-edit'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: requests, strategy }),
@@ -114,7 +119,7 @@ export async function museStyleEdit(
 // contents + originals, flowing through the SAME museWrite + history as styles.
 export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEditResponse> {
   if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
-  const res = await fetch('/api/muse/text-edit', {
+  const res = await fetch(apiUrl('/api/muse/text-edit'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: requests }),
@@ -135,7 +140,7 @@ export async function museTextEditable(
 ): Promise<{ editable: boolean; reason?: string }> {
   if (EPHEMERAL) return { editable: true } // in-browser edits are always reversible
   try {
-    const res = await fetch('/api/muse/text-editable', {
+    const res = await fetch(apiUrl('/api/muse/text-editable'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(req),
@@ -153,7 +158,7 @@ export async function museTextEditable(
 // styles/text. `toIndex` is the source-order slot to land before (count === end).
 export async function museReorder(req: ReorderRequest): Promise<ReorderResponse> {
   if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
-  const res = await fetch('/api/muse/reorder', {
+  const res = await fetch(apiUrl('/api/muse/reorder'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: [req] }),
@@ -178,7 +183,7 @@ export async function museReorderable(
   req: Omit<ReorderRequest, 'toIndex'>,
 ): Promise<Reorderable> {
   try {
-    const res = await fetch('/api/muse/reorderable', {
+    const res = await fetch(apiUrl('/api/muse/reorderable'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(req),
@@ -204,7 +209,7 @@ export type DesignGet = { exists: boolean; content?: string; path?: string }
 // Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.
 export async function museDesignGet(): Promise<DesignGet> {
   if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
-  const res = await fetch('/api/muse/design')
+  const res = await fetch(apiUrl('/api/muse/design'))
   const data = (await res.json()) as DesignGet & { error?: string }
   if (data.error) throw new Error(data.error) // surface server errors, not a false "no brief"
   return data
@@ -217,7 +222,7 @@ export async function museDesignGenerate(): Promise<{ content: string; path?: st
     await delay(1200)
     return { content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
   }
-  const res = await fetch('/api/muse/design/generate', { method: 'POST' })
+  const res = await fetch(apiUrl('/api/muse/design/generate'), { method: 'POST' })
   const data = (await res.json()) as { content?: string; path?: string; error?: string }
   if (data.error || !data.content) throw new Error(data.error ?? 'Generation failed')
   return { content: data.content, path: data.path }
