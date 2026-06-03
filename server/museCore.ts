@@ -22,6 +22,8 @@ import {
   computeReorder,
   computeReorderable,
   computeStyleScope,
+  computePropTextIntent,
+  findPropLiteralUsages,
   findStyledExport,
   styledObjectPatches,
   type Mutation,
@@ -260,6 +262,92 @@ function followStyledExport(
     name = loc.reexport.exportName
   }
   return null
+}
+
+// ---- Prop-text trace (Tier 2) -------------------------------------------------
+// Clicked text that comes from a `{prop}` lives at the usage site (`<Cmp prop="…"/>`)
+// in a CALLER of the clicked file — there's no import to follow forward, so we reverse-
+// scan src/ for the callers. Bounded: capped file count, a cheap substring pre-filter
+// before any parse, and a size guard, so the scan stays cheap on a large repo.
+
+const SOURCE_EXTS = new Set(['.tsx', '.jsx', '.ts', '.js', '.mjs', '.cjs'])
+const PROP_SCAN_FILE_CAP = 2000 // most-callers repos are far smaller; a runaway backstop
+const PROP_SCAN_MAX_BYTES = 512 * 1024 // skip a huge generated/bundle file
+
+// Collect source files under `dir` into `acc`, skipping dot-dirs and node_modules, and
+// stopping once `acc` hits the cap (so the scan can't run away on a giant tree).
+function collectSourceFiles(dir: string, acc: string[]): void {
+  if (acc.length >= PROP_SCAN_FILE_CAP) return
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const e of entries) {
+    if (acc.length >= PROP_SCAN_FILE_CAP) return
+    if (e.name.startsWith('.') || e.name === 'node_modules') continue
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) collectSourceFiles(full, acc)
+    else if (e.isFile() && SOURCE_EXTS.has(path.extname(e.name))) acc.push(full)
+  }
+}
+
+const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
+
+// The usage-site literal a clicked `{prop}` text resolves to: the file + the literal's
+// inner range + its current value. Reverse-scans src/ for `<Component prop="literal">`
+// callers whose import resolves to the CLICKED file, then disambiguates by the clicked
+// node's rendered text (case-insensitive + trim — a host may uppercase via CSS). Returns
+// a `reason` when there's no match, or more than one with the same text (the calm hint
+// stands rather than risk editing the wrong instance).
+type PropTextTarget = { abs: string; rel: string; valueStart: number; valueEnd: number; currentValue: string }
+function resolvePropTextTarget(
+  ctx: MuseContext,
+  clickedAbs: string,
+  intent: { componentExportName: string; propName: string },
+  renderedText: string,
+): PropTextTarget | { reason: string } {
+  const want = normalizeText(renderedText)
+  if (!want) return { reason: 'no rendered text to match the usage by' }
+  const clickedBase = path.basename(clickedAbs, path.extname(clickedAbs)) // for the pre-filter
+  const files: string[] = []
+  collectSourceFiles(path.join(ctx.root, 'src'), files)
+
+  const matches: PropTextTarget[] = []
+  for (const abs of files) {
+    let content: string
+    try {
+      const st = fs.statSync(abs)
+      if (st.size > PROP_SCAN_MAX_BYTES) continue
+      content = fs.readFileSync(abs, 'utf8')
+    } catch {
+      continue
+    }
+    // Cheap pre-filter: a real caller mentions both the prop name and the clicked file's
+    // basename (its import specifier references the file). Skips parsing most of src/.
+    if (!content.includes(intent.propName) || !content.includes(clickedBase)) continue
+    for (const u of findPropLiteralUsages(content, intent.componentExportName, intent.propName)) {
+      // Keep only usages whose import actually resolves to the clicked file.
+      if (resolveStyledSpecifier(ctx.root, abs, u.specifier) !== clickedAbs) continue
+      if (normalizeText(u.value) === want) {
+        matches.push({ abs, rel: relOf(ctx.root, abs), valueStart: u.valueStart, valueEnd: u.valueEnd, currentValue: u.value })
+      }
+    }
+  }
+  if (matches.length === 0) return { reason: 'this text comes from data, not static text' }
+  // More than one usage with the SAME rendered text → can't tell them apart safely.
+  if (matches.length > 1) return { reason: 'this text appears in more than one place — edit it at the source' }
+  return matches[0]
+}
+
+// Replace a usage-site string-literal's inner value, preserving the quote char by
+// escaping it (and backslashes) in the new text. `valueStart`/`valueEnd` bound the text
+// INSIDE the quotes.
+function spliceStringLiteralValue(source: string, valueStart: number, valueEnd: number, newText: string): string {
+  const quote = source[valueStart - 1] // the opening quote char (" or ')
+  const escaped = newText.replace(/\\/g, '\\\\').replace(new RegExp(quote, 'g'), '\\' + quote)
+  return source.slice(0, valueStart) + escaped + source.slice(valueEnd)
 }
 
 function parseObserveJson(text: string): { observation: string; chips: string[] } | null {
@@ -1225,7 +1313,7 @@ async function handleStyleScope(req: IncomingMessage, res: ServerResponse, ctx: 
 async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const body = JSON.parse(await readBody(req)) as {
-      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown }>
+      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown; originalText?: unknown }>
     }
     const rawEdits = Array.isArray(body.edits) ? body.edits : []
     if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
@@ -1234,6 +1322,9 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
     const originals: Record<string, string> = {}
     const warnings: string[] = []
     const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; text: string }> }>()
+    // Prop-text edits resolved cross-file (the usage-site literal in a CALLER). Kept
+    // separate from byFile because they target a different file + a character range.
+    const propSplices: Array<{ abs: string; rel: string; valueStart: number; valueEnd: number; newText: string }> = []
 
     for (const e of rawEdits) {
       const abs = resolveInSrc(ctx.root, e?.fileName)
@@ -1244,15 +1335,31 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
       const rel = relOf(ctx.root, abs)
       const line = Number(e?.line)
       const column = Number(e?.column)
+      const col = Number.isFinite(column) ? column : 0
       const tag = typeof e?.tag === 'string' ? e.tag : undefined
       const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
       const text = typeof e?.text === 'string' ? e.text : null
+      const originalText = typeof e?.originalText === 'string' ? e.originalText : null
       if (!Number.isInteger(line) || line <= 0 || text === null) {
         warnings.push(`skipped ${rel} — needs a positive line and text.`)
         continue
       }
+      // Prop-text trace: when the clicked element's text is a single `{prop}` (the engine's
+      // "comes from data" case) and the client sent the original rendered text to match by,
+      // trace it to the usage-site literal in a caller and edit THAT (a different file).
+      if (originalText) {
+        let clickedSrc = ''
+        try { clickedSrc = fs.readFileSync(abs, 'utf8') } catch { /* fall through to static */ }
+        const intent = clickedSrc ? computePropTextIntent(clickedSrc, line, col, tag, classNames, ctx.lineOffsetHint) : null
+        if (intent) {
+          const target = resolvePropTextTarget(ctx, abs, intent, originalText)
+          if ('reason' in target) { warnings.push(`${rel}: ${target.reason}`); continue }
+          propSplices.push({ abs: target.abs, rel: target.rel, valueStart: target.valueStart, valueEnd: target.valueEnd, newText: text })
+          continue
+        }
+      }
       const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
-      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, text })
+      bucket.items.push({ line, column: col, tag, classNames, text })
       byFile.set(rel, bucket)
     }
 
@@ -1272,6 +1379,26 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
       }
     }
 
+    // Apply prop-trace splices (usage-site literals, usually a DIFFERENT file). Group by
+    // target file, right-to-left so earlier offsets stay valid.
+    const byTarget = new Map<string, { abs: string; rel: string; splices: Array<{ valueStart: number; valueEnd: number; newText: string }> }>()
+    for (const p of propSplices) {
+      const g = byTarget.get(p.rel) ?? { abs: p.abs, rel: p.rel, splices: [] }
+      g.splices.push({ valueStart: p.valueStart, valueEnd: p.valueEnd, newText: p.newText })
+      byTarget.set(p.rel, g)
+    }
+    for (const { abs, rel, splices } of byTarget.values()) {
+      // A normal static-text edit already wrote this file this batch → its offsets moved,
+      // so skip the prop splice (defensive; a single canvas edit never hits this).
+      if (rel in originals) { warnings.push(`${rel}: skipped a prop-text edit overlapping another edit to the same file`); continue }
+      let content: string
+      try { content = fs.readFileSync(abs, 'utf8') } catch { warnings.push(`${rel}: couldn't read the usage file`); continue }
+      const before = content
+      splices.sort((a, b) => b.valueStart - a.valueStart)
+      for (const s of splices) content = spliceStringLiteralValue(content, s.valueStart, s.valueEnd, s.newText)
+      if (content !== before) { originals[rel] = before; out.push({ fileName: rel, newContent: content }) }
+    }
+
     if (out.length === 0) {
       return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
     }
@@ -1284,16 +1411,27 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
 
 async function handleTextEditable(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
-    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown }
     const abs = resolveInSrc(ctx.root, b?.fileName)
     const line = Number(b?.line)
     if (!abs || !Number.isInteger(line) || line <= 0) {
       return sendJson(res, 200, { editable: false, reason: 'not an editable element' })
     }
     const source = fs.readFileSync(abs, 'utf8')
+    const col = Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0
     const tag = typeof b?.tag === 'string' ? b.tag : undefined
     const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
-    const result = computeTextEditable(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, ctx.lineOffsetHint)
+    const result = computeTextEditable(source, line, col, tag, classNames, ctx.lineOffsetHint)
+    // Not statically editable, but the text may come from a `{prop}` whose literal lives
+    // at a usage site (`<Cmp prop="…"/>`). If the client sent the rendered text and a
+    // unique caller resolves, it IS editable (the trace will rewrite the usage literal).
+    if (!result.editable && typeof b?.text === 'string' && b.text) {
+      const intent = computePropTextIntent(source, line, col, tag, classNames, ctx.lineOffsetHint)
+      if (intent) {
+        const target = resolvePropTextTarget(ctx, abs, intent, b.text)
+        if (!('reason' in target)) return sendJson(res, 200, { editable: true })
+      }
+    }
     return sendJson(res, 200, result)
   } catch (err) {
     console.error('[muse] /text-editable error:', err)
