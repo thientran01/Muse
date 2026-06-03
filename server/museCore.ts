@@ -1358,7 +1358,7 @@ async function handleStyleScope(req: IncomingMessage, res: ServerResponse, ctx: 
 async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const body = JSON.parse(await readBody(req)) as {
-      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown; originalText?: unknown }>
+      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown; renderedText?: unknown }>
     }
     const rawEdits = Array.isArray(body.edits) ? body.edits : []
     if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
@@ -1384,20 +1384,20 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
       const tag = typeof e?.tag === 'string' ? e.tag : undefined
       const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
       const text = typeof e?.text === 'string' ? e.text : null
-      const originalText = typeof e?.originalText === 'string' ? e.originalText : null
+      const renderedText = typeof e?.renderedText === 'string' ? e.renderedText : null
       if (!Number.isInteger(line) || line <= 0 || text === null) {
         warnings.push(`skipped ${rel} — needs a positive line and text.`)
         continue
       }
       // Prop-text trace: when the clicked element's text is a single `{prop}` (the engine's
-      // "comes from data" case) and the client sent the original rendered text to match by,
+      // "comes from data" case) and the client sent the element's rendered text to match by,
       // trace it to the usage-site literal in a caller and edit THAT (a different file).
-      if (originalText) {
+      if (renderedText) {
         let clickedSrc = ''
         try { clickedSrc = fs.readFileSync(abs, 'utf8') } catch { /* fall through to static */ }
         const intent = clickedSrc ? computePropTextIntent(clickedSrc, line, col, tag, classNames, ctx.lineOffsetHint) : null
         if (intent) {
-          const target = resolvePropTextTarget(ctx, abs, intent, originalText)
+          const target = resolvePropTextTarget(ctx, abs, intent, renderedText)
           if ('reason' in target) { warnings.push(`${rel}: ${target.reason}`); continue }
           propSplices.push({ abs: target.abs, rel: target.rel, valueStart: target.valueStart, valueEnd: target.valueEnd, newText: text })
           continue
@@ -1456,7 +1456,7 @@ async function handleTextEdit(req: IncomingMessage, res: ServerResponse, ctx: Mu
 
 async function handleTextEditable(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
-    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; text?: unknown }
+    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; renderedText?: unknown }
     const abs = resolveInSrc(ctx.root, b?.fileName)
     const line = Number(b?.line)
     if (!abs || !Number.isInteger(line) || line <= 0) {
@@ -1470,10 +1470,10 @@ async function handleTextEditable(req: IncomingMessage, res: ServerResponse, ctx
     // Not statically editable, but the text may come from a `{prop}` whose literal lives
     // at a usage site (`<Cmp prop="…"/>`). If the client sent the rendered text and a
     // unique caller resolves, it IS editable (the trace will rewrite the usage literal).
-    if (!result.editable && typeof b?.text === 'string' && b.text) {
+    if (!result.editable && typeof b?.renderedText === 'string' && b.renderedText) {
       const intent = computePropTextIntent(source, line, col, tag, classNames, ctx.lineOffsetHint)
       if (intent) {
-        const target = resolvePropTextTarget(ctx, abs, intent, b.text)
+        const target = resolvePropTextTarget(ctx, abs, intent, b.renderedText)
         if (!('reason' in target)) return sendJson(res, 200, { editable: true })
       }
     }

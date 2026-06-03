@@ -75,9 +75,10 @@ export type TextEditRequest = {
   tag?: string
   classNames?: string
   text: string // the NEW text content
-  // The element's rendered text BEFORE the edit. Sent so a prop-text edit (`{prop}`
-  // whose literal lives at a usage site) can disambiguate WHICH usage to rewrite.
-  originalText?: string
+  // The element's CURRENT rendered text. Sent so a prop-text edit (`{prop}` whose literal
+  // lives at a usage site) can disambiguate WHICH usage to rewrite. Same field name the
+  // editability probe uses for the same value (see museTextEditable) — one concept, one name.
+  renderedText?: string
 }
 export type TextEditResponse = StyleEditResponse
 
