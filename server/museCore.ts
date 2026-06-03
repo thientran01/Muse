@@ -21,6 +21,7 @@ import {
   computeTextEditable,
   computeReorder,
   computeReorderable,
+  computeStyleScope,
   findStyledExport,
   styledObjectPatches,
   type Mutation,
@@ -96,6 +97,7 @@ export type MuseHandlers = {
   observe: Handler
   write: Handler
   styleEdit: Handler
+  styleScope: Handler
   textEdit: Handler
   textEditable: Handler
   reorder: Handler
@@ -110,6 +112,7 @@ export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
     observe:        (req, res) => handleObserve(req, res, ctx),
     write:          (req, res) => handleWrite(req, res, ctx),
     styleEdit:      (req, res) => handleStyleEdit(req, res, ctx),
+    styleScope:     (req, res) => handleStyleScope(req, res, ctx),
     textEdit:       (req, res) => handleTextEdit(req, res, ctx),
     textEditable:   (req, res) => handleTextEditable(req, res, ctx),
     reorder:        (req, res) => handleReorder(req, res, ctx),
@@ -1195,6 +1198,27 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
   } catch (err) {
     console.error('[muse] /style-edit error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// Probe whether the selected element's style is `style={X}` bound to a shared same-file
+// const, so the client can show the "this element / all instances" scope toggle BEFORE
+// a scrub. Fails CLOSED on any error (no toggle) — the per-element commit is always
+// available, and a re-select simply re-probes.
+async function handleStyleScope(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+    const abs = resolveInSrc(ctx.root, b?.fileName)
+    const line = Number(b?.line)
+    if (!abs || !Number.isInteger(line) || line <= 0) return sendJson(res, 200, { sharedConst: null })
+    const source = fs.readFileSync(abs, 'utf8')
+    const tag = typeof b?.tag === 'string' ? b.tag : undefined
+    const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
+    const sharedConst = computeStyleScope(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, ctx.lineOffsetHint)
+    return sendJson(res, 200, { sharedConst })
+  } catch (err) {
+    console.error('[muse] /style-scope error:', err)
+    return sendJson(res, 200, { sharedConst: null })
   }
 }
 

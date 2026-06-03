@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
-import type { CanvasElement, StyleMutation, StyleProperty } from '../../types'
+import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
 import { museDesignGet } from '../../api'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
@@ -439,12 +439,59 @@ function initialOpen(values: CanvasValues): Set<SectionKey> {
 // The live canvas properties panel — collapsible sections (independent toggles)
 // with persistence + a smart default, so it stays concise and never clips while
 // keeping every control one click away.
+// When the selected element's style is a shared const (`style={body}`), a segmented
+// control choosing the edit's blast radius: just this element (default) or the const
+// definition (every instance). The active "all" state carries the accent selected-state
+// treatment (loud, but still accent-as-flourish) so you can't forget you're editing
+// globally — the visibility half of the mode-error guard. Only rendered when "all"
+// actually broadens (≥2 in-file uses, or the const is exported and escapes the file).
+function ScopeToggle({
+  shared,
+  scope,
+  onChange,
+}: {
+  shared: SharedConst
+  scope: 'element' | 'const'
+  onChange: (s: 'element' | 'const') => void
+}) {
+  // Honest label: an un-exported const's same-file count is the exact blast radius; an
+  // exported const escapes the file, so a count would understate — say "all uses".
+  const allLabel = shared.exported ? 'All uses' : `All ${shared.sameFileCount}`
+  const seg = 'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors'
+  return (
+    <div className="flex flex-col gap-1.5">
+      <SectionLabel>
+        Shared style · <code className="font-normal text-fg-faint">{shared.name}</code>
+      </SectionLabel>
+      <div className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
+        <button
+          type="button"
+          onClick={() => onChange('element')}
+          className={`${seg} ${scope === 'element' ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
+        >
+          This element
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('const')}
+          className={`${seg} ${scope === 'const' ? 'bg-accent/15 text-accent ring-1 ring-accent' : 'text-fg-muted hover:text-fg'}`}
+        >
+          {allLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function PropertiesPanel({
   values,
   chain,
   selectedKey,
   onPick,
   portalContainer,
+  sharedConst,
+  scope = 'element',
+  onScopeChange,
   onPreview,
   onCommit,
 }: {
@@ -453,6 +500,9 @@ export function PropertiesPanel({
   selectedKey: string
   onPick: (c: CanvasElement) => void
   portalContainer?: React.RefObject<HTMLElement> // themed overlay root for popovers
+  sharedConst?: SharedConst | null // set when style={X} resolves to a shared const
+  scope?: 'element' | 'const'
+  onScopeChange?: (s: 'element' | 'const') => void
 } & EditProps) {
   const [open, setOpen] = useState<Set<SectionKey>>(() => initialOpen(values))
   const toggle = (k: SectionKey) =>
@@ -466,6 +516,11 @@ export function PropertiesPanel({
   return (
     <PanelShell>
       <Breadcrumb chain={chain} selectedKey={selectedKey} onPick={onPick} />
+      {/* Scope toggle only when "all" would actually broaden the edit — a single
+          in-file, non-exported use means the const edit equals this element's edit. */}
+      {sharedConst && onScopeChange && (sharedConst.exported || sharedConst.sameFileCount > 1) && (
+        <ScopeToggle shared={sharedConst} scope={scope} onChange={onScopeChange} />
+      )}
       <Legend hasGap={!!values.gap} />
 
       <Section label="Size" open={open.has('size')} onToggle={() => toggle('size')}>

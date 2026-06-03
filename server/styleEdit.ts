@@ -1174,6 +1174,27 @@ export function computeStyleEdit(
   return { newContent: out, changed: true, warnings, varEdits, moduleEdits, styledEdits, sharedConst }
 }
 
+// Cheap "is this element's style a shared const?" probe (no write) — the client calls
+// it on select so it can show the "all instances" scope toggle BEFORE any scrub. Same
+// locator as computeStyleEdit (so probe + edit agree). Returns the resolved const
+// summary, or null when the style isn't a same-file static-const reference.
+export function computeStyleScope(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { name: string; sameFileCount: number; exported: boolean } | null {
+  let ast: File
+  try { ast = parseFile(source) } catch { return null }
+  const opening = locateOpening(ast, line, column, tag, classNames, offsetHint)
+  if (!opening) return null
+  const info = analyzeStyle(opening, ast)
+  const c = info && info.editable === false ? info.constRef : undefined
+  return c ? { name: c.name, sameFileCount: c.sameFileCount, exported: c.exported } : null
+}
+
 // ============================================================
 //  TEXT EDIT — rewrite an element's literal text content
 // ------------------------------------------------------------

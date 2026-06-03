@@ -55,6 +55,10 @@ export function musePlugin(): Plugin {
         if (req.method !== 'POST') return next()
         handlers.styleEdit(req, res).catch(() => {})
       })
+      server.middlewares.use('/api/muse/style-scope', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.styleScope(req, res).catch(() => {})
+      })
       server.middlewares.use('/api/muse/text-edit', (req, res, next) => {
         if (req.method !== 'POST') return next()
         handlers.textEdit(req, res).catch(() => {})

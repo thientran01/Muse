@@ -69,6 +69,7 @@ const ROUTES = new Map<string, Handler>([
   ['POST /api/muse/observe',         handlers.observe],
   ['POST /api/muse/write',           handlers.write],
   ['POST /api/muse/style-edit',      handlers.styleEdit],
+  ['POST /api/muse/style-scope',     handlers.styleScope],
   ['POST /api/muse/text-edit',       handlers.textEdit],
   ['POST /api/muse/text-editable',   handlers.textEditable],
   ['POST /api/muse/reorder',         handlers.reorder],
