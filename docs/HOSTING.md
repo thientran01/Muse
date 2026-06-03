@@ -163,17 +163,17 @@ For any host whose bundler can't serve the backend in-process,
 [`server/standaloneServer.ts`](../server/standaloneServer.ts) is a tiny Node http server:
 
 ```bash
-MUSE_ROOT=/path/to/your/app npx tsx server/standaloneServer.ts   # listens on :4747
+MUSE_ROOT=/path/to/your/app npx tsx server/standaloneServer.ts   # binds 127.0.0.1:4747
 ```
 
 Then point the overlay at it (see §3): `configureMuse({ apiBase: 'http://localhost:4747' })`.
 
-> **⚠️ Run it on localhost only.** This server has **no authentication** and **rewrites
-> source files on disk**. Its CORS default allows localhost browser origins, but that is
-> not auth — any non-browser client that can reach the port can call the write endpoints.
-> Keep it on your own machine (don't bind it to a public interface or run it on a shared
-> network), and never deploy it. The same-origin Next route above is the safer default
-> when the host can serve it.
+> **⚠️ No authentication — it rewrites source on disk.** It binds **`127.0.0.1` (localhost)
+> by default**, so it isn't reachable from the network. Its CORS default also allows only
+> localhost browser origins, but neither is real auth — keep it on your own machine and
+> never deploy it. Only set `MUSE_HOST=0.0.0.0` if you genuinely need LAN access (e.g. a
+> remote dev box), and only on a trusted network. The same-origin Next route above is the
+> safer default when the host can serve it.
 
 ---
 
