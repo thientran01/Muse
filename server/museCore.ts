@@ -170,7 +170,18 @@ function detectStrategy(root: string): StyleStrategy {
       return 'tailwind-first'
     }
   } catch {
-    // no/unreadable package.json — fall through to inline
+    // no/unreadable package.json — fall through to the CSS check
+  }
+  // Belt-and-suspenders: detect Tailwind directly from its CSS signature — `@import
+  // "tailwindcss"` (v4) or a `@tailwind` directive (v3) in any stylesheet under src/.
+  // Catches setups where the package isn't named as expected.
+  try {
+    const cssFiles: string[] = []
+    collectCssFiles(path.join(root, 'src'), cssFiles)
+    const sig = /@import\s+["']tailwindcss|@tailwind\b/
+    if (cssFiles.some((f) => sig.test(fs.readFileSync(f, 'utf8')))) return 'tailwind-first'
+  } catch {
+    // fall through
   }
   return 'inline'
 }
