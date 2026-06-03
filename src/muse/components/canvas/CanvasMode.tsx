@@ -208,16 +208,41 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
     if (!selected) return
     const place = () => {
       const r = selected.node.getBoundingClientRect()
-      const right = r.right + GAP
-      const left = right + PANEL_W <= window.innerWidth ? right : Math.max(GAP, r.left - GAP - PANEL_W)
       // Clamp the top so the WHOLE panel stays on-screen. Use its real measured
-      // height (it's capped at min(70vh,520px) + scrolls, but a short panel is much
+      // height (capped at min(70vh,520px) + scrolls, but a short panel is much
       // smaller) so a low element doesn't push the panel off the bottom. Falls back
-      // to the max cap before the first measure. Prefer aligning to the element's
-      // top; only lift it up when it would overflow, never above GAP.
-      const panelH = panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.7, 520)
-      const maxTop = window.innerHeight - panelH - GAP
-      const top = Math.max(GAP, Math.min(r.top, maxTop))
+      // to the max cap before the first measure. Prefer the element's top; only lift
+      // it up when it would overflow, never above GAP.
+      const measured = panelRef.current?.offsetHeight
+      const panelH = measured ?? Math.min(window.innerHeight * 0.7, 520)
+      const top = Math.max(GAP, Math.min(r.top, window.innerHeight - panelH - GAP))
+      // Sit beside the element — to its RIGHT by default, flipped to its LEFT when
+      // the right won't fit OR would cover the bottom-right dock / agent panel (it
+      // marks itself with data-muse-dock). Two guards keep the flip from misfiring:
+      //   - CLAMP each dock rect to the viewport: the agent panel tucks off-screen
+      //     via a transform, so its raw rect runs past the edge — only its visible
+      //     footprint should push the panel aside.
+      //   - Skip avoidance until the panel's real height is measured: the first pass
+      //     uses the tall fallback cap, which would over-report vertical overlap and
+      //     flip for one frame before the rAF re-measure corrects it.
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const rightX = r.right + GAP
+      const leftX = Math.max(GAP, r.left - GAP - PANEL_W)
+      const docks =
+        measured == null
+          ? []
+          : [...document.querySelectorAll('[data-muse-dock]')].map((d) => {
+              const b = d.getBoundingClientRect()
+              return { left: Math.max(0, b.left), right: Math.min(vw, b.right), top: Math.max(0, b.top), bottom: Math.min(vh, b.bottom) }
+            })
+      const hitsDock = (x: number) =>
+        docks.some((d) => d.right > d.left && x < d.right && x + PANEL_W > d.left && top < d.bottom && top + panelH > d.top)
+      const fitsRight = rightX + PANEL_W <= vw
+      let left = rightX
+      if (!fitsRight || hitsDock(rightX)) {
+        left = leftX >= GAP && !hitsDock(leftX) ? leftX : fitsRight ? rightX : leftX
+      }
       setPanelPos({ top, left })
     }
     place()

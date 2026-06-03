@@ -43,6 +43,10 @@ export function setTheme(t: Theme) {
 // importing this module in a non-browser context (tests, a future SSR build)
 // can't throw at import time.
 if (typeof window !== 'undefined') {
+  // Make the <html> light/dark class match state on load too — not only via the
+  // pre-paint inline script — so the site (and the Muse overlay, which reads that
+  // class) theme correctly even if that script is stripped, skipped, or runs stale.
+  apply(current)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (current === 'system') {
       apply('system')

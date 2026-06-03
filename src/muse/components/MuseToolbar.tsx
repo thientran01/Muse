@@ -88,7 +88,7 @@ export function MuseToolbar({
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-3">
+    <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-3">
       {/* Undo/redo lives above the FAB when collapsed (with history) — same as the
           old idle corner; hidden once expanded (the agent panel carries its own). */}
       {!expanded && hasHistory && (
