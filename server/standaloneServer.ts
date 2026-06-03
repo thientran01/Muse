@@ -76,6 +76,8 @@ const ROUTES = new Map<string, Handler>([
   ['POST /api/muse/reorderable',     handlers.reorderable],
   ['POST /api/muse/design/generate', handlers.designGenerate],
   ['GET /api/muse/design',           handlers.design],
+  ['GET /api/muse/tokens',           handlers.tokens],
+  ['POST /api/muse/token-edit',      handlers.tokenEdit],
 ])
 
 const server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {

@@ -228,6 +228,40 @@ export async function museReorderable(
   }
 }
 
+// A host design token (CSS custom property) surfaced for the token panel.
+export type DesignToken = { name: string; value: string; isColor: boolean; file: string }
+
+// The host's design tokens (CSS custom properties under src/), for the token panel.
+export async function museTokens(): Promise<DesignToken[]> {
+  if (MOCK) return MOCK_TOKENS
+  if (EPHEMERAL) return [] // no backend to read the host stylesheet
+  const res = await fetch(apiUrl('/api/muse/tokens'))
+  const data = (await res.json()) as { tokens?: DesignToken[]; error?: string }
+  if (data.error) throw new Error(data.error)
+  return Array.isArray(data.tokens) ? data.tokens : []
+}
+
+// Set a token's base value in the stylesheet that defines it. Returns the same
+// { edits, originals } contract as canvas edits, so the caller writes + records history.
+export async function museTokenEdit(name: string, value: string): Promise<StyleEditResponse> {
+  if (MOCK || EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  const res = await fetch(apiUrl('/api/muse/token-edit'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, value }),
+  })
+  const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
+  if (data.error) throw new Error(data.error)
+  return { edits: data.edits ?? [], originals: data.originals ?? {}, warnings: data.warnings ?? [] }
+}
+
+const MOCK_TOKENS: DesignToken[] = [
+  { name: '--c-energy', value: '#7f2f2f', isColor: true, file: 'src/index.css' },
+  { name: '--c-pop', value: '#e07b4f', isColor: true, file: 'src/index.css' },
+  { name: '--c-paper', value: '#f7f4ee', isColor: true, file: 'src/index.css' },
+  { name: '--radius-lg', value: '16px', isColor: false, file: 'src/index.css' },
+]
+
 export type DesignGet = { exists: boolean; content?: string; path?: string }
 
 // Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.

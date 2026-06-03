@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CircleNotch, Sparkle } from '@phosphor-icons/react'
+import { TokenList } from '../TokenList'
 
 // Loosely summarize the brief's YAML frontmatter for a visual card — name, the
 // color swatches, and the type pairing. Display-only; not a real YAML parser.
@@ -34,8 +35,6 @@ export function MessageDesign({
   path?: string
   onGenerate: () => void
 }) {
-  const [open, setOpen] = useState(false)
-
   if (status === 'offer') {
     return (
       <div className="animate-muse-rise space-y-2.5 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
@@ -62,6 +61,13 @@ export function MessageDesign({
     )
   }
 
+  return <DesignView content={content} path={path} />
+}
+
+// The 'view' card — split out so it can own the View-full + Edit-tokens disclosures.
+function DesignView({ content, path }: { content?: string; path?: string }) {
+  const [open, setOpen] = useState(false)
+  const [tokensOpen, setTokensOpen] = useState(false)
   const { name, colors, fonts } = summarize(content ?? '')
   return (
     <div className="animate-muse-rise space-y-3 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
@@ -84,9 +90,17 @@ export function MessageDesign({
       <div className="flex items-center gap-3 text-xs">
         <button
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className="font-medium text-accent transition hover:underline"
         >
           {open ? 'Hide' : 'View full'}
+        </button>
+        <button
+          onClick={() => setTokensOpen((v) => !v)}
+          aria-expanded={tokensOpen}
+          className="font-medium text-accent transition hover:underline"
+        >
+          {tokensOpen ? 'Hide tokens' : 'Edit tokens'}
         </button>
         {path && <span className="truncate font-mono text-fg-faint">{path}</span>}
       </div>
@@ -97,6 +111,9 @@ export function MessageDesign({
           {content}
         </pre>
       )}
+      {/* Live design tokens — edit a CSS custom property's base value without first
+          finding an element that uses it. Mounts (and fetches) only when revealed. */}
+      {tokensOpen && <TokenList />}
     </div>
   )
 }
