@@ -11,7 +11,11 @@ export function Install() {
 
       <Callout>
         <strong>Two ways in.</strong> The skill wires Muse into your project for you and is the quickest
-        start. To do it by hand, the host guide covers every bundler step by step.
+        start. To do it by hand, the{' '}
+        <a className="underline" href="https://github.com/thientran01/Muse/blob/main/docs/HOSTING.md">
+          host guide
+        </a>{' '}
+        covers every bundler step by step.
       </Callout>
 
       <H2 id="skill">1. Add the skill</H2>
@@ -21,8 +25,8 @@ export function Install() {
       </P>
       <CodeBlock label="terminal">npx skills add thientran01/Muse</CodeBlock>
       <P>
-        The skill reads your project, detects the bundler, vendors the engine, and wires the three pieces
-        Muse needs: a build-time locator that maps a clicked element back to its source line, the dev-only
+        The skill reads your project, detects the bundler, copies the engine in, and wires the three
+        pieces Muse needs: a build-time locator that maps a clicked element back to its source line, the dev-only
         endpoints that read and write that source, and the overlay itself. The wiring stays gated to
         development, so none of it reaches a production build.
       </P>
@@ -54,7 +58,7 @@ root.render(
   </>,
 )`}</CodeBlock>
       <P>
-        Next.js and webpack follow the same shape with their own locator and backend wiring: a
+        Next.js and webpack follow the same shape with their own locator and backend wiring: a{' '}
         <Code>turbopack.rules</Code> rule and a development API route on Next, a <Code>babel-loader</Code>{' '}
         rule on webpack. The full per-host guide lives in{' '}
         <a className="underline" href="https://github.com/thientran01/Muse/blob/main/docs/HOSTING.md">
@@ -75,8 +79,8 @@ root.render(
 
       <H2 id="requirements">Requirements</H2>
       <P>
-        React 18 or 19, in any host whose bundler runs a Babel transform: Vite, Next.js 13.4 and up, or
-        webpack. The components you want to edit live under <Code>src/</Code>, since that is the boundary
+        React 18 or 19, in any host whose bundler runs a Babel transform: Vite, Next.js, or webpack. The
+        components you want to edit live under <Code>src/</Code>, since that is the boundary
         Muse writes within. Everything is development only and never ships to a build.
       </P>
     </article>
