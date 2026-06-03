@@ -148,7 +148,9 @@ function HomeCard({
           </span>
         )}
       </span>
-      <CaretRight size={15} className="shrink-0 text-fg-faint/50 transition group-hover:translate-x-0.5" />
+      {/* Gate the nudge behind a real hover device: on touch, `group-hover` fires
+          on tap and the caret would jump for no reason (Emil's touch-hover rule). */}
+      <CaretRight size={15} className="shrink-0 text-fg-faint/50 transition [@media(hover:hover)]:group-hover:translate-x-0.5" />
     </button>
   )
 }
