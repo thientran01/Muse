@@ -49,7 +49,6 @@ export default defineConfig(({ command }) => ({
   ],
 }))`}</CodeBlock>
       <CodeBlock label="App.tsx">{`import { MuseOverlay } from './muse/MuseOverlay'
-import './muse/muse.css'
 
 root.render(
   <>
