@@ -9,11 +9,14 @@ const EYE = 'rgb(var(--muse-surface, 20 18 16))'
  * describes — so it lives here as a requestAnimationFrame loop instead.
  *
  * The gait is a LATERAL TRAVELLING WAVE, not a vertical bob (an up/down bob read
- * as "bouncing", not "swimming"). The body yaws about the head while the tail
- * flicks the OPPOSITE way on a slight phase lag — head bends one direction, tail
- * the other, so the silhouette traces an S that travels front→back, the way a
- * ray actually undulates. The wings add a subtle flap for life; a slow heading
- * drift keeps the loop from looking mechanically repeated.
+ * as "bouncing", not "swimming"). The structural key: a real S needs the tail to
+ * curve one way and then BACK, which a single rigid tail can't do — two rigid
+ * segments only ever make one bend (a C/J). So the tail is a 3-SEGMENT CHAIN
+ * (root › mid › tip), each link rotating about its own joint a quarter-cycle
+ * behind the one above it. At any instant the root bends one way while the tip
+ * bends the other → an S that travels front-to-back, the way a ray undulates.
+ * The body adds a gentle yaw about the nose so the head leads the wave; the wings
+ * add a subtle flap for life; a slow drift keeps the loop from looking repeated.
  *
  * - swim: thinking / in-flight. A clear, propelling S-undulation. Runs for as
  *   long as `loading` holds (settleMs = Infinity — it's a progress signal).
@@ -22,31 +25,42 @@ const EYE = 'rgb(var(--muse-surface, 20 18 16))'
  *   Muse is a quiet side tool whose FAB sits in the host app's corner — it
  *   should glide to rest, not undulate forever in peripheral vision.
  */
+// Per-link amplitude weights, root → tip. The free tip whips hardest (1.7×) so
+// it crosses the centerline — that crossing is what turns a one-sided C/J into a
+// real S. The wave carries the undulation; the body just banks underneath it.
+const LINK = [0.55, 1.1, 1.7] as const
+
+// The body yaw pivots LOW in the body (not at the nose): the same rotation then
+// swings the head visibly while leaving the tail base nearly fixed, so the body
+// reads as a deliberate bank rather than a faint left/right jitter — and it
+// doesn't drag the tail wave to one side. There is NO lateral translate (a sway
+// slides the whole mark side to side, which reads as bouncing); the motion is
+// pure rotation.
+const BODY_PIVOT_Y = 11.5
+
 const PROFILE = {
   swim: {
     period: 1700, // ms per undulation cycle
-    yawAmp: 6, // deg the body swings about the head
-    tailAmp: 14, // deg the tail counter-flicks (> 2×yaw so the net tail is anti-phase → S)
-    tailLag: 0.4, // rad the tail lags the body (the wave travelling back)
-    swayAmp: 0.55, // px lateral glide of the whole body
-    swayLag: 0.35, // rad the sway lags the yaw
+    yawAmp: 3.5, // deg the body banks about BODY_PIVOT_Y
+    tailAmp: 20, // deg base for the tail links (scaled per-link by LINK)
+    tailLag: 0.5, // rad the tail root lags the body — the wave entering the tail
+    segPhase: Math.PI / 2, // rad each link lags the previous — π/2 ⇒ root & tip bend OPPOSITE → S
     spanAmp: 0.08, // subtle wing flap (wingspan draws in at each extreme)
     heightAmp: 0.02, // tiny lengthen as the span narrows (volume)
     driftPeriod: 5200, // ms — slow heading drift, non-harmonic with the undulation
-    driftAmp: 2.5, // deg of that drift
+    driftAmp: 2, // deg of that drift
     settleMs: Infinity, // never settles — runs while loading
   },
   idle: {
     period: 3200,
-    yawAmp: 2.2,
-    tailAmp: 5,
-    tailLag: 0.45,
-    swayAmp: 0.22,
-    swayLag: 0.35,
+    yawAmp: 1.2,
+    tailAmp: 9,
+    tailLag: 0.5,
+    segPhase: Math.PI / 2,
     spanAmp: 0.03,
     heightAmp: 0.012,
     driftPeriod: 6000,
-    driftAmp: 1,
+    driftAmp: 0.8,
     settleMs: 3200, // a few slow undulations, then decays to rest
   },
 } as const
@@ -62,13 +76,19 @@ export function UfoIcon({
 }) {
   const rootRef = useRef<SVGGElement>(null)
   const wingsRef = useRef<SVGGElement>(null)
-  const tailRef = useRef<SVGPathElement>(null)
+  // The tail's three links, root → tip. Nested in the DOM, so each rotates about
+  // its joint relative to the link above it — that nesting IS the spine.
+  const t1Ref = useRef<SVGGElement>(null)
+  const t2Ref = useRef<SVGGElement>(null)
+  const t3Ref = useRef<SVGGElement>(null)
 
   useEffect(() => {
     const root = rootRef.current
     const wings = wingsRef.current
-    const tail = tailRef.current
-    if (!root || !wings || !tail) return
+    const t1 = t1Ref.current
+    const t2 = t2Ref.current
+    const t3 = t3Ref.current
+    if (!root || !wings || !t1 || !t2 || !t3) return
 
     const mq =
       typeof window !== 'undefined'
@@ -83,7 +103,9 @@ export function UfoIcon({
     const rest = () => {
       root.removeAttribute('transform')
       wings.removeAttribute('transform')
-      tail.removeAttribute('transform')
+      t1.removeAttribute('transform')
+      t2.removeAttribute('transform')
+      t3.removeAttribute('transform')
     }
 
     // (Re)start the loop from a fresh time origin. Re-invoked whenever the
@@ -123,28 +145,37 @@ export function UfoIcon({
         const sx = 1 - p.spanAmp * flap2 * env
         const sy = 1 + p.heightAmp * flap2 * env
 
-        // The S-wave. The body yaws about the head; the tail flicks the opposite
-        // way on a lag, so at any instant head and tail point apart → an S that
-        // travels front-to-back. A slow drift keeps the heading from looping.
-        const headYaw = p.yawAmp * Math.sin(f) * env
+        // Body: a bank about a low pivot (BODY_PIVOT_Y) so the head swings while
+        // the tail base stays put. A slow drift keeps the heading from looping
+        // mechanically. No vertical bob and no lateral slide — both read as
+        // "bouncing"; the body's motion is pure rotation.
+        const bodyYaw = p.yawAmp * Math.sin(f) * env
         const drift = p.driftAmp * Math.sin((2 * Math.PI * t) / p.driftPeriod) * env
-        const sway = p.swayAmp * Math.sin(f - p.swayLag) * env
-        const tailYaw = -p.tailAmp * Math.sin(f - p.tailLag) * env
 
-        // Root: lateral glide + body yaw about the head (12, 8). No vertical bob —
-        // that's what read as "bouncing"; the swim is side-to-side undulation.
+
+        // The travelling wave. Each tail link bends about its joint a quarter
+        // cycle behind the one above it (segPhase = π/2), so at the wave's peak
+        // the root link bends one way (th1 > 0) while the tip link bends the
+        // other (th3 < 0) — the tail is an S, not a stiff swinging line. The lag
+        // grows down the chain, so the bend visibly travels front → back.
+        const th1 = p.tailAmp * LINK[0] * Math.sin(f - p.tailLag) * env
+        const th2 = p.tailAmp * LINK[1] * Math.sin(f - p.tailLag - p.segPhase) * env
+        const th3 = p.tailAmp * LINK[2] * Math.sin(f - p.tailLag - 2 * p.segPhase) * env
+
+        // The body banks about a low pivot — pure rotation, no translation.
         root.setAttribute(
           'transform',
-          `translate(${sway.toFixed(3)} 0) rotate(${(headYaw + drift).toFixed(3)} 12 8)`,
+          `rotate(${(bodyYaw + drift).toFixed(3)} 12 ${BODY_PIVOT_Y})`,
         )
         wings.setAttribute(
           'transform',
           `translate(12 10) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(-12 -10)`,
         )
-        // Tail rotates about a pivot INSIDE the body lobe (12, 13.7), so its root
-        // stays covered and the whip never detaches; it inherits the body yaw, so
-        // its net angle is headYaw + tailYaw (anti-phase → the back half of the S).
-        tail.setAttribute('transform', `rotate(${tailYaw.toFixed(3)} 12 13.7)`)
+        // Each link rotates about its own joint (the top of that link), so the
+        // links stay hinged together and the spine never separates.
+        t1.setAttribute('transform', `rotate(${th1.toFixed(3)} 12 13.7)`)
+        t2.setAttribute('transform', `rotate(${th2.toFixed(3)} 12 15.4)`)
+        t3.setAttribute('transform', `rotate(${th3.toFixed(3)} 12 17.0)`)
 
         raf = requestAnimationFrame(tick)
       }
@@ -176,15 +207,31 @@ export function UfoIcon({
     >
       <g ref={rootRef}>
         {/* The whole body undulates as one unit so the parts never separate at
-            the joins; the tail then flicks on its own counter-phase. */}
+            the joins; the tail chain then carries the S on its own phase. */}
         <g ref={wingsRef}>
-          {/* tail — drawn first, root tucked high (y≈13.2) so the body's rounded
-              rear lobe fully overlaps it; whips on its own lagging phase */}
-          <path
-            ref={tailRef}
-            d="M11.55 13.2 C11.5 15 11.75 17 12 18.8 C12.25 17 12.5 15 12.45 13.2 C12.2 13.05 11.8 13.05 11.55 13.2 Z"
-            fill="currentColor"
-          />
+          {/* tail — a 3-link chain, drawn first so the body's rounded rear lobe
+              overlaps link 1's root. Each <g> nests inside the previous and
+              rotates about that link's top joint, so the chain stays connected
+              while curving into an S. Links overlap their joints so a bend never
+              opens a gap. */}
+          <g ref={t1Ref}>
+            <path
+              d="M11.55 13.2 C11.55 14 11.62 14.7 11.66 15.4 L12.34 15.4 C12.38 14.7 12.45 14 12.45 13.2 C12.2 13.05 11.8 13.05 11.55 13.2 Z"
+              fill="currentColor"
+            />
+            <g ref={t2Ref}>
+              <path
+                d="M11.64 15.0 L12.36 15.0 C12.32 15.7 12.27 16.4 12.22 17.1 L11.78 17.1 C11.73 16.4 11.68 15.7 11.64 15.0 Z"
+                fill="currentColor"
+              />
+              <g ref={t3Ref}>
+                <path
+                  d="M11.76 16.8 L12.24 16.8 C12.18 17.5 12.06 18.2 12 18.8 C11.94 18.2 11.82 17.5 11.76 16.8 Z"
+                  fill="currentColor"
+                />
+              </g>
+            </g>
+          </g>
 
           {/* cephalic horns — bases run under the body so the body fill hides the join */}
           <path d="M9.9 6.6 C9.5 4.8 9.4 3.8 9.9 3.5 C10.4 3.8 10.8 4.9 11.1 6.6 Z" fill="currentColor" />

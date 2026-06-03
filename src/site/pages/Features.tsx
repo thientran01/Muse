@@ -7,16 +7,16 @@ export function Features() {
         What you can do
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
-        Canvas Mode is the main way to work: select an element and shape it by hand. A chat partner
-        handles the changes you would rather describe than drag. Everything below is live, so press{' '}
-        <Kbd>L</Kbd> and start editing.
+        Canvas is the main way to work: click an element and shape it by hand. A chat partner
+        handles the changes you would rather describe than drag. Everything below is live, so open Muse
+        and start editing, or hold <Kbd>⇧</Kbd> and click to ask the chat partner.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Canvas Mode
+        Canvas
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Select an element and edit it directly. Spacing, size, type, color, copy, and order are all
+        Click an element and edit it directly. Spacing, size, type, color, copy, and order are all
         draggable or clickable, and each change writes to your source and stays on the undo stack. A
         direct edit is a known transform, so Muse applies it without a model call: instant, key-free,
         and reversible.
@@ -72,10 +72,11 @@ export function Features() {
         Or describe it
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Some changes read better as a sentence than a drag. Tell Muse to make a card feel warmer and
-        less boxy and it answers with a few directions, each a real edit you can preview in place before
-        you commit to one. When a request is genuinely open-ended, it asks a single question first. The
-        agent carries intent; Canvas carries the hands-on work.
+        Some changes read better as a sentence than a drag. Shift-click an element to hand it to the chat
+        partner, tell Muse to make a card feel warmer and less boxy, and it answers with a few directions,
+        each a real edit you can preview in place before you commit to one. When a request is genuinely
+        open-ended, it asks a single question first. The agent carries intent; Canvas carries the
+        hands-on work.
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">

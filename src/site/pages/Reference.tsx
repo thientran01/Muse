@@ -13,14 +13,20 @@ export function Reference() {
   return (
     <article>
       <H1>Reference</H1>
-      <Lead>Shortcuts, configuration, and the honest limitations.</Lead>
+      <Lead>Gestures, configuration, and the honest limitations.</Lead>
 
-      <H2 id="shortcuts">Shortcuts</H2>
+      <H2 id="shortcuts">Gestures and shortcuts</H2>
+      <P>
+        Open Muse from the button in the corner, then the gesture decides the surface: a plain click
+        shapes the element directly, and a Shift-click hands it to the chat partner.
+      </P>
       <div className="mt-4 flex flex-col gap-2 text-[14px] text-stone-600 dark:text-stone-400">
-        <div className="flex items-center gap-3"><Kbd>L</Kbd> Toggle Canvas Mode</div>
-        <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click to select the container</div>
+        <div className="flex items-center gap-3"><Kbd>Click</Kbd> select and shape an element</div>
+        <div className="flex items-center gap-3"><Kbd>⇧</Kbd> + click hand it to the chat partner</div>
+        <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click step out to the parent</div>
+        <div className="flex items-center gap-3"><Kbd>Double-click</Kbd> edit text in place</div>
         <div className="flex items-center gap-3"><Kbd>⌘</Kbd> <Kbd>Z</Kbd> undo, <Kbd>⌘</Kbd> <Kbd>⇧</Kbd> <Kbd>Z</Kbd> redo</div>
-        <div className="flex items-center gap-3"><Kbd>Esc</Kbd> Deselect, then exit</div>
+        <div className="flex items-center gap-3"><Kbd>Esc</Kbd> deselect, then close Muse</div>
       </div>
 
       <H2 id="env">Environment</H2>
@@ -42,7 +48,7 @@ export function Reference() {
         19 removed, so React 18 is pinned on purpose.
       </P>
       <P>
-        <strong>Built for utility classes.</strong> Canvas Mode edits Tailwind classes in your markup,
+        <strong>Built for utility classes.</strong> Canvas edits Tailwind classes in your markup,
         so apps that route everything through CSS variables or styled-components give it less to grab.
         Broader styling support is on the way.
       </P>

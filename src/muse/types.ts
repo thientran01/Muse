@@ -190,6 +190,10 @@ export type ThreadMessage =
   | { id: string; kind: 'applied'; fileCount: number; rationale: string }
   | { id: string; kind: 'target-handoff'; target: SelectedElement }
   | { id: string; kind: 'error'; text: string }
+  // A quiet acknowledgement that the user undid / redid / reverted, so the thread
+  // narrates history actions instead of leaving the change unexplained. `label`
+  // names the change for undo/redo (the option/Canvas-edit label); revert has none.
+  | { id: string; kind: 'history'; action: 'undo' | 'redo' | 'revert'; label?: string }
   // The app's design system (DESIGN.md). `offer` → no brief yet, prompt to make
   // one; `generating` → the LLM is writing it; `view` → show the brief (content set).
   | { id: string; kind: 'design'; status: 'offer' | 'generating' | 'view'; content?: string; path?: string }

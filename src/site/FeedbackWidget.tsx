@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { feedbackConfigured, submitFeedback } from './feedback'
 
 // A floating feedback widget for demo testers. Sits bottom-LEFT to stay clear of
-// Muse's own FAB (bottom-right). The root carries `data-muse-ui` so Canvas Mode
+// Muse's own FAB (bottom-right). The root carries `data-muse-ui` so Canvas
 // treats it as chrome and never tries to select/edit it (the widget styles itself
 // with plain Tailwind, so the Muse token scope doesn't change its look).
 type Status = 'idle' | 'sending' | 'sent' | 'error'
