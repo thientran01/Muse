@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { type Plugin, loadEnv } from 'vite'
 import Anthropic from '@anthropic-ai/sdk'
-import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, findStyledExport, renderStyledObjectEdit, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit, type ModuleEdit } from './styleEdit'
+import { computeStyleEdit, computeTextEdit, computeTextEditable, computeReorder, computeReorderable, findStyledExport, styledObjectPatches, type Mutation, type OffsetHint, type StyleStrategy, type VarEdit, type ModuleEdit } from './styleEdit'
 import { editCssVar } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
@@ -800,12 +800,13 @@ export function musePlugin(): Plugin {
                   warnings.push(`${rel}: styled ${label} is ${loc.unsupported} — left unchanged.`)
                   continue
                 }
-                // Object-syntax export (`styled.div({…})`): merge the edits into the
-                // parsed object props and rewrite the literal in place.
-                if ('objectStart' in loc) {
-                  const next = renderStyledObjectEdit(loc.props, props.map((p) => [p.cssProp, p.value] as [string, string]))
-                  if (content.slice(loc.objectStart, loc.objectEnd) !== next) {
-                    content = content.slice(0, loc.objectStart) + next + content.slice(loc.objectEnd)
+                // Object-syntax export (`styled.div({…})`): surgical patches on the
+                // literal's properties (right-to-left so earlier offsets stay valid).
+                if ('object' in loc) {
+                  const ps = styledObjectPatches(content, loc.object, props.map((p) => [p.cssProp, p.value] as [string, string]))
+                  if (ps.length) {
+                    ps.sort((a, b) => b.start - a.start)
+                    for (const p of ps) content = content.slice(0, p.start) + p.text + content.slice(p.end)
                     changed = true
                   }
                   continue
