@@ -900,25 +900,51 @@ export function computeStyleEdit(
     : undefined
 
   // 'const' scope: rewrite the shared const's DEFINITION (all instances) and leave this
-  // element's JSX untouched — a single splice on the const's object range, reusing the
-  // same merge + shorthand-expansion as the inline-literal path. Short-circuits the
-  // per-element routing below entirely.
+  // element's JSX untouched. Short-circuits the per-element routing below entirely.
   if (scope === 'const' && styleConst) {
+    // The mutation edits (camelCase css key → value), and the merged prop list used only
+    // to test whether a shorthand expansion would restructure the object.
+    const edits: Array<[string, string]> = []
     const props = [...styleConst.props]
     const touched = new Set<string>()
     for (const m of valid) {
       for (const key of PROPERTIES[m.property].css) {
+        edits.push([key, m.value])
         const i = props.findIndex(([k]) => k === key)
         if (i === -1) props.push([key, m.value])
         else props[i] = [key, m.value]
         touched.add(key)
       }
     }
-    const spreads = styleConst.spreadRanges.map((r) => source.slice(r.start, r.end))
-    const text = renderStyleObject(expandConflictingShorthands(props, touched), spreads)
-    const out = source.slice(0, styleConst.object.start!) + text + source.slice(styleConst.object.end!)
+    const expanded = expandConflictingShorthands(props, touched)
+    const expansionRestructured =
+      expanded.length !== props.length || expanded.some(([k, v], i) => props[i][0] !== k || props[i][1] !== v)
+
+    let out: string
+    if (!expansionRestructured) {
+      // No shorthand mix — patch ONLY the edited properties (replace a value / insert a
+      // prop), so the const's untouched props, comments, and formatting stay byte-for-byte
+      // (the same "smallest change" contract as a same-file styled object). Right-to-left.
+      const patches = styledObjectPatches(source, styleConst.object, edits)
+      patches.sort((a, b) => b.start - a.start)
+      out = source
+      for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
+    } else {
+      // A shorthand collides with a longhand (#78): expansion DROPS the shorthand, which
+      // a surgical patch can't express, so re-emit the whole object (formatting normalized
+      // — the necessary cost of avoiding the React 19 mixed-shorthand warning).
+      const spreads = styleConst.spreadRanges.map((r) => source.slice(r.start, r.end))
+      out = source.slice(0, styleConst.object.start!) + renderStyleObject(expanded, spreads) + source.slice(styleConst.object.end!)
+    }
     const changed = out !== source
     return { newContent: out, changed, warnings: changed ? [] : ['nothing to change'], varEdits: [], moduleEdits: [], styledEdits: [], sharedConst }
+  }
+  // scope='const' was asked for but the style didn't resolve to a shared const (e.g. the
+  // file changed between the client's probe and this commit). Don't silently pretend it
+  // was global — warn, and fall through to the per-element override below (still applies
+  // the change to the clicked element, just not everywhere).
+  if (scope === 'const' && !styleConst) {
+    warnings.push('scope=const requested but no resolvable shared const here — wrote a per-element override instead')
   }
 
   // A non-literal `style={expr}` we can spread-override. When present, prefer the

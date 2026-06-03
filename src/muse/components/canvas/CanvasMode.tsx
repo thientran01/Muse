@@ -595,7 +595,7 @@ export function CanvasMode({
     }
 
     try {
-      const { edits, originals, warnings, sharedConst } = await museStyleEdit([
+      const { edits, originals, warnings } = await museStyleEdit([
         {
           fileName: selected.fileName,
           line: selected.line,
@@ -606,9 +606,8 @@ export function CanvasMode({
           scope,
         },
       ])
-      // Keep the toggle in sync if the commit's read disagrees with the probe (e.g. the
-      // probe hadn't landed yet) — without disturbing the user's current scope choice.
-      if (sharedConst) setStyleScope(sharedConst)
+      // (The shared-const toggle is driven solely by the on-select probe — not the commit
+      // response — so a slow commit can't clobber a newer selection's scope state.)
       if (warnings.length) console.warn('[muse] style-edit:', warnings.join(' · '))
       if (edits.length === 0) {
         clearPreview() // nothing was written — don't leave a phantom inline override

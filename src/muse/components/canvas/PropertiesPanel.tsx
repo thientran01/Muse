@@ -457,15 +457,22 @@ function ScopeToggle({
   // Honest label: an un-exported const's same-file count is the exact blast radius; an
   // exported const escapes the file, so a count would understate — say "all uses".
   const allLabel = shared.exported ? 'All uses' : `All ${shared.sameFileCount}`
-  const seg = 'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors'
+  // Focus ring matches the panel's other interactive buttons (e.g. MuseToolbar).
+  const seg =
+    'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>
-        Shared style · <code className="font-normal text-fg-faint">{shared.name}</code>
+        Shared style · <code className="font-mono text-fg-faint">{shared.name}</code>
       </SectionLabel>
-      <div className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
+      {/* A two-option segmented control = a radio group: the selection is exclusive, and
+          screen readers should announce which scope is active (the visual accent state
+          alone isn't conveyed). */}
+      <div role="radiogroup" aria-label="Edit scope" className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
         <button
           type="button"
+          role="radio"
+          aria-checked={scope === 'element'}
           onClick={() => onChange('element')}
           className={`${seg} ${scope === 'element' ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
         >
@@ -473,6 +480,8 @@ function ScopeToggle({
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={scope === 'const'}
           onClick={() => onChange('const')}
           className={`${seg} ${scope === 'const' ? 'bg-accent/15 text-accent ring-1 ring-accent' : 'text-fg-muted hover:text-fg'}`}
         >
