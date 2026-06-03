@@ -75,6 +75,14 @@ export function musePlugin(): Plugin {
         if (req.method !== 'POST') return next()
         handlers.reorderable(req, res).catch(() => {})
       })
+      server.middlewares.use('/api/muse/token-edit', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.tokenEdit(req, res).catch(() => {})
+      })
+      server.middlewares.use('/api/muse/tokens', (req, res, next) => {
+        if (req.method !== 'GET') return next()
+        handlers.tokens(req, res).catch(() => {})
+      })
     },
   }
 }

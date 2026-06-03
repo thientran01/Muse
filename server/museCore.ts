@@ -32,7 +32,7 @@ import {
   type VarEdit,
   type ModuleEdit,
 } from './styleEdit'
-import { editCssVar } from '../src/muse/style/cssVarEdit'
+import { editCssVar, listCssVars } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
 
@@ -106,6 +106,8 @@ export type MuseHandlers = {
   reorderable: Handler
   designGenerate: Handler
   design: Handler
+  tokens: Handler
+  tokenEdit: Handler
 }
 
 export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
@@ -121,6 +123,8 @@ export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
     reorderable:    (req, res) => handleReorderable(req, res, ctx),
     designGenerate: (req, res) => handleDesignGenerate(req, res, ctx),
     design:         (req, res) => handleDesign(req, res, ctx),
+    tokens:         (req, res) => handleTokens(req, res, ctx),
+    tokenEdit:      (req, res) => handleTokenEdit(req, res, ctx),
   }
 }
 
@@ -1608,6 +1612,75 @@ async function handleDesign(_req: IncomingMessage, res: ServerResponse, ctx: Mus
     return sendJson(res, 200, { exists: !!content, content: content ?? undefined, path: relOf(ctx.root, p) })
   } catch (err) {
     console.error('[muse] /design error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// A value that's recognizably a COLOR, so the token panel can show a swatch (else it
+// renders the value as text). Conservative: only obvious color forms — a raw `r g b`
+// channel triple (Tailwind-v4 `rgb(var(--x))` style) is ambiguous vs a spacing triple,
+// so it's left as text.
+const TOKEN_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|color\(|hwb\()/
+function looksLikeColor(value: string): boolean {
+  return TOKEN_COLOR_RE.test(value.trim().replace(/\s*!important\s*$/i, ''))
+}
+
+// GET /api/muse/tokens — the host's design tokens: every CSS custom property defined
+// under src/ (first definition wins; Muse's own --muse-* overlay tokens excluded), with
+// a flag for color-valued ones. Lets the user edit a token without first finding an
+// element that uses it. Read-only discovery; edits go through token-edit.
+async function handleTokens(_req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const cssFiles: string[] = []
+    collectCssFiles(path.join(ctx.root, 'src'), cssFiles)
+    cssFiles.sort()
+    const seen = new Set<string>()
+    const tokens: Array<{ name: string; value: string; isColor: boolean; file: string }> = []
+    for (const abs of cssFiles) {
+      let css: string
+      try { css = fs.readFileSync(abs, 'utf8') } catch { continue }
+      for (const v of listCssVars(css)) {
+        if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
+        seen.add(v.name)
+        tokens.push({ name: v.name, value: v.value, isColor: looksLikeColor(v.value), file: relOf(ctx.root, abs) })
+      }
+    }
+    return sendJson(res, 200, { tokens })
+  } catch (err) {
+    console.error('[muse] /tokens error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// POST /api/muse/token-edit { name, value } — set a token's BASE value in the stylesheet
+// that defines it, reusing the var-edit splice (and its value-safety guards). Returns the
+// same { edits, originals, warnings } contract as the canvas edits, so it flows through
+// the existing write + undo/redo path.
+async function handleTokenEdit(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as { name?: unknown; value?: unknown }
+    const name = typeof b?.name === 'string' ? b.name : ''
+    const value = typeof b?.value === 'string' ? b.value : ''
+    if (!/^--[A-Za-z0-9_-]+$/.test(name) || !value.trim()) {
+      return sendJson(res, 400, { error: 'A token name (--x) and a value are required.' })
+    }
+    const cssFiles = findCssVarFiles(ctx.root, name)
+    if (cssFiles.length === 0) {
+      return sendJson(res, 200, { edits: [], originals: {}, warnings: [`couldn't find where ${name} is defined.`] })
+    }
+    const abs = cssFiles[0]
+    const rel = relOf(ctx.root, abs)
+    const before = fs.readFileSync(abs, 'utf8')
+    const r = editCssVar(before, name, value)
+    const warnings: string[] = []
+    if (cssFiles.length > 1) warnings.push(`${name} is defined in ${cssFiles.length} stylesheets — edited ${rel}.`)
+    if (r.matches > 1) warnings.push(`${name} is themed in ${r.matches} selectors — updated the base value; theme overrides unchanged.`)
+    if (!r.changed) {
+      return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['nothing to change'] })
+    }
+    return sendJson(res, 200, { edits: [{ fileName: rel, newContent: r.newContent }], originals: { [rel]: before }, warnings })
+  } catch (err) {
+    console.error('[muse] /token-edit error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
   }
 }

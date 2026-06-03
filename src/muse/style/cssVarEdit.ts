@@ -90,6 +90,29 @@ export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// Every custom-property DEFINITION in a stylesheet (`--name: value`), first-wins on
+// duplicates (source order — the base `:root`/`@theme` value, before any `.dark`/media
+// override). Comments are blanked first so a commented-out decl isn't listed; offsets
+// stay aligned so values read from the original source. Powers the token panel: surface
+// the project's design tokens so a user can edit one without hunting for an element.
+export type CssVarDecl = { name: string; value: string }
+export function listCssVars(css: string): CssVarDecl[] {
+  const scan = blankComments(css)
+  const re = /(--[A-Za-z0-9_-]+)\s*:\s*([^;}]*)/g
+  const seen = new Set<string>()
+  const out: CssVarDecl[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(scan)) !== null) {
+    const name = m[1]
+    if (seen.has(name)) continue
+    seen.add(name)
+    const valStart = m.index + m[0].length - m[2].length
+    const value = css.slice(valStart, m.index + m[0].length).trim()
+    if (value) out.push({ name, value })
+  }
+  return out
+}
+
 // Rewrite the value of `--varName` in a stylesheet. Edits the FIRST definition
 // (source order — typically the `:root` base value) and reports the total count
 // so the caller can warn when theme-specific overrides (.dark, media queries)
