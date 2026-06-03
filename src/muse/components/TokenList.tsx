@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { museTokenEdit, museTokens, museWrite, type DesignToken } from '../api'
+import { EPHEMERAL, MOCK } from '../config'
 import { museStore } from '../store'
 import type { HistoryEntry } from '../types'
 
@@ -11,11 +12,11 @@ function TokenRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
   useEffect(() => setVal(token.value), [token.value])
   return (
     <div className="flex items-center gap-2">
-      {token.isColor ? (
-        <span className="h-4 w-4 shrink-0 rounded ring-1 ring-line/20" style={{ background: token.value }} />
-      ) : (
-        <span className="h-4 w-4 shrink-0" />
-      )}
+      <span
+        aria-hidden="true"
+        className={token.isColor ? 'h-4 w-4 shrink-0 rounded ring-1 ring-line/20' : 'h-4 w-4 shrink-0'}
+        style={token.isColor ? { background: token.value } : undefined}
+      />
       <code className="w-[84px] shrink-0 truncate font-mono text-[10px] text-fg-muted" title={token.name}>
         {token.name}
       </code>
@@ -29,7 +30,7 @@ function TokenRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
         }}
         disabled={busy}
         aria-label={`Value for ${token.name}`}
-        className="min-w-0 flex-1 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
+        className="min-w-0 flex-1 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-1 font-mono text-[11px] text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
       />
     </div>
   )
@@ -48,13 +49,21 @@ export function TokenList() {
     let cancelled = false
     museTokens()
       .then((t) => { if (!cancelled) setTokens(t) })
-      .catch((e) => { if (!cancelled) { setTokens([]); setError((e as Error).message) } })
+      // Leave tokens null on a fetch failure so the error shows instead of being
+      // swallowed into the empty "no tokens" state.
+      .catch((e) => { if (!cancelled) setError((e as Error).message) })
     return () => { cancelled = true }
   }, [])
 
   const commit = async (name: string, next: string, prev: string) => {
     const value = next.trim()
     if (!value || value === prev.trim()) return
+    // MOCK / EPHEMERAL: no backend write — apply optimistically so the demo's panel works
+    // (a swatch/value updates) instead of erroring on every edit.
+    if (MOCK || EPHEMERAL) {
+      setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
+      return
+    }
     setBusy(name)
     try {
       const { edits, originals, warnings } = await museTokenEdit(name, value)
@@ -79,15 +88,21 @@ export function TokenList() {
     }
   }
 
+  const errorChip = (msg: string) => (
+    <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
+  )
+
+  if (error && !tokens) return errorChip("Couldn't read your tokens.")
   if (!tokens) return <p className="text-[11px] text-fg-faint">Reading tokens…</p>
   if (tokens.length === 0) return <p className="text-[11px] text-fg-faint">No CSS custom properties found.</p>
 
   return (
-    <div className="space-y-1">
+    // Cap height + scroll so a token-heavy host doesn't let this list swallow the panel.
+    <div className="max-h-44 space-y-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
       {tokens.map((t) => (
         <TokenRow key={t.name} token={t} busy={busy === t.name} onCommit={(v) => commit(t.name, v, t.value)} />
       ))}
-      {error && <p className="text-[11px] text-rose-400">{error}</p>}
+      {error && errorChip(error)}
     </div>
   )
 }

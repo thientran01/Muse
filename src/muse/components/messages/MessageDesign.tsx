@@ -90,12 +90,14 @@ function DesignView({ content, path }: { content?: string; path?: string }) {
       <div className="flex items-center gap-3 text-xs">
         <button
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className="font-medium text-accent transition hover:underline"
         >
           {open ? 'Hide' : 'View full'}
         </button>
         <button
           onClick={() => setTokensOpen((v) => !v)}
+          aria-expanded={tokensOpen}
           className="font-medium text-accent transition hover:underline"
         >
           {tokensOpen ? 'Hide tokens' : 'Edit tokens'}

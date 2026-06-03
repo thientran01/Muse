@@ -517,7 +517,7 @@ export function MuseOverlay() {
       applyDom(entry.dom, 'before')
       museStore.setState((s) => ({ past: s.past.slice(0, -1), future: [entry, ...s.future], applied: false }))
       setOpen(true)
-      setSelection(entry.elements)
+      if (entry.elements.length > 0) setSelection(entry.elements) // a token edit carries none — keep the current selection
       museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'undo', label: entry.label })
       return
     }
@@ -530,7 +530,7 @@ export function MuseOverlay() {
         applied: false,
       }))
       setOpen(true) // surface the panel onto the reverted element (may fire from the idle bar)
-      setSelection(entry.elements)
+      if (entry.elements.length > 0) setSelection(entry.elements) // a token edit carries none — keep the current selection
       museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'undo', label: entry.label })
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
@@ -546,7 +546,7 @@ export function MuseOverlay() {
       applyDom(entry.dom, 'after')
       museStore.setState((s) => ({ future: s.future.slice(1), past: [...s.past, entry], applied: true }))
       setOpen(true)
-      setSelection(entry.elements)
+      if (entry.elements.length > 0) setSelection(entry.elements) // a token edit carries none — keep the current selection
       museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'redo', label: entry.label })
       return
     }
@@ -559,7 +559,7 @@ export function MuseOverlay() {
         applied: true,
       }))
       setOpen(true) // surface the panel onto the redone element (may fire from the idle bar)
-      setSelection(entry.elements)
+      if (entry.elements.length > 0) setSelection(entry.elements) // a token edit carries none — keep the current selection
       museStore.appendThread({ id: nextThreadId(), kind: 'history', action: 'redo', label: entry.label })
     } catch (e) {
       museStore.setState({ error: (e as Error).message })
