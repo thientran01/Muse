@@ -111,6 +111,7 @@ export async function museStyleEdit(
     edits: Array.isArray(data.edits) ? data.edits : [],
     originals: data.originals ?? {},
     warnings: Array.isArray(data.warnings) ? data.warnings : [],
+    sharedConst: data.sharedConst,
   }
 }
 

@@ -945,7 +945,7 @@ async function handleWrite(req: IncomingMessage, res: ServerResponse, ctx: MuseC
 async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const body = JSON.parse(await readBody(req)) as {
-      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown }>
+      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown; scope?: unknown }>
       strategy?: unknown
     }
     const rawEdits = Array.isArray(body.edits) ? body.edits : []
@@ -960,7 +960,7 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
 
     const out: Array<{ fileName: string; newContent: string }> = []
     const warnings: string[] = []
-    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[] }> }>()
+    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[]; scope?: 'element' | 'const' }> }>()
 
     for (const e of rawEdits) {
       const abs = resolveInSrc(ctx.root, e?.fileName)
@@ -978,12 +978,16 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
         warnings.push(`skipped ${rel} — needs a positive line and at least one mutation.`)
         continue
       }
+      const scope = e?.scope === 'const' ? 'const' : 'element'
       const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
-      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations })
+      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations, scope })
       byFile.set(rel, bucket)
     }
 
     const originals: Record<string, string> = {}
+    // The shared-const a target's `style={X}` points at — surfaced so the client can
+    // offer "apply to all" (canvas commits one element per call, so a single value).
+    let sharedConst: { name: string; sameFileCount: number; exported: boolean } | undefined
     const varEdits: VarEdit[] = []
     const moduleEdits: Array<{ cssAbs: string; cssRel: string; className: string; cssProp: string; value: string }> = []
     const unresolvedModule = new Set<string>()
@@ -996,7 +1000,8 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
       let changed = false
       items.sort((a, b) => b.line - a.line)
       for (const it of items) {
-        const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, ctx.lineOffsetHint)
+        const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, ctx.lineOffsetHint, it.scope)
+        if (result.sharedConst && !sharedConst) sharedConst = result.sharedConst
         if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
         if (result.varEdits.length) varEdits.push(...result.varEdits)
         for (const me of result.moduleEdits) {
@@ -1182,9 +1187,11 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
     }
 
     if (out.length === 0) {
-      return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'] })
+      // Even with no edit (e.g. a probe-only call or a no-op), surface sharedConst so
+      // the client can still offer "apply to all" off this element's style.
+      return sendJson(res, 200, { edits: [], originals: {}, warnings: warnings.length ? warnings : ['no changes computed'], sharedConst })
     }
-    return sendJson(res, 200, { edits: out, originals, warnings })
+    return sendJson(res, 200, { edits: out, originals, warnings, sharedConst })
   } catch (err) {
     console.error('[muse] /style-edit error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })

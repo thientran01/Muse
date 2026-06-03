@@ -80,6 +80,10 @@ export type StyleEditResult = {
   // Imported styled-component mutations deferred to a cross-file template edit (see
   // StyledEdit). Empty unless the target is a `<Card>` imported from a relative module.
   styledEdits: StyledEdit[]
+  // Set when the target's style is `style={X}` and X resolves to a static same-file
+  // const (see ConstRef) — surfaced on EITHER scope so the client can offer "apply to
+  // all". The edit itself targets the const only when scope === 'const'.
+  sharedConst?: { name: string; sameFileCount: number; exported: boolean }
 }
 
 // The arbitrary-token bracket content (`text-[color:var(--x)]` → `color:var(--x)`),
@@ -99,6 +103,21 @@ type ClassInfo =
   | { editable: false; reason: string }
   | null // no className attribute at all
 
+// A `style={Identifier}` whose identifier is a STATIC same-file `const X = {…}` — the
+// shared style-object pattern (`const body = {…}; <p style={body}>` used N times). The
+// resolved const lets a 'const'-scope edit rewrite the DEFINITION (all instances) rather
+// than spread-overriding this one element. See resolveStyleConst.
+export type ConstRef = {
+  name: string
+  object: ObjectExpression
+  props: Array<[string, string]>
+  spreadRanges: Array<{ start: number; end: number }>
+  // `style={X}` usages in THIS file — the exact blast radius when the const isn't
+  // exported. `exported` flags that it also escapes the file (so a count understates).
+  sameFileCount: number
+  exported: boolean
+}
+
 // …and its style attribute.
 type StyleInfo =
   // `spreadRanges` are LEADING `...expr` spreads in the object (e.g. `{ ...body, … }`),
@@ -107,7 +126,9 @@ type StyleInfo =
   // `spread` is set when style is a NON-literal expression (style={body}) we can't
   // merge into but CAN spread-override per-element. It carries the container range
   // (the whole `{expr}`) and the inner expression range (to re-emit `...expr`).
-  | { editable: false; reason: string; spread?: { start: number; end: number; exprStart: number; exprEnd: number } }
+  // `constRef` is set when that expression is an Identifier resolving to a static
+  // same-file const object — then a 'const'-scope edit can rewrite all instances.
+  | { editable: false; reason: string; spread?: { start: number; end: number; exprStart: number; exprEnd: number }; constRef?: ConstRef }
   | null // no style attribute at all
 
 function parseFile(source: string): File {
@@ -334,7 +355,60 @@ function parseStaticObject(
   return { props, spreadRanges }
 }
 
-function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
+// Unwrap a `… as const` / `… satisfies T` wrapper to the inner object, so a const
+// written `const body = { … } as const` (or `satisfies React.CSSProperties`) still
+// resolves. Returns the ObjectExpression, or null if it isn't (an unwrapped) object.
+function unwrapObject(node: Node | null | undefined): ObjectExpression | null {
+  let n: Node | null | undefined = node
+  while (n && (n.type === 'TSAsExpression' || n.type === 'TSSatisfiesExpression')) n = n.expression
+  return n?.type === 'ObjectExpression' ? n : null
+}
+
+// Resolve a `style={Identifier}` name to a STATIC same-file `const X = {…}` (see
+// ConstRef). Null — keep the per-element spread path — when the name isn't a single
+// same-file `const` bound to a static object literal: imported, `let`/`var`, declared
+// more than once, bound to a non-object, or an object with dynamic props. Counts the
+// file's `style={X}` usages (the non-exported blast radius) and flags whether the const
+// is exported (escapes the file, so a count would understate).
+function resolveStyleConst(ast: File, name: string): ConstRef | null {
+  let object: ObjectExpression | null = null
+  let bail = false
+  let exported = false
+  traverse(ast, {
+    VariableDeclarator(path) {
+      if (bail || path.node.id.type !== 'Identifier' || path.node.id.name !== name) return
+      const obj = unwrapObject(path.node.init)
+      // A same-name binding that isn't an object literal, a second declarator, or a
+      // reassignable let/var → ambiguous; bail to the safe per-element path.
+      const decl = path.parentPath?.node
+      if (!obj || object || (decl?.type === 'VariableDeclaration' && decl.kind !== 'const')) {
+        bail = true
+        return
+      }
+      object = obj
+      exported = path.parentPath?.parentPath?.node.type === 'ExportNamedDeclaration'
+    },
+  })
+  if (bail || !object) return null
+  const parsed = parseStaticObject(object)
+  if ('reason' in parsed) return null
+  let sameFileCount = 0
+  traverse(ast, {
+    JSXAttribute(path) {
+      const val = path.node.value
+      if (
+        path.node.name.type === 'JSXIdentifier' &&
+        path.node.name.name === 'style' &&
+        val?.type === 'JSXExpressionContainer' &&
+        val.expression.type === 'Identifier' &&
+        val.expression.name === name
+      ) sameFileCount++
+    },
+  })
+  return { name, object, props: parsed.props, spreadRanges: parsed.spreadRanges, sameFileCount, exported }
+}
+
+function analyzeStyle(opening: JSXOpeningElement, ast: File): StyleInfo {
   const attr = findAttr(opening, 'style')
   if (!attr) return null
   const v = attr.value
@@ -346,7 +420,13 @@ function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
       v && v.type === 'JSXExpressionContainer' && v.expression.type !== 'JSXEmptyExpression'
         ? { start: v.start!, end: v.end!, exprStart: v.expression.start!, exprEnd: v.expression.end! }
         : undefined
-    return { editable: false, reason: 'style is not an object literal', spread }
+    // style={Identifier} → try to resolve a same-file static const, so a 'const'-scope
+    // edit can rewrite the shared definition (every instance) instead of this one.
+    const constRef =
+      v && v.type === 'JSXExpressionContainer' && v.expression.type === 'Identifier'
+        ? resolveStyleConst(ast, v.expression.name) ?? undefined
+        : undefined
+    return { editable: false, reason: 'style is not an object literal', spread, constRef }
   }
   const object = v.expression
   const r = parseStaticObject(object)
@@ -781,6 +861,10 @@ export function computeStyleEdit(
   tag?: string,
   classNames?: string,
   offsetHint?: OffsetHint,
+  // 'element' (default) edits THIS element (today's per-element behavior); 'const'
+  // rewrites the shared `const X = {…}` the element's `style={X}` points at, changing
+  // every instance. Ignored unless the target actually resolves to a const (ConstRef).
+  scope: 'element' | 'const' = 'element',
 ): StyleEditResult {
   const warnings: string[] = []
   const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
@@ -805,8 +889,38 @@ export function computeStyleEdit(
   }
 
   const classInfo = analyzeClassName(opening)
-  const styleInfo = analyzeStyle(opening)
+  const styleInfo = analyzeStyle(opening, ast)
   const classEditable = classInfo?.editable === true
+  // The target's style is `style={X}` where X is a static same-file const (ConstRef).
+  // Surfaced on the result for EITHER scope so the client can offer "apply to all"; the
+  // edit only targets the const when scope === 'const' (the short-circuit just below).
+  const styleConst = styleInfo && styleInfo.editable === false ? styleInfo.constRef ?? null : null
+  const sharedConst = styleConst
+    ? { name: styleConst.name, sameFileCount: styleConst.sameFileCount, exported: styleConst.exported }
+    : undefined
+
+  // 'const' scope: rewrite the shared const's DEFINITION (all instances) and leave this
+  // element's JSX untouched — a single splice on the const's object range, reusing the
+  // same merge + shorthand-expansion as the inline-literal path. Short-circuits the
+  // per-element routing below entirely.
+  if (scope === 'const' && styleConst) {
+    const props = [...styleConst.props]
+    const touched = new Set<string>()
+    for (const m of valid) {
+      for (const key of PROPERTIES[m.property].css) {
+        const i = props.findIndex(([k]) => k === key)
+        if (i === -1) props.push([key, m.value])
+        else props[i] = [key, m.value]
+        touched.add(key)
+      }
+    }
+    const spreads = styleConst.spreadRanges.map((r) => source.slice(r.start, r.end))
+    const text = renderStyleObject(expandConflictingShorthands(props, touched), spreads)
+    const out = source.slice(0, styleConst.object.start!) + text + source.slice(styleConst.object.end!)
+    const changed = out !== source
+    return { newContent: out, changed, warnings: changed ? [] : ['nothing to change'], varEdits: [], moduleEdits: [], styledEdits: [], sharedConst }
+  }
+
   // A non-literal `style={expr}` we can spread-override. When present, prefer the
   // spread-inline path over authoring a class: inline beats a class in the cascade,
   // so an authored class would be visually dead if `expr` sets the same property.
@@ -1050,14 +1164,14 @@ export function computeStyleEdit(
     // to change" when those carry the work.
     const deferred = varEdits.length > 0 || moduleEdits.length > 0 || styledEdits.length > 0
     const w = deferred ? warnings : [...warnings, 'nothing to change']
-    return { newContent: source, changed: false, warnings: w, varEdits, moduleEdits, styledEdits }
+    return { newContent: source, changed: false, warnings: w, varEdits, moduleEdits, styledEdits, sharedConst }
   }
 
   // Apply patches right-to-left so earlier offsets stay valid.
   patches.sort((a, b) => b.start - a.start)
   let out = source
   for (const p of patches) out = out.slice(0, p.start) + p.text + out.slice(p.end)
-  return { newContent: out, changed: true, warnings, varEdits, moduleEdits, styledEdits }
+  return { newContent: out, changed: true, warnings, varEdits, moduleEdits, styledEdits, sharedConst }
 }
 
 // ============================================================

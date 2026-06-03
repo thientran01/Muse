@@ -46,7 +46,16 @@ export type StyleEditRequest = {
   tag?: string
   classNames?: string
   mutations: StyleMutation[]
+  // 'element' (default) edits this element; 'const' rewrites the shared
+  // `const X = {…}` an element's `style={X}` points at, changing every instance.
+  scope?: 'element' | 'const'
 }
+
+// A target whose style is `style={X}` where X is a static same-file const — surfaced
+// so the client can offer to edit X's definition (all instances), not just this one.
+// `sameFileCount` is the exact blast radius when `exported` is false; when exported the
+// const escapes the file, so a count would understate it.
+export type SharedConst = { name: string; sameFileCount: number; exported: boolean }
 
 // The endpoint's reply: computed file rewrites + their pre-edit contents (for
 // undo) + any non-fatal warnings (dynamic className fallbacks, skips).
@@ -54,6 +63,8 @@ export type StyleEditResponse = {
   edits: FileEdit[]
   originals: Record<string, string>
   warnings: string[]
+  // Present when the edited element's style is a shared const (see SharedConst).
+  sharedConst?: SharedConst
 }
 
 // A request to /api/muse/text-edit: which element, and its new text content.
