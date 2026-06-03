@@ -614,15 +614,23 @@ export const PROPOSE_OPTIONS_TOOL: Anthropic.Tool = {
 
 // Resolve the `claude` CLI on PATH, or null if it isn't installed. `where`/`which`
 // exits non-zero when nothing matches, so a thrown error (or no hits) means absent.
+// Memoized: this spawns a child process, and GET /api/muse/design calls it on every
+// design-card open — caching keeps that off the event loop after the first probe.
+// (A dev's PATH doesn't change mid-session; a server restart re-probes.)
+let claudeBinCache: { value: string | null } | null = null
 function findClaudeBin(): string | null {
+  if (claudeBinCache) return claudeBinCache.value
   const finder = process.platform === 'win32' ? 'where' : 'which'
+  let value: string | null
   try {
     const out = execFileSync(finder, ['claude'], { encoding: 'utf8' })
     const hits = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-    return hits.find((h) => /\.exe$/i.test(h)) || hits[0] || null
+    value = hits.find((h) => /\.exe$/i.test(h)) || hits[0] || null
   } catch {
-    return null
+    value = null
   }
+  claudeBinCache = { value }
+  return value
 }
 
 function resolveClaudeBin(): string {
@@ -638,7 +646,7 @@ function designGeneratorScript(root: string): string {
 
 // Pure decision: why the generator can't run given its two prerequisites, or null
 // if it can. Split out from the filesystem/PATH probes so it's unit-testable (see
-// scripts/check-design-generator.mjs). The generator needs BOTH its script vendored
+// scripts/check-design-generator.ts). The generator needs BOTH its script vendored
 // AND the `claude` CLI on PATH (it shells out to your logged-in subscription).
 export function generatorBlockerFor(scriptExists: boolean, claudeOnPath: boolean): string | null {
   if (!scriptExists) {

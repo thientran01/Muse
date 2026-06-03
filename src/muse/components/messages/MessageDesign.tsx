@@ -51,8 +51,8 @@ export function MessageDesign({
           every edit on-brand.
         </p>
         {blocked ? (
-          <div className="flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-300 ring-1 ring-amber-500/20">
-            <WarningCircle size={14} weight="fill" className="mt-px shrink-0" />
+          <div role="note" className="flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-300 ring-1 ring-amber-500/20">
+            <WarningCircle size={14} weight="fill" aria-hidden className="mt-px shrink-0" />
             <span>
               <span className="font-semibold">Needs setup: </span>
               {generator?.reason ?? 'The generator isn’t available on this host.'}
