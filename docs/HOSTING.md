@@ -134,12 +134,15 @@ Nothing to do beyond keeping it in `vite.config.ts`.
 
 [`server/webAdapter.ts`](../server/webAdapter.ts) bridges `museCore`'s Node handlers to the
 Web `Request`/`Response` that App Router route handlers speak. Add one catch-all route,
-**gated to development** (Muse writes to source on disk):
+**gated to development** (Muse writes to source on disk). First add a path alias so the
+import resolves to the **root-level** `muse-server/` — a Next `src/` project's default
+`@/` points at `src/`, not the root — in `tsconfig.json` `compilerOptions.paths`:
+`"@muse-server/*": ["./muse-server/*"]`. Then:
 
 ```ts
 // app/api/muse/[...muse]/route.ts
-import { createMuseContext } from '@/muse-server/museCore'
-import { createMuseWebRouter } from '@/muse-server/webAdapter'
+import { createMuseContext } from '@muse-server/museCore'
+import { createMuseWebRouter } from '@muse-server/webAdapter'
 
 export const runtime = 'nodejs' // museCore uses fs / child_process — never Edge
 export const dynamic = 'force-dynamic'
