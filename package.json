@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "build:demo": "tsc && vite build --mode demo",
+    "build": "npm run build:overlay-css && tsc && vite build",
+    "build:demo": "npm run build:overlay-css && tsc && vite build --mode demo",
     "preview": "vite preview",
     "preview:demo": "vite preview",
     "design:gen": "node scripts/gen-design-md.mjs",

@@ -39,6 +39,9 @@ export function useShadowHost(): HTMLElement | null {
     setMount(content)
 
     return () => {
+      // Drop the stale mount before removing the host so a StrictMode teardown/
+      // remount cycle never portals into the detached node for a render.
+      setMount(null)
       host.remove()
     }
   }, [])
