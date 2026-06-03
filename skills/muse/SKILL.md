@@ -6,9 +6,21 @@ description: Install the Muse visual editing overlay into a running React app (V
 # Muse Setup
 
 Install Muse — an in-context visual editor: select any element in your running
-app and edit its **real source code**. Canvas Mode scrubs spacing/type/color and
-reorders/edits text deterministically (no API key); the AI chat describes a change
-in plain English and proposes a real edit.
+app and edit its **real source code**. The AI chat describes a change in plain
+English and proposes a real edit; **Canvas Mode** makes deterministic edits with
+no API key:
+
+- scrub spacing / size / type / color, and drag to reorder siblings
+- edit static text in place — and **prop-driven text** (`<span>{label}</span>`),
+  traced one hop to the usage-site literal (`<Card label="…"/>`) in the caller and
+  edited there
+- edit a **shared style const** (`style={body}`) on just this element, or across
+  **every instance** (its definition), via a scope toggle
+- a **design-token panel** to retune the host's CSS custom properties (`--c-*`)
+  without first finding an element that uses them
+
+Every Canvas edit is a surgical, reviewable source splice that flows through the
+same undo/redo history.
 
 Muse is not yet an npm package, so this skill **vendors** the engine (copies it
 into the project) and wires three pieces into the host:
@@ -218,7 +230,10 @@ One React instance only — mount from the host's own React, never a second copy
    isn't hitting your source (wrong glob, prod gate, or no `filename`); re-check it.
 3. The **Muse FAB** appears (bottom-right), console clean. Open it, select an
    element, scrub its padding — it updates live and the change is written to the
-   real source file (`git diff`). Undo with Cmd/Ctrl+Z.
+   real source file (`git diff`). Undo with Cmd/Ctrl+Z. (To see the rest: double-
+   click prop text to trace it to its usage site, select an element styled via a
+   shared `style={const}` for the scope toggle, or open the design-system card →
+   **Edit tokens**.)
 4. (Optional) Chat needs `ANTHROPIC_API_KEY` in the env, or the `claude` CLI on
    PATH with `MUSE_BACKEND=claude-cli`. Canvas Mode needs neither.
 
