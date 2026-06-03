@@ -1,11 +1,19 @@
 // ============================================================
-//  MUSE ENGINE  —  element introspection via React fibers
+//  MUSE ENGINE  —  element introspection
 // ------------------------------------------------------------
-//  In dev mode, @vitejs/plugin-react injects JSX source info, so every
-//  React fiber carries `_debugSource` (fileName/lineNumber) and `_debugOwner`
-//  (the component that rendered it). We read both straight off the DOM node's
-//  fiber — no extra plugin needed. (React 18 behavior; React 19 drops it, which
-//  is why we pin React 18.)
+//  Two source-mapping strategies, tried in preference order:
+//
+//  1. data-muse-loc attribute (Phase 6, preferred)
+//     The museLoc Babel plugin (server/babelPluginMuseLoc.ts) stamps every JSX
+//     opening element in dev/demo mode with data-muse-loc="file:line:col".
+//     • Works on React 18 AND React 19 (no fiber dependency)
+//     • Carries the exact disk line — no Fast Refresh +19 offset to compensate
+//     • Stripped from production builds
+//
+//  2. React 18 fiber walk (fallback)
+//     @vitejs/plugin-react injects _debugSource in dev mode. Works on React 18
+//     only; React 19 removed the field. Still useful when the attribute is absent
+//     (e.g. a host component that pre-dates the plugin, or a unit-test render).
 // ============================================================
 
 export type SourceLocation = {
@@ -42,6 +50,22 @@ function componentName(type: any): string | null {
 
 export function getSourceLocation(el: Element | null): SourceLocation | null {
   if (!el) return null
+
+  // --- Strategy 1: data-muse-loc attribute (Phase 6, preferred) ---------------
+  // Format: "absPath:line:col" — parse from the right so Windows drive colons
+  // (e.g. "C:/…") don't break the split. line is 1-based, col is 0-based.
+  const attr = el.getAttribute('data-muse-loc')
+  if (attr) {
+    const parts = attr.split(':')
+    const col = parseInt(parts.pop() ?? '', 10)
+    const line = parseInt(parts.pop() ?? '', 10)
+    const fileName = parts.join(':')
+    if (fileName && Number.isFinite(line) && Number.isFinite(col)) {
+      return { fileName, lineNumber: line, columnNumber: col }
+    }
+  }
+
+  // --- Strategy 2: React 18 fiber walk (fallback) ------------------------------
   let fiber = getFiber(el)
   while (fiber) {
     if (fiber._debugSource) {
