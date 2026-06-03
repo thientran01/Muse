@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ClockCounterClockwise, FileText, Pause, Play, X } from '@phosphor-icons/react'
 import { museDesignGenerate, museDesignGet } from '../api'
+import type { DesignGeneratorStatus } from '../types'
 import type { ArchivedThread } from '../store'
 import type { HistoryControls } from '../MuseOverlay'
 import { UfoIcon } from './UfoIcon'
@@ -19,7 +20,12 @@ import { MessageDesign } from './messages/MessageDesign'
 // element opens the full agent panel — this is only the resting state.
 
 type Pop = 'none' | 'history' | 'design'
-type DesignState = { status: 'offer' | 'generating' | 'view'; content?: string; path?: string }
+type DesignState = {
+  status: 'offer' | 'generating' | 'view'
+  content?: string
+  path?: string
+  generator?: DesignGeneratorStatus
+}
 
 function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
@@ -58,36 +64,42 @@ export function MuseToolbar({
 }) {
   const [pop, setPop] = useState<Pop>('none')
   const [design, setDesign] = useState<DesignState | null>(null)
-  // Guards for the lazy design fetch: `fetching` blocks a concurrent GET (a
-  // double-click), `mounted` drops a late setState if the dock unmounts mid-fetch.
-  const fetchingRef = useRef(false)
+  // `mounted` drops a late setState if the dock unmounts mid-fetch (the design
+  // generate can run ~45s, outliving a popover close).
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
 
-  const openDesign = async () => {
-    setPop((p) => (p === 'design' ? 'none' : 'design'))
-    if (design || fetchingRef.current) return
-    fetchingRef.current = true
-    try {
-      const res = await museDesignGet()
-      if (mountedRef.current) {
-        setDesign(res.exists && res.content ? { status: 'view', content: res.content, path: res.path } : { status: 'offer' })
-      }
-    } catch {
-      if (mountedRef.current) setDesign({ status: 'offer' })
-    } finally {
-      fetchingRef.current = false
-    }
-  }
+  // Fetch the brief the first time the popover opens, and keep it cached after.
+  // An effect (not the click handler) is the robust path: there are no fetch
+  // guards to get wedged, and if a run is cancelled (popover closed mid-fetch)
+  // `design` stays null so reopening simply re-fetches — it can never strand on
+  // a permanent "Loading…". `design` resolves to a non-null state on success OR
+  // error, so the fallback below only ever shows during a live fetch.
+  useEffect(() => {
+    if (pop !== 'design' || design) return
+    let cancelled = false
+    museDesignGet()
+      .then((res) => {
+        if (cancelled) return
+        setDesign(
+          res.exists && res.content
+            ? { status: 'view', content: res.content, path: res.path }
+            : { status: 'offer', generator: res.generator },
+        )
+      })
+      .catch(() => { if (!cancelled) setDesign({ status: 'offer' }) })
+    return () => { cancelled = true }
+  }, [pop, design])
+
   const generateDesign = async () => {
-    setDesign({ status: 'generating' })
+    setDesign((d) => ({ status: 'generating', generator: d?.generator }))
     try {
       const res = await museDesignGenerate()
       if (mountedRef.current) setDesign({ status: 'view', content: res.content, path: res.path })
     } catch {
-      if (mountedRef.current) setDesign({ status: 'offer' })
+      if (mountedRef.current) setDesign((d) => ({ status: 'offer', generator: d?.generator }))
     }
   }
 
@@ -132,7 +144,7 @@ export function MuseToolbar({
                 </p>
               )
             ) : design ? (
-              <MessageDesign status={design.status} content={design.content} path={design.path} onGenerate={generateDesign} />
+              <MessageDesign status={design.status} content={design.content} path={design.path} generator={design.generator} onGenerate={generateDesign} />
             ) : (
               <p className="px-1 py-2 text-xs text-fg-faint">Loading…</p>
             )}
@@ -169,7 +181,7 @@ export function MuseToolbar({
           <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>
             <ClockCounterClockwise size={17} weight="bold" />
           </IconBtn>
-          <IconBtn label="Design system" onClick={openDesign}>
+          <IconBtn label="Design system" onClick={() => setPop((p) => (p === 'design' ? 'none' : 'design'))}>
             <FileText size={17} />
           </IconBtn>
           <IconBtn

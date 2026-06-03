@@ -396,7 +396,7 @@ export function MuseOverlay() {
       if (res.exists && res.content) {
         museStore.appendThread({ id: nextThreadId(), kind: 'design', status: 'view', content: res.content, path: res.path })
       } else {
-        museStore.appendThread({ id: nextThreadId(), kind: 'design', status: 'offer' })
+        museStore.appendThread({ id: nextThreadId(), kind: 'design', status: 'offer', generator: res.generator })
       }
     } catch (e) {
       museStore.appendThread({ id: nextThreadId(), kind: 'error', text: (e as Error).message })

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { CircleNotch, Sparkle } from '@phosphor-icons/react'
+import { CircleNotch, Sparkle, WarningCircle } from '@phosphor-icons/react'
+import type { DesignGeneratorStatus } from '../../types'
 import { TokenList } from '../TokenList'
 
 // Loosely summarize the brief's YAML frontmatter for a visual card — name, the
@@ -28,26 +29,43 @@ export function MessageDesign({
   status,
   content,
   path,
+  generator,
   onGenerate,
 }: {
   status: 'offer' | 'generating' | 'view'
   content?: string
   path?: string
+  // Whether the Generate button can run. Absent (mock / older server) = assume
+  // it can — the generate call still fails gracefully if it can't.
+  generator?: DesignGeneratorStatus
   onGenerate: () => void
 }) {
   if (status === 'offer') {
+    // The generator needs its script vendored + the `claude` CLI; when it can't
+    // run, show what's missing instead of a button that errors after the click.
+    const blocked = generator && !generator.available
     return (
       <div className="animate-muse-rise space-y-2.5 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
         <p className="text-sm leading-relaxed text-fg">
           No design system on file yet. Want me to read your app's styles and write one? It keeps
           every edit on-brand.
         </p>
-        <button
-          onClick={onGenerate}
-          className="inline-flex items-center gap-1.5 rounded-full bg-fg px-3 py-1.5 text-xs font-semibold text-surface transition hover:opacity-90"
-        >
-          <Sparkle size={13} weight="fill" /> Generate design system
-        </button>
+        {blocked ? (
+          <div className="flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-300 ring-1 ring-amber-500/20">
+            <WarningCircle size={14} weight="fill" className="mt-px shrink-0" />
+            <span>
+              <span className="font-semibold">Needs setup: </span>
+              {generator?.reason ?? 'The generator isn’t available on this host.'}
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={onGenerate}
+            className="inline-flex items-center gap-1.5 rounded-full bg-fg px-3 py-1.5 text-xs font-semibold text-surface transition hover:opacity-90"
+          >
+            <Sparkle size={13} weight="fill" /> Generate design system
+          </button>
+        )}
       </div>
     )
   }
