@@ -595,6 +595,20 @@ export function MuseOverlay() {
     }
   }
 
+  const [animationsPaused, setAnimationsPaused] = useState(false)
+  useEffect(() => {
+    if (!animationsPaused) return
+    const style = document.createElement('style')
+    style.id = 'muse-animation-pause'
+    // Freeze all host-page animations and transitions so the canvas is still.
+    // Excludes the Muse overlay itself (data-muse-ui) so its own chrome stays live.
+    style.textContent =
+      ':not([data-muse-ui]):not([data-muse-ui] *)' +
+      '{animation-play-state:paused!important;transition-duration:0s!important;transition-delay:0s!important;}'
+    document.head.appendChild(style)
+    return () => style.remove()
+  }, [animationsPaused])
+
   const historyControls: HistoryControls = {
     canUndo: past.length > 0,
     canRedo: future.length > 0,
@@ -660,7 +674,7 @@ export function MuseOverlay() {
   // crossing into the peek strip, STAY anywhere over the home footprint out to the
   // screen edge (so the pulled-back panel never slides out from under the cursor),
   // and only tuck after a short grace delay so it sticks.
-  const PEEK = 44 // px of the panel left poking past the right edge when tucked
+  const PEEK = 44 // width of the right-edge hover hot-zone (the drawer handle's reach)
   const panelWrapRef = useRef<HTMLDivElement>(null)
   const tuckXRef = useRef(0)
   const engagedRef = useRef(false)
@@ -744,7 +758,7 @@ export function MuseOverlay() {
         engage(false)
         return setTuck(0)
       }
-      setTuck(w + M - PEEK)
+      setTuck(w + M) // panel goes FULLY off-screen; only the drawer handle pokes out
       // ENTER via the peek strip; STAY over the whole home footprint out to the
       // screen edge — fixed bounds, so the moving panel can't flip-flop hover.
       zoneRef.current = { peekLeft: vw - PEEK, homeLeft, edge: vw, top: top - PAD, bottom: bottom + PAD }
@@ -818,6 +832,8 @@ export function MuseOverlay() {
           onPickHistory={openFromHistory}
           hasHistory={hasHistory}
           historyControls={historyControls}
+          animationsPaused={animationsPaused}
+          onToggleAnimations={() => setAnimationsPaused((v) => !v)}
         />
       )}
 
@@ -836,15 +852,19 @@ export function MuseOverlay() {
           className="pointer-events-auto absolute bottom-6 right-6 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
           style={{ transform: `translate3d(${panelTx}px, 0, 0)` }}
         >
-          {/* Peek-tab handle: a chevron on the panel's left edge that fades in while
-              tucked, so the sliver reads as "pull me out", not "closed". */}
+          {/* Drawer handle. When tucked the panel sits FULLY off-screen and only this
+              chevron tab pokes past the right edge — hover it (or the hot edge) to pull
+              the panel back. `right-full` sits it just left of the panel's edge, so it
+              rides out with the panel and lands flush to the screen edge, then fades
+              once the panel is home. Fades in after a beat so it doesn't overlap the
+              panel as it slides away. */}
           <div
             aria-hidden
-            className={`pointer-events-none absolute left-1.5 top-1/2 z-10 flex h-9 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-surface-soft text-fg-muted shadow-md shadow-black/10 ring-1 ring-line/10 transition-opacity duration-200 ${
-              tucked ? 'opacity-100' : 'opacity-0'
+            className={`pointer-events-none absolute right-full top-1/2 z-10 flex h-12 w-7 -translate-y-1/2 items-center justify-center rounded-l-xl bg-surface-soft text-fg-muted shadow-lg shadow-black/20 ring-1 ring-line/10 transition-opacity duration-200 ${
+              tucked ? 'opacity-100 delay-150' : 'opacity-0'
             }`}
           >
-            <CaretLeft size={13} weight="bold" />
+            <CaretLeft size={15} weight="bold" />
           </div>
           <MusePanel
             mock={MOCK}
