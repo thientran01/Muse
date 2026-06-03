@@ -102,6 +102,10 @@ export type ReorderRequest = {
   tag?: string
   classNames?: string
   toIndex: number
+  // CONTAINER mode: when present, fileName/line/column address the host CONTAINER and
+  // we move ITS child at `fromIndex` (the only way to reorder COMPONENT children, whose
+  // DOM node points into the component, not at its usage site). Absent → child mode.
+  fromIndex?: number
 }
 export type ReorderResponse = StyleEditResponse
 

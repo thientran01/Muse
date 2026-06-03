@@ -204,7 +204,10 @@ export async function museReorder(req: ReorderRequest): Promise<ReorderResponse>
 // re-select simply re-probes. The engine still fails closed on any commit, so a
 // missed handle is the safe failure, never a bad write.
 export async function museReorderable(
-  req: Omit<ReorderRequest, 'toIndex'>,
+  // `container: true` probes whether the host CONTAINER at this location can have ITS
+  // children reordered (component children included) — used for component instances,
+  // whose own DOM node can't be located in source.
+  req: Omit<ReorderRequest, 'toIndex' | 'fromIndex'> & { container?: boolean },
 ): Promise<Reorderable> {
   try {
     const res = await fetch(apiUrl('/api/muse/reorderable'), {
