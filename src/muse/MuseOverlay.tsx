@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CaretLeft } from '@phosphor-icons/react'
 import './muse.css'
+import { useShadowHost } from './hooks/useShadowHost'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { EPHEMERAL, MOCK } from './config'
 import { heuristicObservation } from './observation'
@@ -81,6 +83,9 @@ export function MuseOverlay() {
   const closeTimer = useRef<number | null>(null)
   const prevKeysRef = useRef<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
+  // The overlay chrome renders inside an isolated Shadow DOM root (see
+  // useShadowHost) so its CSS can't collide with the host page's styles.
+  const shadowMount = useShadowHost()
   // A starter-chip click that needs a re-target first parks its text here; the
   // effect below fires it once `selection` has actually flipped to that element.
   const pendingChipRef = useRef<{ text: string; key: string } | null>(null)
@@ -816,7 +821,7 @@ export function MuseOverlay() {
   const panelTx = engaged || panelFocus || loading || holdOpen ? 0 : tuckX
   const tucked = panelTx > 0
 
-  return (
+  const tree = (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999999] font-sans">
       {/* The single selection surface, live whenever Muse is open: hover
           highlight + on-canvas chrome. Plain-click edits directly; Shift-click
@@ -961,4 +966,7 @@ export function MuseOverlay() {
       )}
     </div>
   )
+
+  // Portal the chrome into the shadow root (null until it's created — SSR-safe).
+  return shadowMount ? createPortal(tree, shadowMount) : null
 }

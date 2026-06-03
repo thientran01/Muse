@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "preview:demo": "vite preview",
     "design:gen": "node scripts/gen-design-md.mjs",
-    "muse-server": "tsx server/standaloneServer.ts"
+    "muse-server": "tsx server/standaloneServer.ts",
+    "build:overlay-css": "node scripts/build-overlay-css.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
