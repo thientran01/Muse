@@ -286,7 +286,9 @@ export function CanvasMode({
       const docks =
         measured == null
           ? []
-          : [...document.querySelectorAll('[data-muse-dock]')].map((d) => {
+          : // The dock lives in Muse's shadow root now, so query the same root the
+            // canvas chrome is in (getRootNode → the ShadowRoot), not the document.
+            [...((rootRef.current?.getRootNode() as ShadowRoot | Document | null) ?? document).querySelectorAll('[data-muse-dock]')].map((d) => {
               const b = d.getBoundingClientRect()
               return { left: Math.max(0, b.left), right: Math.min(vw, b.right), top: Math.max(0, b.top), bottom: Math.min(vh, b.bottom) }
             })
