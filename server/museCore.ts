@@ -156,7 +156,23 @@ function detectStrategy(root: string): StyleStrategy {
     'tailwind.config.cjs',
     'tailwind.config.mjs',
   ]
-  return configs.some((c) => fs.existsSync(path.join(root, c))) ? 'tailwind-first' : 'inline'
+  if (configs.some((c) => fs.existsSync(path.join(root, c)))) return 'tailwind-first'
+  // Tailwind v4 has NO JS config (it's CSS-first: `@import "tailwindcss"`), so the
+  // config check above misses it and we'd wrongly fall back to inline styles. Detect
+  // v4 from the package so v4 hosts edit Tailwind classes (the dominant setup now).
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+    if (deps.tailwindcss || deps['@tailwindcss/postcss'] || deps['@tailwindcss/vite']) {
+      return 'tailwind-first'
+    }
+  } catch {
+    // no/unreadable package.json — fall through to inline
+  }
+  return 'inline'
 }
 
 function collectCssFiles(dir: string, acc: string[]): void {
