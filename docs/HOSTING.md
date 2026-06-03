@@ -61,9 +61,10 @@ module.exports = {
   turbopack: {
     rules: dev
       ? {
-          // A glob containing '/' matches the full project-relative path,
-          // so this only runs on YOUR app source — not node_modules.
-          './{app,src,components}/**/*.{tsx,jsx}': {
+          // A glob containing '/' matches the full project-relative path
+          // (no leading './'), so this only runs on YOUR app source — not
+          // node_modules. Adjust the folder list to match your tree.
+          '{app,src,components}/**/*.{tsx,jsx}': {
             loaders: [
               {
                 loader: 'babel-loader',
