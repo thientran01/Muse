@@ -368,6 +368,79 @@ function renderStyleObject(props: Array<[string, string]>, spreadExprs: string[]
   return parts.length === 0 ? '{}' : `{ ${parts.join(', ')} }`
 }
 
+// CSS box-model shorthands whose presence ALONGSIDE a same-family longhand in one
+// style object trips React 19's "don't mix shorthand and non-shorthand" warning on
+// rerender — exactly what the #75 spread-merge emits (`{ margin:"0 0 24px",
+// marginTop:"24px" }`). Maps the shorthand's camelCase css key → its four longhand
+// keys in CSS top/right/bottom/left order. Only margin/padding: those are the
+// families the canvas actually scrubs (see PROPERTIES); inset isn't exposed.
+const BOX_SHORTHANDS: Record<string, [string, string, string, string]> = {
+  margin: ['marginTop', 'marginRight', 'marginBottom', 'marginLeft'],
+  padding: ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'],
+}
+
+// Expand a 1–4 token box value into [top, right, bottom, left] per the CSS shorthand
+// rule: 1→all, 2→[v,h], 3→[t,h,b], 4→[t,r,b,l]. Returns null for a value we can't
+// safely tokenize on whitespace, so the caller leaves the shorthand intact:
+//   • parens — var()/calc()/etc. have internal spaces that aren't side boundaries.
+//   • `!important` — a declaration suffix the parser captured into the value string;
+//     splitting it would emit a side whose value is literally "!important" (broken).
+function expandBoxValue(value: string): [string, string, string, string] | null {
+  const v = value.trim()
+  if (v.includes('(') || v.includes('!')) return null
+  const t = v.split(/\s+/).filter(Boolean)
+  if (t.length === 0 || t.length > 4) return null
+  const [a, b = a, c = a, d = b] = t
+  return [a, b, c, d]
+}
+
+// React 19 errors when a re-emitted style object MIXES a box shorthand with a matching
+// longhand. When both appear, expand the shorthand to its four longhands and drop it,
+// resolving each side by last-write-wins (CSS-in-JS object semantics: a later key
+// overrides an earlier one) so the scrubbed longhand still wins without the mix. The
+// expansion is emitted at the LAST family key's position; other family keys are folded
+// in. `touched` are the css keys THIS edit wrote — we only normalize a family the edit
+// actually touched, so a family the edit never went near stays byte-identical. (When
+// the edit DOES touch a family that already had its own shorthand+longhand mix, we
+// expand that too — but last-write-wins preserves the author's winning value, and that
+// mix was already tripping the React 19 warning, so resolving it is the right call.)
+function expandConflictingShorthands(
+  props: Array<[string, string]>,
+  touched: Set<string>,
+): Array<[string, string]> {
+  let out = props
+  for (const [short, longs] of Object.entries(BOX_SHORTHANDS)) {
+    const familyKeys = [short, ...longs]
+    if (!familyKeys.some((k) => touched.has(k))) continue
+    const hasShort = out.some(([k]) => k === short)
+    const hasLong = longs.some((l) => out.some(([k]) => k === l))
+    if (!hasShort || !hasLong) continue // no mix in this family → nothing to fix
+    // A non-splittable shorthand value (var()/calc()) can't be expanded — leave the
+    // family as-is rather than emit a broken split.
+    const lastShortVal = [...out].reverse().find(([k]) => k === short)![1]
+    if (!expandBoxValue(lastShortVal)) continue
+    // Resolve each side in source order (last write wins), and remember where the last
+    // family key sat so the expansion lands in place.
+    const side: Record<string, string> = {}
+    let anchor = -1
+    out.forEach(([k, v], i) => {
+      if (k === short) {
+        const s = expandBoxValue(v)
+        if (s) longs.forEach((lk, j) => (side[lk] = s[j]))
+        anchor = i
+      } else if (longs.includes(k)) {
+        side[k] = v
+        anchor = i
+      }
+    })
+    const expanded = longs.map((lk): [string, string] => [lk, side[lk]])
+    out = out.flatMap(([k, v], i): Array<[string, string]> =>
+      i === anchor ? expanded : familyKeys.includes(k) ? [] : [[k, v]],
+    )
+  }
+  return out
+}
+
 // kebab/snake → camelCase, for matching a CSS-prop edit key (always camelCase, e.g.
 // paddingLeft) against an object key written either way (`paddingLeft` or
 // `'padding-left'`), so we edit the existing prop in place instead of adding a dup.
@@ -767,11 +840,15 @@ export function computeStyleEdit(
   // A SAME-FILE styled OBJECT target's edits, merged + rendered into one patch below.
   const objEdits: Array<[string, string]> = []
 
+  // The css keys this edit wrote inline — so the shorthand-mix fix below only
+  // normalizes a box family the edit actually touched (not a user's pre-existing mix).
+  const touchedStyleKeys = new Set<string>()
   const setStyleProp = (key: string, value: string) => {
     const i = styleProps.findIndex(([k]) => k === key)
     if (i === -1) styleProps.push([key, value])
     else styleProps[i] = [key, value]
     styleTouched = true
+    touchedStyleKeys.add(key)
   }
 
   // Write a mutation as inline style, stripping the dueling Tailwind class when
@@ -933,9 +1010,11 @@ export function computeStyleEdit(
   if (styleTouched) {
     if (styleInfo?.editable) {
       // Re-emit the object, preserving any leading `...spread` verbatim (so editing
-      // a `{ ...body, marginTop }` round-trips instead of dropping the spread).
+      // a `{ ...body, marginTop }` round-trips instead of dropping the spread). Expand
+      // any box shorthand the edit now mixes with a longhand (React 19 warns otherwise).
       const spreads = styleInfo.spreadRanges.map((r) => source.slice(r.start, r.end))
-      patches.push({ start: styleInfo.object.start!, end: styleInfo.object.end!, text: renderStyleObject(styleProps, spreads) })
+      const merged = expandConflictingShorthands(styleProps, touchedStyleKeys)
+      patches.push({ start: styleInfo.object.start!, end: styleInfo.object.end!, text: renderStyleObject(merged, spreads) })
     } else if (styleSpread) {
       // Non-literal style (style={body}): replace `{body}` with `{{ ...body, prop: v }}`
       // so the edited property overrides per-element, winning the cascade over any
