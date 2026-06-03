@@ -34,6 +34,10 @@ const port = parseInt(process.env.MUSE_PORT ?? '4747', 10)
 // the same network hit the write endpoints. MUSE_HOST opts into a wider bind (e.g.
 // '0.0.0.0' for a remote dev box) only when the user explicitly needs LAN access.
 const host = process.env.MUSE_HOST ?? '127.0.0.1'
+// Loopback binds are safe (reachable only from this machine); anything else is
+// exposed on a network interface and gets a warning. ::1 is IPv6 loopback — an
+// escape hatch on systems where `localhost` resolves to ::1 before 127.0.0.1.
+const isLoopback = host === '127.0.0.1' || host === '::1' || host === 'localhost'
 const root = process.env.MUSE_ROOT ?? process.cwd()
 // MUSE_CORS_ORIGIN overrides the default. Without it, only localhost/127.0.0.1 origins
 // are allowed — this prevents a malicious tab from writing to source files via the
@@ -106,12 +110,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
 
 server.listen(port, host, () => {
   console.log(`[muse] standalone server  http://${host}:${port}`)
-  console.log(`[muse] bind              ${host}${host === '127.0.0.1' ? ' (localhost only)' : ''}`)
+  console.log(`[muse] bind              ${host}${isLoopback ? ' (localhost only)' : ''}`)
   console.log(`[muse] root              ${root}`)
   console.log(`[muse] backend           ${ctx.backend}`)
   console.log(`[muse] cors origin       ${corsOverride ?? 'localhost-only (default)'}`)
   if (!corsOverride) console.log(`[muse] tip: set MUSE_CORS_ORIGIN='*' to allow any dev origin`)
-  if (host !== '127.0.0.1' && host !== 'localhost') {
+  if (!isLoopback) {
     console.log(`[muse] warning: bound to ${host} — no auth + writes to disk; expose only on trusted networks`)
   }
 })
