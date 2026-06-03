@@ -28,6 +28,7 @@ import type {
   JSXText,
   Node,
   ObjectExpression,
+  ObjectProperty,
   TemplateLiteral,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
@@ -90,7 +91,7 @@ function bracketContent(token: string): string | null {
 }
 
 // A character-range splice on the original source. start === end is an insertion.
-type Patch = { start: number; end: number; text: string }
+export type Patch = { start: number; end: number; text: string }
 
 // What we learned about the target's className attribute.
 type ClassInfo =
@@ -341,17 +342,60 @@ function renderStyleObject(props: Array<[string, string]>): string {
   return `{ ${props.map(([k, v]) => `${renderKey(k)}: ${JSON.stringify(v)}`).join(', ')} }`
 }
 
-// Merge property edits ([key, value]) into a parsed object's props (replacing a key
-// in place, appending a new one) and render the result. Shared by the engine's
-// same-file styled-object branch and the server's imported-styled-object resolver.
-export function renderStyledObjectEdit(props: Array<[string, string]>, edits: Array<[string, string]>): string {
-  const out = props.map(([k, v]) => [k, v] as [string, string])
-  for (const [k, v] of edits) {
-    const i = out.findIndex(([pk]) => pk === k)
-    if (i === -1) out.push([k, v])
-    else out[i] = [k, v]
+// kebab/snake → camelCase, for matching a CSS-prop edit key (always camelCase, e.g.
+// paddingLeft) against an object key written either way (`paddingLeft` or
+// `'padding-left'`), so we edit the existing prop in place instead of adding a dup.
+const camelizeKey = (k: string) => k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+
+// SURGICAL edits to a styled OBJECT literal (`styled.div({ … })` / `css={{…}}`): for
+// each [cssKey, value], replace the matching property's value range in place, or
+// insert one new property before the closing brace. Returns character-range patches
+// on `source` — NOT a regenerated object — so untouched props (numbers like
+// `padding: 8` that styled-components px-infers, comments, formatting, dynamic
+// values) stay byte-for-byte identical, honoring the engine's "smallest change"
+// contract. Shared by the same-file engine path and the imported server resolver.
+export function styledObjectPatches(source: string, obj: ObjectExpression, edits: Array<[string, string]>): Patch[] {
+  const patches: Patch[] = []
+  const inserts: Array<[string, string]> = []
+  for (const [key, value] of edits) {
+    const rendered = JSON.stringify(value) // always a quoted string ("16px")
+    const prop = obj.properties.find(
+      (p): p is ObjectProperty =>
+        p.type === 'ObjectProperty' &&
+        !p.computed &&
+        ((p.key.type === 'Identifier' && camelizeKey(p.key.name) === key) ||
+          (p.key.type === 'StringLiteral' && camelizeKey(p.key.value) === key)),
+    )
+    if (prop) {
+      const v = prop.value
+      // Only replace a static literal value; a dynamic value shouldn't reach here
+      // (detection gates on parseStaticObject), but skip it rather than corrupt.
+      if (v.type === 'StringLiteral' || v.type === 'NumericLiteral') {
+        if (source.slice(v.start!, v.end!) !== rendered) patches.push({ start: v.start!, end: v.end!, text: rendered })
+      }
+    } else {
+      inserts.push([key, rendered])
+    }
   }
-  return renderStyleObject(out)
+  if (inserts.length) {
+    const renderKey = (k: string) => (/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k))
+    const decls = inserts.map(([k, v]) => `${renderKey(k)}: ${v}`)
+    const last = obj.properties[obj.properties.length - 1]
+    if (!last) {
+      // Empty object `{}` — insert between the braces.
+      patches.push({ start: obj.start! + 1, end: obj.start! + 1, text: ` ${decls.join(', ')} ` })
+    } else {
+      // After the last property's value, before any trailing comma — match the
+      // object's separator (newline+indent if multiline, else ", "). A leading comma
+      // joins us to the last prop; an existing trailing comma still follows ours.
+      const objText = source.slice(obj.start!, obj.end!)
+      const before = source.slice(0, last.start!)
+      const indent = before.slice(before.lastIndexOf('\n') + 1).match(/^[ \t]*/)![0]
+      const sep = /\n/.test(objText) ? `,\n${indent}` : `, `
+      patches.push({ start: last.end!, end: last.end!, text: sep + decls.join(sep) })
+    }
+  }
+  return patches
 }
 
 // Default/namespace imports whose source is a `*.module.css`, mapped binding-name
@@ -401,29 +445,30 @@ function detectModuleBinding(
   return key ? { specifier, className: key } : null
 }
 
-// A styled-components / emotion target for the located element: the source range of
-// a same-file tagged-template body we edit IN PLACE; an `import` marker for a
-// `<Card>` imported from a relative module (the server resolves + edits it, since
-// the body lives in another file); or `unsupported` when the styled form isn't
-// safely editable (an interpolated template, or the object-syntax form) — those
-// fail closed to inline. A capitalized tag that's neither a same-file styled def
-// nor a relative import returns null (route normally).
+// A styled-components / emotion target for the located element: a same-file tagged-
+// template body OR object literal we edit IN PLACE; an `import` marker for a `<Card>`
+// imported from a relative module (the server resolves + edits it, since the styles
+// live in another file); or `unsupported` when the styled form isn't safely editable
+// (an interpolated template, or an object with dynamic props) — those fail closed to
+// inline. A capitalized tag that's neither a same-file styled def nor a relative
+// import returns null (route normally).
 type StyledTarget =
   | { kind: 'template'; bodyStart: number; bodyEnd: number; body: string }
-  | { kind: 'object'; objStart: number; objEnd: number; props: Array<[string, string]> }
+  | { kind: 'object'; node: ObjectExpression }
   | { kind: 'import'; specifier: string; exportName: string }
   | { kind: 'unsupported'; reason: string }
 
 // A same-file styled OBJECT definition (`styled.div({ … })`, or an emotion `css={{…}}`
-// prop) → an editable object target (or unsupported when the object has dynamic
-// props). The engine rewrites the object literal in place, like the template path.
+// prop) → an editable object target carrying the literal node (the engine splices its
+// properties surgically), or unsupported when the object has dynamic props (a spread /
+// computed key / non-literal value) that whole-object rewriting would drop.
 function objectTarget(
   object: ObjectExpression,
   dynPrefix: string,
-): { kind: 'object'; objStart: number; objEnd: number; props: Array<[string, string]> } | { kind: 'unsupported'; reason: string } {
+): { kind: 'object'; node: ObjectExpression } | { kind: 'unsupported'; reason: string } {
   const r = parseStaticObject(object)
   if ('reason' in r) return { kind: 'unsupported', reason: `${dynPrefix} ${r.reason}` }
-  return { kind: 'object', objStart: object.start!, objEnd: object.end!, props: r.props }
+  return { kind: 'object', node: object }
 }
 
 // Walk a styled tag-expression chain down to its root identifier: styled.div →
@@ -450,8 +495,19 @@ function asStyledDef(init: Node | null | undefined): { template: TemplateLiteral
     return { template: init.quasi }
   }
   if (init.type === 'CallExpression' && tagRootName(init.callee) === 'styled') {
-    const obj = init.arguments.find((a) => a.type === 'ObjectExpression')
-    if (obj && obj.type === 'ObjectExpression') return { object: obj }
+    // The styles object is the argument of the styled FACTORY call — `styled.div({…})`
+    // or `styled(Base)({…})` or `styled.div.attrs(cfg)({…})`. Exclude the `.attrs(…)` /
+    // `.withConfig(…)` call itself: its object argument is CONFIG, not styles, so a
+    // bare `styled.div.attrs({ type: 'button' })` (no styles call) must NOT match.
+    const callee = init.callee
+    const isConfigCall =
+      callee.type === 'MemberExpression' &&
+      callee.property.type === 'Identifier' &&
+      (callee.property.name === 'attrs' || callee.property.name === 'withConfig' || callee.property.name === 'withComponent')
+    if (!isConfigCall) {
+      const obj = init.arguments.find((a) => a.type === 'ObjectExpression')
+      if (obj && obj.type === 'ObjectExpression') return { object: obj }
+    }
   }
   return null
 }
@@ -578,7 +634,7 @@ function findReExport(ast: File, exportName: string): { specifier: string; expor
 // server hands it the file source; this only parses + locates, no I/O.
 export type StyledExportLoc =
   | { bodyStart: number; bodyEnd: number; body: string }
-  | { objectStart: number; objectEnd: number; props: Array<[string, string]> }
+  | { object: ObjectExpression }
   | { reexport: { specifier: string; exportName: string } }
   | { unsupported: string }
   | null
@@ -589,7 +645,7 @@ export function findStyledExport(source: string, exportName: string): StyledExpo
     if (!def) return null
     if ('object' in def) {
       const o = objectTarget(def.object, 'styled object')
-      return o.kind === 'object' ? { objectStart: o.objStart, objectEnd: o.objEnd, props: o.props } : { unsupported: o.reason }
+      return o.kind === 'object' ? { object: o.node } : { unsupported: o.reason }
     }
     const t = templateTarget(def.template, source, 'styled template has interpolations')
     return t.kind === 'template' ? { bodyStart: t.bodyStart, bodyEnd: t.bodyEnd, body: t.body } : { unsupported: t.reason }
@@ -756,14 +812,14 @@ export function computeStyleEdit(
       }
       continue
     }
-    // A styled-components / emotion target (`<Card>` from `styled.div`…``, or an
-    // emotion `css` prop): the value lives in the tagged-template body, not the
-    // className (a generated hash) and not inline. We only divert when there's no
-    // editable static className — if the element ALSO carries Tailwind utilities
-    // (`<Card className="mt-4">`), those stay the primary surface (visible in JSX,
-    // and safe from being overridden by the styled class's cascade). An unsupported
-    // styled form (interpolated template / object syntax) fails closed to inline —
-    // styled forwards `style`, so an inline value still applies (and overrides it).
+    // A styled-components / emotion target (`<Card>` from `styled.div`…``/`styled.div({…})`,
+    // or an emotion `css` prop): the value lives in the template body or object literal,
+    // not the className (a generated hash) and not inline. We only divert when there's
+    // no editable static className — if the element ALSO carries Tailwind utilities
+    // (`<Card className="mt-4">`), those stay the primary surface (visible in JSX, and
+    // safe from being overridden by the styled class's cascade). An unsupported styled
+    // form (interpolated template / dynamic object) fails closed to inline — styled
+    // forwards `style`, so an inline value still applies (and overrides it).
     if (styledTarget && !classEditable) {
       if (styledTarget.kind === 'template') {
         for (const key of spec.css) {
@@ -843,13 +899,10 @@ export function computeStyleEdit(
     patches.push({ start: styledTarget.bodyStart, end: styledTarget.bodyEnd, text: styledBody })
   }
 
-  // A styled OBJECT target's edited literal — merge the collected edits into the
-  // parsed props and rewrite the object in place (one patch on its range).
+  // A styled OBJECT target — surgical patches on the literal's properties (replace a
+  // value, insert a new prop), leaving untouched props byte-identical.
   if (objEdits.length && styledTarget?.kind === 'object') {
-    const next = renderStyledObjectEdit(styledTarget.props, objEdits)
-    if (source.slice(styledTarget.objStart, styledTarget.objEnd) !== next) {
-      patches.push({ start: styledTarget.objStart, end: styledTarget.objEnd, text: next })
-    }
+    patches.push(...styledObjectPatches(source, styledTarget.node, objEdits))
   }
 
   if (patches.length === 0) {
