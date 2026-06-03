@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CaretLeft } from '@phosphor-icons/react'
-import './muse.css'
 import { useShadowHost } from './hooks/useShadowHost'
 import { museChat, museDesignGenerate, museDesignGet, museObserve, museWrite } from './api'
 import { EPHEMERAL, MOCK } from './config'

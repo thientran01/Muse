@@ -63,7 +63,6 @@ cp -r "$TMP/muse/src/muse"  ./src/muse           # overlay + deterministic engin
 cp -r "$TMP/muse/server"    ./muse-server         # museCore, musePlugin, webAdapter, standaloneServer, styleEdit
 cp -r "$TMP/muse/babel"     ./muse-babel          # muse-loc.cjs — the universal locator plugin
 cp "$TMP/muse/docs/HOSTING.md" ./muse-server/HOSTING.md   # the canonical wiring reference
-cp "$TMP/muse/tailwind.config.js" ./.muse-tailwind.config.js   # for the CSS step
 ```
 
 `src/muse/` is the client (overlay, components, hooks, store, `style/`, `muse.css`).
@@ -170,41 +169,24 @@ MUSE_ROOT="$(pwd)" npx tsx muse-server/standaloneServer.ts   # http://127.0.0.1:
 
 Then point the overlay at it in Step 6: `configureMuse({ apiBase: 'http://localhost:4747' })`.
 
-## Step 5 — Overlay styling
+## Step 5 — Styling (nothing to do)
 
-Muse's chrome uses custom Tailwind utilities (`bg-surface`, `text-fg`, the
-`EASE`/`DUR` motion tokens, keyframes) from Muse's `tailwind.config.js`, plus
-`src/muse/muse.css` for the `[data-muse-ui]` CSS variables. Pick the branch:
-
-**Branch A — host does NOT use Tailwind v3 (recommended default, no coupling):**
-generate a self-contained stylesheet (NO `@tailwind base` — base/preflight would
-reset the host app):
-
-```bash
-printf '@tailwind components;\n@tailwind utilities;\n' > .muse-tw-input.css
-npx tailwindcss -c ./.muse-tailwind.config.js -i ./.muse-tw-input.css \
-  -o ./src/muse/muse.generated.css --content './src/muse/**/*.{ts,tsx}'
-rm .muse-tw-input.css .muse-tailwind.config.js
-```
-
-Import both `muse.css` and `muse.generated.css` in Step 6.
-
-**Branch B — host already uses Tailwind v3:** merge Muse's additions into the
-host config — add `'./src/muse/**/*.{ts,tsx}'` to `content`, and copy the
-`surface`/`fg`/`line`/`accent` → `rgb(var(--muse-…) / <alpha-value>)` color tokens,
-the `EASE`/`DUR` values, and the `keyframes`/`animation` entries from
-`.muse-tailwind.config.js`. Then only `muse.css` is imported. Delete the temp config.
+There is **no styling step**. The overlay renders inside a **Shadow DOM** root and
+injects its own compiled stylesheet there, so its CSS is fully isolated from the
+host — it can't collide with the host's styles (or be broken by them), and the host
+imports **no CSS** and runs **no Tailwind** for Muse. Do NOT generate a stylesheet or
+touch the host's Tailwind config. (Earlier versions of this skill generated a global
+utility stylesheet here — that is what broke Tailwind hosts; it's gone.)
 
 ## Step 6 — Mount the overlay (dev-only)
 
-Mount `<MuseOverlay/>` behind a dev gate. The overlay config is bundler-neutral.
+Mount `<MuseOverlay/>` behind a dev gate. The overlay config is bundler-neutral and
+brings its own styles (no CSS import needed).
 
 ```tsx
 'use client'                                       // Next.js ONLY — omit on Vite / webpack
 import { MuseOverlay } from './muse/MuseOverlay'    // adjust import path to your tree
 import { configureMuse } from './muse/config'
-import './muse/muse.css'
-import './muse/muse.generated.css'                  // only if you used Branch A in Step 5
 
 // configureMuse({ apiBase: 'http://localhost:4747' })   // only for the standalone-server backend
 export function DevMuse() {
