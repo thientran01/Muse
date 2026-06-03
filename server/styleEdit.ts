@@ -21,9 +21,13 @@
 import { parse } from '@babel/parser'
 import _traverse from '@babel/traverse'
 import type {
+  ArrowFunctionExpression,
   File,
+  FunctionDeclaration,
+  FunctionExpression,
   JSXAttribute,
   JSXElement,
+  JSXExpressionContainer,
   JSXOpeningElement,
   JSXText,
   Node,
@@ -1344,6 +1348,199 @@ export function computeTextEdit(
 
   const out = source.slice(0, node.start!) + replacement + source.slice(node.end!)
   return { newContent: out, changed: true, warnings: [] }
+}
+
+// ============================================================
+//  PROP-TEXT TRACE — edit text that comes from a usage-site prop
+// ------------------------------------------------------------
+//  When clicked text is a single `{prop}` reference (today → "comes from data"),
+//  the editable string lives ONE hop up at the usage site: `<UIScreen label="…"/>`.
+//  These PURE, single-file helpers identify (a) the enclosing component's export +
+//  the prop name, and (b) a given file's `<Component prop="literal">` usages. The
+//  SERVER (museCore, which has fs) does the bounded reverse-scan across src/, resolves
+//  imports, disambiguates by the clicked node's rendered text, and edits the usage.
+// ============================================================
+
+type FnNode = FunctionDeclaration | FunctionExpression | ArrowFunctionExpression
+const isFnNode = (n: Node): n is FnNode =>
+  n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression'
+
+// The component + prop a clicked `{prop}` text resolves to: the enclosing component's
+// EXPORT name (so the server can find its importers) and the prop name.
+export type PropTextIntent = { componentExportName: string; propName: string }
+
+// Resolve the component's EXPORT name for a function whose body holds the clicked JSX:
+// 'default' for a default export, the exported name for a named export, or null when the
+// component isn't exported (it can't be used in another file, so there's nothing to trace).
+function componentExportName(ast: File, fn: FnNode): string | null {
+  let name: string | null = null
+  let defaultExported = false
+  traverse(ast, {
+    Function(path) {
+      if (path.node !== fn) return
+      const parent = path.parentPath?.node
+      if (fn.type === 'FunctionDeclaration' && fn.id) {
+        name = fn.id.name
+        if (parent?.type === 'ExportDefaultDeclaration') defaultExported = true
+      } else if (parent?.type === 'VariableDeclarator' && parent.id.type === 'Identifier') {
+        name = parent.id.name
+      } else if (parent?.type === 'ExportDefaultDeclaration') {
+        defaultExported = true // export default () => {…} (anonymous)
+      }
+      path.stop()
+    },
+  })
+  if (defaultExported) return 'default'
+  if (!name) return null
+  // Is `name` exported — inline (`export const`/`export function`), via `export { name }`
+  // (optionally `as`), or `export default name`?
+  let exportedAs: string | null = null
+  traverse(ast, {
+    ExportNamedDeclaration(path) {
+      const d = path.node.declaration
+      if (d?.type === 'FunctionDeclaration' && d.id?.name === name) exportedAs = name
+      if (d?.type === 'VariableDeclaration') {
+        for (const decl of d.declarations) if (decl.id.type === 'Identifier' && decl.id.name === name) exportedAs = name
+      }
+      for (const s of path.node.specifiers) {
+        if (s.type === 'ExportSpecifier' && s.local.name === name) {
+          exportedAs = s.exported.type === 'Identifier' ? s.exported.name : s.exported.value
+        }
+      }
+    },
+    ExportDefaultDeclaration(path) {
+      if (path.node.declaration.type === 'Identifier' && path.node.declaration.name === name) defaultExported = true
+    },
+  })
+  if (defaultExported) return 'default'
+  return exportedAs
+}
+
+// The innermost function whose source range contains the element, or null.
+function enclosingFunction(ast: File, element: JSXElement): FnNode | null {
+  let best: FnNode | null = null
+  traverse(ast, {
+    Function(path) {
+      const n = path.node
+      if (!isFnNode(n) || n.start == null || n.end == null) return
+      if (n.start <= element.start! && n.end >= element.end!) {
+        if (!best || (n.start >= best.start! && n.end <= best.end!)) best = n
+      }
+    },
+  })
+  return best
+}
+
+// If the located element's only significant child is a single `{prop}` reference whose
+// prop belongs to the enclosing (exported) component, return the trace intent. Handles
+// `{label}` (a destructured param prop) and `{props.label}` (a member of the param).
+// Null — the calm "comes from data" hint stands — for anything else (a non-prop
+// identifier, a member chain, a non-exported or non-component enclosure).
+export function computePropTextIntent(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): PropTextIntent | null {
+  let ast: File
+  try { ast = parseFile(source) } catch { return null }
+  const element = locateElement(ast, line, column, tag, classNames, offsetHint)
+  if (!element || element.openingElement.selfClosing) return null
+  // Exactly one significant child, and it's an expression container (not static text /
+  // another element / a fragment).
+  const sig = element.children.filter(
+    (c) =>
+      (c.type === 'JSXText' && /\S/.test(c.value)) ||
+      c.type === 'JSXElement' ||
+      c.type === 'JSXFragment' ||
+      (c.type === 'JSXExpressionContainer' && c.expression.type !== 'JSXEmptyExpression'),
+  )
+  if (sig.length !== 1 || sig[0].type !== 'JSXExpressionContainer') return null
+  const expr = (sig[0] as JSXExpressionContainer).expression
+  let propName: string | null = null
+  let paramName: string | null = null // set for the `{props.label}` member form
+  if (expr.type === 'Identifier') {
+    propName = expr.name
+  } else if (
+    expr.type === 'MemberExpression' &&
+    !expr.computed &&
+    expr.object.type === 'Identifier' &&
+    expr.property.type === 'Identifier'
+  ) {
+    propName = expr.property.name
+    paramName = expr.object.name
+  } else {
+    return null
+  }
+  const fn = enclosingFunction(ast, element)
+  if (!fn) return null
+  const param = fn.params[0]
+  if (!param) return null
+  if (paramName) {
+    // `{props.label}` — the first param must be the identifier used (`props`).
+    if (param.type !== 'Identifier' || param.name !== paramName) return null
+  } else {
+    // `{label}` — the first param must DESTRUCTURE `label` (so it's truly a prop, not
+    // some other in-scope binding).
+    if (param.type !== 'ObjectPattern') return null
+    const isProp = param.properties.some(
+      (p) => p.type === 'ObjectProperty' && !p.computed && p.key.type === 'Identifier' && p.key.name === propName,
+    )
+    if (!isProp) return null
+  }
+  const exportName = componentExportName(ast, fn)
+  return exportName ? { componentExportName: exportName, propName } : null
+}
+
+// A usage-site literal the prop trace can edit: the import specifier the component came
+// from (so the server can confirm it resolves to the CLICKED file), the literal's value,
+// and its inner character range (inside the quotes, so quote style is preserved).
+export type PropUsage = { specifier: string; value: string; valueStart: number; valueEnd: number }
+
+// In one file's source, find every `<Component … propName="literal" …>` where Component
+// is imported under `componentExportName` (default or named) — returning each literal's
+// value, inner range, and the import specifier. PURE: the server resolves the specifier
+// against the clicked file to keep only true usages, then disambiguates by rendered text.
+export function findPropLiteralUsages(source: string, componentExportName: string, propName: string): PropUsage[] {
+  let ast: File
+  try { ast = parseFile(source) } catch { return [] }
+  // Local JSX name → import specifier, for imports of the target component only.
+  const local = new Map<string, string>()
+  traverse(ast, {
+    ImportDeclaration(path) {
+      const spec = path.node.source.value
+      for (const s of path.node.specifiers) {
+        if (componentExportName === 'default') {
+          if (s.type === 'ImportDefaultSpecifier') local.set(s.local.name, spec)
+        } else if (s.type === 'ImportSpecifier') {
+          const imported = s.imported.type === 'Identifier' ? s.imported.name : s.imported.value
+          if (imported === componentExportName) local.set(s.local.name, spec)
+        }
+      }
+    },
+  })
+  if (local.size === 0) return []
+  const usages: PropUsage[] = []
+  traverse(ast, {
+    JSXOpeningElement(path) {
+      const t = path.node.name
+      if (t.type !== 'JSXIdentifier' || !local.has(t.name)) return
+      for (const a of path.node.attributes) {
+        if (
+          a.type === 'JSXAttribute' &&
+          a.name.type === 'JSXIdentifier' &&
+          a.name.name === propName &&
+          a.value?.type === 'StringLiteral'
+        ) {
+          // valueStart/End sit INSIDE the quotes so a splice preserves the quote chars.
+          usages.push({ specifier: local.get(t.name)!, value: a.value.value, valueStart: a.value.start! + 1, valueEnd: a.value.end! - 1 })
+        }
+      }
+    },
+  })
+  return usages
 }
 
 // ============================================================

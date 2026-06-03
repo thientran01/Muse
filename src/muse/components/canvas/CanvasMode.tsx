@@ -675,7 +675,7 @@ export function CanvasMode({
 
     try {
       const { edits, originals, warnings } = await museTextEdit([
-        { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: node.getAttribute('class') ?? '', text: raw },
+        { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: node.getAttribute('class') ?? '', text: raw, originalText: original },
       ])
       if (warnings.length) console.warn('[muse] text-edit:', warnings.join(' · '))
       if (edits.length === 0) {
@@ -837,6 +837,7 @@ export function CanvasMode({
         column: el.column,
         tag: el.tag,
         classNames: node.getAttribute('class') ?? '',
+        text: directText(node), // current rendered text — lets the server resolve a prop-text trace
       })
       if (cancelled) return
       if (!editable || !node.isConnected) {

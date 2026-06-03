@@ -155,10 +155,12 @@ export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEdi
   }
 }
 
-// Probe whether an element's text is editable (single static JSXText) BEFORE
-// entering edit mode, so data-bound text shows a calm hint instead of a bounce.
+// Probe whether an element's text is editable BEFORE entering edit mode, so data-bound
+// text shows a calm hint instead of a bounce. `text` carries the element's CURRENT
+// rendered text so the server can resolve a prop-text trace (a `{prop}` whose literal
+// lives at a usage site) and report it editable.
 export async function museTextEditable(
-  req: Omit<TextEditRequest, 'text'>,
+  req: Omit<TextEditRequest, 'text' | 'originalText'> & { text?: string },
 ): Promise<{ editable: boolean; reason?: string }> {
   if (EPHEMERAL) return { editable: true } // in-browser edits are always reversible
   try {
