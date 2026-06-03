@@ -208,16 +208,27 @@ export function CanvasMode({ onExit, onEscalate }: { onExit: () => void; onEscal
     if (!selected) return
     const place = () => {
       const r = selected.node.getBoundingClientRect()
-      const right = r.right + GAP
-      const left = right + PANEL_W <= window.innerWidth ? right : Math.max(GAP, r.left - GAP - PANEL_W)
       // Clamp the top so the WHOLE panel stays on-screen. Use its real measured
-      // height (it's capped at min(70vh,520px) + scrolls, but a short panel is much
+      // height (capped at min(70vh,520px) + scrolls, but a short panel is much
       // smaller) so a low element doesn't push the panel off the bottom. Falls back
-      // to the max cap before the first measure. Prefer aligning to the element's
-      // top; only lift it up when it would overflow, never above GAP.
+      // to the max cap before the first measure. Prefer the element's top; only lift
+      // it up when it would overflow, never above GAP.
       const panelH = panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.7, 520)
-      const maxTop = window.innerHeight - panelH - GAP
-      const top = Math.max(GAP, Math.min(r.top, maxTop))
+      const top = Math.max(GAP, Math.min(r.top, window.innerHeight - panelH - GAP))
+      // Sit beside the element — to its RIGHT by default, flipped to its LEFT when
+      // the right won't fit OR would cover the bottom-right dock / agent panel (it
+      // marks itself with data-muse-dock; read its live rect so the avoidance tracks
+      // its real size). If the left is also blocked, fall back to the best fit.
+      const rightX = r.right + GAP
+      const leftX = Math.max(GAP, r.left - GAP - PANEL_W)
+      const docks = [...document.querySelectorAll('[data-muse-dock]')].map((d) => d.getBoundingClientRect())
+      const hitsDock = (x: number) =>
+        docks.some((d) => x < d.right && x + PANEL_W > d.left && top < d.bottom && top + panelH > d.top)
+      const fitsRight = rightX + PANEL_W <= window.innerWidth
+      let left = rightX
+      if (!fitsRight || hitsDock(rightX)) {
+        left = leftX >= GAP && !hitsDock(leftX) ? leftX : fitsRight ? rightX : leftX
+      }
       setPanelPos({ top, left })
     }
     place()
