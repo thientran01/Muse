@@ -1608,7 +1608,7 @@ function locateElementWithParent(
 // preserved; ANY non-host-element significant child fails the whole container.
 type ChildScan = { ok: true; elements: JSXElement[] } | { ok: false; reason: string }
 
-function scanReorderChildren(parent: JSXElement): ChildScan {
+function scanReorderChildren(parent: JSXElement, allowComponents = false): ChildScan {
   const elements: JSXElement[] = []
   for (const c of parent.children) {
     if (c.type === 'JSXText') {
@@ -1616,7 +1616,11 @@ function scanReorderChildren(parent: JSXElement): ChildScan {
       continue // insignificant whitespace
     }
     if (c.type === 'JSXElement') {
-      if (!isHostOpening(c.openingElement)) {
+      // Component children are allowed in CONTAINER mode: each renders into the host
+      // container in source order, so the client's geometry maps to source positions
+      // 1:1 (the count-divergence guard enforces the single-root assumption). The
+      // default (child-mode) stays host-only — it can't locate a component child.
+      if (!allowComponents && !isHostOpening(c.openingElement)) {
         return { ok: false, reason: 'these are components, not plain elements — reorder is not supported here yet' }
       }
       elements.push(c)
@@ -1715,34 +1719,127 @@ export function computeReorder(
   }
   const r = resolveSiblings(ast, line, column, tag, classNames, offsetHint)
   if ('reason' in r) return { newContent: source, changed: false, warnings: [r.reason] }
-  const { el, parent, elements } = r
-
-  const fromIndex = elements.indexOf(el)
+  const fromIndex = r.elements.indexOf(r.el)
   if (fromIndex === -1) return { newContent: source, changed: false, warnings: ['element is not among its siblings'] }
+  return spliceReorder(source, r.parent, r.elements, fromIndex, toIndex)
+}
+
+// Move child `fromIndex` to insertion slot `toIndex` (a position in the ORIGINAL child
+// list — the child lands immediately before the original child at toIndex; toIndex ===
+// count → end) by a whitespace-preserving block splice. Shared by computeReorder (host
+// child-mode, fromIndex derived) and computeReorderChildren (container mode, fromIndex
+// given). PURE — `parent`/`elements` come from a resolver that proved the run is clean.
+function spliceReorder(source: string, parent: JSXElement, elements: JSXElement[], fromIndex: number, toIndex: number): ReorderResult {
   const to = Math.min(toIndex, elements.length) // clamp an over-far drop to "end"
   // Inserting before yourself, or before your immediate successor, is a no-op.
   if (to === fromIndex || to === fromIndex + 1) {
     return { newContent: source, changed: false, warnings: ['nothing to change'] }
   }
-
-  // Each child's "block" = its source PLUS the whitespace that precedes it (the
-  // newline + indentation, or — for the first — the gap after the parent's
-  // opening tag). The blocks tile [regionStart, regionEnd) exactly, because we
-  // proved no non-whitespace lives between the elements. The trailing whitespace
-  // before the closing tag sits past regionEnd and never moves.
+  // Each child's "block" = its source PLUS the whitespace that precedes it (the newline +
+  // indentation, or — for the first — the gap after the parent's opening tag). The blocks
+  // tile [regionStart, regionEnd) exactly, because no non-whitespace lives between the
+  // elements. The trailing whitespace before the closing tag sits past regionEnd, unmoved.
   const regionStart = parent.openingElement.end!
   const regionEnd = elements[elements.length - 1].end!
   const blocks: string[] = elements.map((node, i) => {
     const start = i === 0 ? regionStart : elements[i - 1].end!
     return source.slice(start, node.end!)
   })
-
   // Standard array-move on the index order, then re-emit the blocks in that order.
   const order = [...elements.keys()]
   order.splice(fromIndex, 1)
   order.splice(to > fromIndex ? to - 1 : to, 0, fromIndex)
   const newRegion = order.map((i) => blocks[i]).join('')
-
   const out = source.slice(0, regionStart) + newRegion + source.slice(regionEnd)
   return { newContent: out, changed: true, warnings: [] }
+}
+
+// ============================================================
+//  CONTAINER-MODE REORDER — reorder a host container's children, incl. components
+// ------------------------------------------------------------
+//  The child-mode path above can only move HOST children, because it locates the
+//  clicked child in source — and a COMPONENT child's DOM node carries a data-muse-loc
+//  pointing INTO the component, not at its `<Section/>` usage site, so it can't be
+//  located. Container mode flips it: the client passes the host CONTAINER's location
+//  (its DOM `<div>` IS authored at the usage site, e.g. page.tsx) plus the dragged
+//  child's DOM index. The engine reorders the container's element children — which may
+//  be components — by that index. Safe because the container is host (its children
+//  render into it, in order) and the client's count-divergence guard enforces the
+//  one-DOM-node-per-child assumption that keeps DOM order === source order 1:1.
+// ============================================================
+
+// Locate the CONTAINER element itself (not a child) and return its reorderable child run
+// (components allowed), or the reason it isn't one.
+function resolveContainerChildren(
+  ast: File,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): { parent: JSXElement; elements: JSXElement[] } | { reason: string } {
+  const container = locateElement(ast, line, column, tag, classNames, offsetHint)
+  if (!container) return { reason: `no JSX element found at line ${line}` }
+  // The container must be a host element — only then do its children render directly into
+  // it (a component/fragment container renders its children into a different DOM node).
+  if (!isHostOpening(container.openingElement)) return { reason: 'these elements are not in a reorderable container' }
+  const scan = scanReorderChildren(container, true)
+  if (!scan.ok) return { reason: scan.reason }
+  return { parent: container, elements: scan.elements }
+}
+
+// Probe: can the CHILDREN of the host container at (line, col) be reordered? Like
+// computeReorderable but container-anchored + component children allowed.
+export function computeReorderableContainer(
+  source: string,
+  line: number,
+  column: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): Reorderable {
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { reorderable: false, reason: `parse failed: ${(e as Error).message}` }
+  }
+  const r = resolveContainerChildren(ast, line, column, tag, classNames, offsetHint)
+  if ('reason' in r) return { reorderable: false, reason: r.reason }
+  const children: ReorderChild[] = r.elements.map((el, index) => ({
+    index,
+    tag: openingTag(el.openingElement) ?? '?',
+    classNames: openingClassName(el.openingElement),
+  }))
+  return { reorderable: true, count: children.length, children }
+}
+
+// Move the container's child at `fromIndex` to `toIndex`. `fromIndex` is the dragged
+// node's DOM index (the client's, since a component child can't be located in source);
+// it must be in range, else source and DOM have diverged and we fail closed.
+export function computeReorderChildren(
+  source: string,
+  line: number,
+  column: number,
+  fromIndex: number,
+  toIndex: number,
+  tag?: string,
+  classNames?: string,
+  offsetHint?: OffsetHint,
+): ReorderResult {
+  if (!Number.isInteger(toIndex) || toIndex < 0 || !Number.isInteger(fromIndex) || fromIndex < 0) {
+    return { newContent: source, changed: false, warnings: ['invalid index'] }
+  }
+  let ast: File
+  try {
+    ast = parseFile(source)
+  } catch (e) {
+    return { newContent: source, changed: false, warnings: [`parse failed: ${(e as Error).message}`] }
+  }
+  const r = resolveContainerChildren(ast, line, column, tag, classNames, offsetHint)
+  if ('reason' in r) return { newContent: source, changed: false, warnings: [r.reason] }
+  if (fromIndex >= r.elements.length) {
+    return { newContent: source, changed: false, warnings: ['from-index out of range — source and DOM diverged'] }
+  }
+  return spliceReorder(source, r.parent, r.elements, fromIndex, toIndex)
 }
