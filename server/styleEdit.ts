@@ -101,8 +101,13 @@ type ClassInfo =
 
 // …and its style attribute.
 type StyleInfo =
-  | { editable: true; attr: JSXAttribute; object: ObjectExpression; props: Array<[string, string]> }
-  | { editable: false; reason: string }
+  // `spreadRanges` are LEADING `...expr` spreads in the object (e.g. `{ ...body, … }`),
+  // preserved verbatim when the object is re-emitted so a re-edit round-trips.
+  | { editable: true; attr: JSXAttribute; object: ObjectExpression; props: Array<[string, string]>; spreadRanges: Array<{ start: number; end: number }> }
+  // `spread` is set when style is a NON-literal expression (style={body}) we can't
+  // merge into but CAN spread-override per-element. It carries the container range
+  // (the whole `{expr}`) and the inner expression range (to re-emit `...expr`).
+  | { editable: false; reason: string; spread?: { start: number; end: number; exprStart: number; exprEnd: number } }
   | null // no style attribute at all
 
 function parseFile(source: string): File {
@@ -304,9 +309,20 @@ function analyzeClassName(opening: JSXOpeningElement): ClassInfo {
 // `--var` string key isn't camelized — renderStyleObject quotes whatever needs it).
 // Returns a `reason` when any prop is dynamic (a spread, a computed key, or a
 // non-literal value) — the caller fails closed rather than drop information.
-function parseStaticObject(object: ObjectExpression): { props: Array<[string, string]> } | { reason: string } {
+function parseStaticObject(
+  object: ObjectExpression,
+): { props: Array<[string, string]>; spreadRanges: Array<{ start: number; end: number }> } | { reason: string } {
   const props: Array<[string, string]> = []
+  const spreadRanges: Array<{ start: number; end: number }> = []
   for (const p of object.properties) {
+    if (p.type === 'SpreadElement') {
+      // Allow LEADING spreads (e.g. `{ ...body, marginTop: … }` — exactly the shape
+      // our own spread-override emits, so a re-edit round-trips). A spread AFTER a
+      // property can't be re-ordered without changing override semantics — fail closed.
+      if (props.length > 0) return { reason: 'has a spread after a property' }
+      spreadRanges.push({ start: p.argument.start!, end: p.argument.end! })
+      continue
+    }
     if (p.type !== 'ObjectProperty' || p.computed) return { reason: 'has dynamic properties' }
     const key = p.key.type === 'Identifier' ? p.key.name : p.key.type === 'StringLiteral' ? p.key.value : null
     if (key === null) return { reason: 'has a non-literal key' }
@@ -315,7 +331,7 @@ function parseStaticObject(object: ObjectExpression): { props: Array<[string, st
     else if (val.type === 'NumericLiteral') props.push([key, String(val.value)])
     else return { reason: 'has a non-literal value' }
   }
-  return { props }
+  return { props, spreadRanges }
 }
 
 function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
@@ -323,12 +339,19 @@ function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
   if (!attr) return null
   const v = attr.value
   if (!v || v.type !== 'JSXExpressionContainer' || v.expression.type !== 'ObjectExpression') {
-    return { editable: false, reason: 'style is not an object literal' }
+    // A non-literal style expression (style={body}, style={getX()}): can't read or
+    // merge it, but we can spread-override it per-element so an edited property wins
+    // the cascade (inline beats a class) without mutating the (often shared) object.
+    const spread =
+      v && v.type === 'JSXExpressionContainer' && v.expression.type !== 'JSXEmptyExpression'
+        ? { start: v.start!, end: v.end!, exprStart: v.expression.start!, exprEnd: v.expression.end! }
+        : undefined
+    return { editable: false, reason: 'style is not an object literal', spread }
   }
   const object = v.expression
   const r = parseStaticObject(object)
   if ('reason' in r) return { editable: false, reason: `style ${r.reason}` }
-  return { editable: true, attr, object, props: r.props }
+  return { editable: true, attr, object, props: r.props, spreadRanges: r.spreadRanges }
 }
 
 // Render a flat style object back to source: { key: "value", … }. An identifier key
@@ -336,10 +359,13 @@ function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
 // or `--custom-prop` string key) is quoted so the emitted JS is always valid. Values
 // go through JSON.stringify so any quote/backslash (e.g. a font-family fallback) is
 // escaped and the emitted JS can't be broken.
-function renderStyleObject(props: Array<[string, string]>): string {
-  if (props.length === 0) return '{}'
+function renderStyleObject(props: Array<[string, string]>, spreadExprs: string[] = []): string {
   const renderKey = (k: string) => (/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k))
-  return `{ ${props.map(([k, v]) => `${renderKey(k)}: ${JSON.stringify(v)}`).join(', ')} }`
+  const parts = [
+    ...spreadExprs.map((e) => `...${e}`),
+    ...props.map(([k, v]) => `${renderKey(k)}: ${JSON.stringify(v)}`),
+  ]
+  return parts.length === 0 ? '{}' : `{ ${parts.join(', ')} }`
 }
 
 // kebab/snake → camelCase, for matching a CSS-prop edit key (always camelCase, e.g.
@@ -708,6 +734,10 @@ export function computeStyleEdit(
   const classInfo = analyzeClassName(opening)
   const styleInfo = analyzeStyle(opening)
   const classEditable = classInfo?.editable === true
+  // A non-literal `style={expr}` we can spread-override. When present, prefer the
+  // spread-inline path over authoring a class: inline beats a class in the cascade,
+  // so an authored class would be visually dead if `expr` sets the same property.
+  const styleSpread = styleInfo && styleInfo.editable === false ? styleInfo.spread ?? null : null
   // A `className={styles.card}` binding into a `.module.css` — its props can't be a
   // class token (the className is the binding) so they defer to a rule edit below.
   const moduleBinding = detectModuleBinding(opening, findModuleImports(ast))
@@ -748,7 +778,9 @@ export function computeStyleEdit(
   // className is editable so the two can't fight. Returns false if there's no
   // writable style object (present-but-dynamic) — the caller warns and skips.
   const routeInline = (m: Mutation, spec: (typeof PROPERTIES)[StyleProperty]): boolean => {
-    if (styleInfo?.editable === false) {
+    // A present-but-non-literal style is editable ONLY via spread-override; without
+    // that (no captured expression) there's nothing writable, so warn and skip.
+    if (styleInfo?.editable === false && !styleSpread) {
       warnings.push(`skipped ${m.property}: ${styleInfo.reason}`)
       return false
     }
@@ -854,7 +886,14 @@ export function computeStyleEdit(
     // a utility class AUTHORED. Only a NON-editable className (an expression we can't
     // safely touch) stays on the inline path. Without this, such elements divert to
     // inline and skip ("style is not an object literal"), so no edit is ever written.
-    const useTailwind = strategy === 'tailwind-first' && (classEditable || classInfo === null)
+    // Author a class for a classless element ONLY when there's no inline style to use
+    // — a style (literal OR expression) beats a class in the cascade, so we edit/
+    // override it inline instead (literal → merge; expression → spread). Otherwise an
+    // authored class would be visually dead.
+    const useTailwind =
+      strategy === 'tailwind-first' &&
+      (classEditable || (classInfo === null && styleInfo === null)) &&
+      !styleSpread
     // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
     // className.
@@ -893,7 +932,16 @@ export function computeStyleEdit(
 
   if (styleTouched) {
     if (styleInfo?.editable) {
-      patches.push({ start: styleInfo.object.start!, end: styleInfo.object.end!, text: renderStyleObject(styleProps) })
+      // Re-emit the object, preserving any leading `...spread` verbatim (so editing
+      // a `{ ...body, marginTop }` round-trips instead of dropping the spread).
+      const spreads = styleInfo.spreadRanges.map((r) => source.slice(r.start, r.end))
+      patches.push({ start: styleInfo.object.start!, end: styleInfo.object.end!, text: renderStyleObject(styleProps, spreads) })
+    } else if (styleSpread) {
+      // Non-literal style (style={body}): replace `{body}` with `{{ ...body, prop: v }}`
+      // so the edited property overrides per-element, winning the cascade over any
+      // class, without mutating the shared object.
+      const exprText = source.slice(styleSpread.exprStart, styleSpread.exprEnd)
+      patches.push({ start: styleSpread.start, end: styleSpread.end, text: `{${renderStyleObject(styleProps, [exprText])}}` })
     } else {
       // No style attribute yet — insert one right after the className attribute
       // (or the tag name if there's no className), anchored on the attribute
