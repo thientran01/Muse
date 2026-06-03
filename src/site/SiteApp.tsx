@@ -99,9 +99,11 @@ export default function SiteApp() {
         {/* Main */}
         <main className="min-w-0 flex-1 px-6 py-10 md:px-12 md:py-14">
           <div className="mx-auto max-w-2xl">
-            {/* Keyed by route so the content re-mounts and the entrance plays on
-                each navigation (subtle fade + rise, strong ease-out). */}
-            <div key={page} className="animate-site-in motion-reduce:animate-none">
+            {/* No entrance animation on navigation: switching docs sections happens
+                tens of times a session, and per Emil's frequency rule a repeated,
+                click-initiated transition reads as lag, not polish (Raycast ships
+                its command palette with none). The page just swaps. */}
+            <div key={page}>
               <Page />
             </div>
             <footer className="mt-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-stone-200 pt-6 text-[13px] text-stone-600 dark:border-stone-800 dark:text-stone-400">
