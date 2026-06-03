@@ -386,15 +386,17 @@ export function CanvasMode({
       return
     }
     setReorderContainer(null)
-    // A COMPONENT instance (its source file differs from its DOM parent's) can't be
-    // located in source, so reorder must address the host CONTAINER (the DOM parent) +
-    // the dragged child's DOM index. A host child keeps the normal child-mode path.
+    // Reorder addresses the host CONTAINER (the DOM parent, stamped at the usage site) +
+    // the dragged child's DOM index. This is the ONLY way to reorder a COMPONENT child
+    // (whose own DOM node points into the component, not its usage site) — and it's parity-
+    // identical to child mode for host children, so we use it whenever the parent carries a
+    // source stamp (covers same-file inline components too — a file-difference heuristic
+    // missed those). Fall back to child mode only when the parent has no stamp.
     const parentEl = selected.node.parentElement
     const contLoc = parentEl ? getSourceLocation(parentEl) : null
-    const selfLoc = getSourceLocation(selected.node)
     const container =
-      contLoc && selfLoc && contLoc.fileName !== selfLoc.fileName
-        ? { fileName: contLoc.fileName, line: contLoc.lineNumber, column: contLoc.columnNumber, tag: parentEl!.tagName.toLowerCase(), classNames: parentEl!.getAttribute('class') ?? '' }
+      contLoc && parentEl
+        ? { fileName: contLoc.fileName, line: contLoc.lineNumber, column: contLoc.columnNumber, tag: parentEl.tagName.toLowerCase(), classNames: parentEl.getAttribute('class') ?? '' }
         : null
     // EPHEMERAL: there's no server probe — answer from the live DOM. A run is
     // reorderable when the parent has ≥2 visible element children including the
