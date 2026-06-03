@@ -1093,11 +1093,14 @@ export function computeTextEdit(
   const node = t.node
 
   // Keep the node's own surrounding whitespace (indentation / the space after an
-  // inline icon); swap only the visible middle.
-  const lead = node.value.match(/^\s*/)![0]
-  const trail = node.value.match(/\s*$/)![0]
+  // inline icon); swap only the visible middle. Read lead/trail from the RAW source
+  // slice, NOT node.value — Babel's cooked value normalizes CRLF→LF, so using it
+  // would rewrite every surrounding line break to LF on each edit (CRLF file churn).
+  const raw = source.slice(node.start!, node.end!)
+  const lead = raw.match(/^\s*/)![0]
+  const trail = raw.match(/\s*$/)![0]
   const replacement = lead + encodeJsxText(newText.trim()) + trail
-  if (replacement === node.value) return { newContent: source, changed: false, warnings: ['nothing to change'] }
+  if (replacement === raw) return { newContent: source, changed: false, warnings: ['nothing to change'] }
 
   const out = source.slice(0, node.start!) + replacement + source.slice(node.end!)
   return { newContent: out, changed: true, warnings: [] }
@@ -1183,7 +1186,10 @@ function scanReorderChildren(parent: JSXElement): ChildScan {
       continue
     }
     if (c.type === 'JSXExpressionContainer') {
-      // {items.map(...)}, {cond && <x/>}, {/* comment */} — dynamic/list content.
+      // A JSX comment {/* … */} is a container wrapping an EMPTY expression — it
+      // renders nothing, so skip it like whitespace instead of failing the run.
+      if (c.expression.type === 'JSXEmptyExpression') continue
+      // {items.map(...)}, {cond && <x/>} — real dynamic/list content.
       return { ok: false, reason: 'these are generated from data — reorder the list instead' }
     }
     // JSXFragment child, JSXSpreadChild, anything else.
