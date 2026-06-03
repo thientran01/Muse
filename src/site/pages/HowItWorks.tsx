@@ -28,7 +28,7 @@ export function HowItWorks() {
 
       <H2 id="canvas-engine">Why Canvas edits are instant</H2>
       <P>
-        A direct edit is a known transform, and a drag is a number changing. Canvas Mode parses the
+        A direct edit is a known transform, and a drag is a number changing. Canvas parses the
         file, finds the element by its source position, and rewrites that one class or style with a
         character-range splice that leaves your formatting intact. The result lands instantly, asks for
         no key, and stays reversible.
@@ -37,9 +37,9 @@ export function HowItWorks() {
       <H2 id="agent">The agent, as a partner</H2>
       <P>
         Some of the work is conversation, and Muse is built to feel like a partner through it. The moment
-        you select an element, before you have typed anything, it runs a quick read of what you picked: a
-        short, plain observation of what the element is doing, plus a few starter directions tailored to
-        it. The conversation opens with something concrete to react to.
+        you hand an element to the agent, by Shift-clicking it, before you have typed anything, it runs a
+        quick read of what you picked: a short, plain observation of what the element is doing, plus a few
+        starter directions tailored to it. The conversation opens with something concrete to react to.
       </P>
       <P>
         From there you say what you want, and Muse answers with one to three distinct directions, each a

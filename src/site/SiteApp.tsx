@@ -10,8 +10,8 @@ import { ThemeToggle } from './ThemeToggle'
 
 // The Muse docs site — a self-demonstrating page (Agentation-style): the prose and
 // example components you read ARE the editable surface. Muse's overlay is mounted
-// alongside it (see App.tsx), so pressing L lets you restyle anything here; in the
-// hosted demo those edits are ephemeral (reset on refresh).
+// alongside it (see App.tsx), so opening Muse and clicking lets you restyle anything
+// here; in the hosted demo those edits are ephemeral (reset on refresh).
 const PAGES: Record<PageId, () => JSX.Element> = {
   overview: Overview,
   install: Install,
@@ -104,8 +104,16 @@ export default function SiteApp() {
             <div key={page} className="animate-site-in motion-reduce:animate-none">
               <Page />
             </div>
-            <footer className="mt-20 border-t border-stone-200 pt-6 text-[13px] text-stone-600 dark:border-stone-800 dark:text-stone-400">
-              Muse, visual editing for the app you already have.
+            <footer className="mt-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-stone-200 pt-6 text-[13px] text-stone-600 dark:border-stone-800 dark:text-stone-400">
+              <span>Muse, visual editing for the app you already have.</span>
+              <a
+                href="https://www.linkedin.com/in/thien-trann/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded font-medium text-stone-700 underline-offset-2 transition-colors hover:text-stone-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:text-stone-300 dark:hover:text-stone-100 dark:focus-visible:ring-[#e3a384]/50"
+              >
+                Made by Thien Tran ↗
+              </a>
             </footer>
           </div>
         </main>

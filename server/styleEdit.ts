@@ -297,6 +297,26 @@ function analyzeClassName(opening: JSXOpeningElement): ClassInfo {
   return { editable: false, reason: 'unsupported className value' }
 }
 
+// Parse a flat ObjectExpression of static string/number props into [key, value]
+// pairs — the shared shape behind the inline `style={{}}` object AND a styled/emotion
+// object-syntax definition (`styled.div({ … })`). Keys are kept VERBATIM (a kebab or
+// `--var` string key isn't camelized — renderStyleObject quotes whatever needs it).
+// Returns a `reason` when any prop is dynamic (a spread, a computed key, or a
+// non-literal value) — the caller fails closed rather than drop information.
+function parseStaticObject(object: ObjectExpression): { props: Array<[string, string]> } | { reason: string } {
+  const props: Array<[string, string]> = []
+  for (const p of object.properties) {
+    if (p.type !== 'ObjectProperty' || p.computed) return { reason: 'has dynamic properties' }
+    const key = p.key.type === 'Identifier' ? p.key.name : p.key.type === 'StringLiteral' ? p.key.value : null
+    if (key === null) return { reason: 'has a non-literal key' }
+    const val = p.value
+    if (val.type === 'StringLiteral') props.push([key, val.value])
+    else if (val.type === 'NumericLiteral') props.push([key, String(val.value)])
+    else return { reason: 'has a non-literal value' }
+  }
+  return { props }
+}
+
 function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
   const attr = findAttr(opening, 'style')
   if (!attr) return null
@@ -305,29 +325,33 @@ function analyzeStyle(opening: JSXOpeningElement): StyleInfo {
     return { editable: false, reason: 'style is not an object literal' }
   }
   const object = v.expression
-  const props: Array<[string, string]> = []
-  for (const p of object.properties) {
-    // Only a flat object of static string/number props is safe to regenerate;
-    // a spread or a computed/dynamic value means we'd drop information, so bail.
-    if (p.type !== 'ObjectProperty' || p.computed) return { editable: false, reason: 'style has dynamic properties' }
-    const key =
-      p.key.type === 'Identifier' ? p.key.name : p.key.type === 'StringLiteral' ? p.key.value : null
-    if (key === null) return { editable: false, reason: 'style has a non-literal key' }
-    const val = p.value
-    if (val.type === 'StringLiteral') props.push([key, val.value])
-    else if (val.type === 'NumericLiteral') props.push([key, String(val.value)])
-    else return { editable: false, reason: 'style has a non-literal value' }
-  }
-  return { editable: true, attr, object, props }
+  const r = parseStaticObject(object)
+  if ('reason' in r) return { editable: false, reason: `style ${r.reason}` }
+  return { editable: true, attr, object, props: r.props }
 }
 
-// Render a flat style object back to source: { key: "value", … }. Keys are
-// camelCase CSS props (valid identifiers); values go through JSON.stringify so
-// any quote/backslash in the value (e.g. a font-family fallback) is escaped and
-// the emitted JS can't be broken.
+// Render a flat style object back to source: { key: "value", … }. An identifier key
+// (the camelCase CSS-prop common case) is emitted bare; a non-identifier key (a kebab
+// or `--custom-prop` string key) is quoted so the emitted JS is always valid. Values
+// go through JSON.stringify so any quote/backslash (e.g. a font-family fallback) is
+// escaped and the emitted JS can't be broken.
 function renderStyleObject(props: Array<[string, string]>): string {
   if (props.length === 0) return '{}'
-  return `{ ${props.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')} }`
+  const renderKey = (k: string) => (/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k))
+  return `{ ${props.map(([k, v]) => `${renderKey(k)}: ${JSON.stringify(v)}`).join(', ')} }`
+}
+
+// Merge property edits ([key, value]) into a parsed object's props (replacing a key
+// in place, appending a new one) and render the result. Shared by the engine's
+// same-file styled-object branch and the server's imported-styled-object resolver.
+export function renderStyledObjectEdit(props: Array<[string, string]>, edits: Array<[string, string]>): string {
+  const out = props.map(([k, v]) => [k, v] as [string, string])
+  for (const [k, v] of edits) {
+    const i = out.findIndex(([pk]) => pk === k)
+    if (i === -1) out.push([k, v])
+    else out[i] = [k, v]
+  }
+  return renderStyleObject(out)
 }
 
 // Default/namespace imports whose source is a `*.module.css`, mapped binding-name
@@ -386,8 +410,21 @@ function detectModuleBinding(
 // nor a relative import returns null (route normally).
 type StyledTarget =
   | { kind: 'template'; bodyStart: number; bodyEnd: number; body: string }
+  | { kind: 'object'; objStart: number; objEnd: number; props: Array<[string, string]> }
   | { kind: 'import'; specifier: string; exportName: string }
   | { kind: 'unsupported'; reason: string }
+
+// A same-file styled OBJECT definition (`styled.div({ … })`, or an emotion `css={{…}}`
+// prop) → an editable object target (or unsupported when the object has dynamic
+// props). The engine rewrites the object literal in place, like the template path.
+function objectTarget(
+  object: ObjectExpression,
+  dynPrefix: string,
+): { kind: 'object'; objStart: number; objEnd: number; props: Array<[string, string]> } | { kind: 'unsupported'; reason: string } {
+  const r = parseStaticObject(object)
+  if ('reason' in r) return { kind: 'unsupported', reason: `${dynPrefix} ${r.reason}` }
+  return { kind: 'object', objStart: object.start!, objEnd: object.end!, props: r.props }
+}
 
 // Walk a styled tag-expression chain down to its root identifier: styled.div →
 // styled, styled(Base) → styled, styled.div.attrs({…}) → styled, styled(Base)
@@ -405,16 +442,16 @@ function tagRootName(node: Node): string | null {
 
 // Is this initializer a styled-component definition? Returns the tagged TEMPLATE for
 // a template form (styled.div`…`, styled(Base)`…`, the .attrs/.withConfig chains),
-// `object:true` for the object-syntax form (styled.div({…}) — JS object, not CSS
-// text, so unsupported here), or null when it isn't `styled` at all.
-function asStyledDef(init: Node | null | undefined): { template: TemplateLiteral } | { object: true } | null {
+// the object EXPRESSION for the object-syntax form (styled.div({…})), or null when
+// it isn't `styled` at all.
+function asStyledDef(init: Node | null | undefined): { template: TemplateLiteral } | { object: ObjectExpression } | null {
   if (!init) return null
   if (init.type === 'TaggedTemplateExpression' && tagRootName(init.tag) === 'styled') {
     return { template: init.quasi }
   }
-  if (init.type === 'CallExpression' && tagRootName(init.callee) === 'styled' &&
-      init.arguments.some((a) => a.type === 'ObjectExpression')) {
-    return { object: true }
+  if (init.type === 'CallExpression' && tagRootName(init.callee) === 'styled') {
+    const obj = init.arguments.find((a) => a.type === 'ObjectExpression')
+    if (obj && obj.type === 'ObjectExpression') return { object: obj }
   }
   return null
 }
@@ -436,8 +473,8 @@ function templateTarget(
 // Find a same-file styled definition bound to `name` (`const Card = styled.div`…``).
 // First declarator with this name wins; we don't restrict to module scope (a
 // function-scoped styled const is still a static template we can edit in place).
-function findStyledDef(ast: File, name: string): { template: TemplateLiteral } | { object: true } | null {
-  let found: { template: TemplateLiteral } | { object: true } | null = null
+function findStyledDef(ast: File, name: string): { template: TemplateLiteral } | { object: ObjectExpression } | null {
+  let found: { template: TemplateLiteral } | { object: ObjectExpression } | null = null
   traverse(ast, {
     VariableDeclarator(path) {
       if (found) return
@@ -487,15 +524,15 @@ function detectStyledBinding(opening: JSXOpeningElement, ast: File, source: stri
     if (ex.type === 'TaggedTemplateExpression' && tagRootName(ex.tag) === 'css') {
       return templateTarget(ex.quasi, source, 'css prop template has interpolations')
     }
-    if (ex.type === 'ObjectExpression') return { kind: 'unsupported', reason: 'css prop is an object' }
+    if (ex.type === 'ObjectExpression') return objectTarget(ex, 'css prop object')
   }
   // styled component: a capitalized tag (`<Card>`).
   const tag = openingTag(opening)
   if (!tag || tag[0] === tag[0].toLowerCase()) return null // host element / member name — not a styled component
-  // Same-file styled def — edit its template in place.
+  // Same-file styled def — edit its template or object literal in place.
   const def = findStyledDef(ast, tag)
   if (def) {
-    if ('object' in def) return { kind: 'unsupported', reason: 'styled object syntax' }
+    if ('object' in def) return objectTarget(def.object, 'styled object')
     return templateTarget(def.template, source, 'styled template has interpolations')
   }
   // Imported from a relative module — defer to the server to resolve + edit. We can't
@@ -541,15 +578,19 @@ function findReExport(ast: File, exportName: string): { specifier: string; expor
 // server hands it the file source; this only parses + locates, no I/O.
 export type StyledExportLoc =
   | { bodyStart: number; bodyEnd: number; body: string }
+  | { objectStart: number; objectEnd: number; props: Array<[string, string]> }
   | { reexport: { specifier: string; exportName: string } }
   | { unsupported: string }
   | null
 export function findStyledExport(source: string, exportName: string): StyledExportLoc {
   let ast: File
   try { ast = parseFile(source) } catch { return null }
-  const toLoc = (def: { template: TemplateLiteral } | { object: true } | null): StyledExportLoc => {
+  const toLoc = (def: { template: TemplateLiteral } | { object: ObjectExpression } | null): StyledExportLoc => {
     if (!def) return null
-    if ('object' in def) return { unsupported: 'styled object syntax' }
+    if ('object' in def) {
+      const o = objectTarget(def.object, 'styled object')
+      return o.kind === 'object' ? { objectStart: o.objStart, objectEnd: o.objEnd, props: o.props } : { unsupported: o.reason }
+    }
     const t = templateTarget(def.template, source, 'styled template has interpolations')
     return t.kind === 'template' ? { bodyStart: t.bodyStart, bodyEnd: t.bodyEnd, body: t.body } : { unsupported: t.reason }
   }
@@ -637,6 +678,8 @@ export function computeStyleEdit(
   // emitted as a single in-place patch below (no deferred intent needed).
   let styledBody = styledTarget?.kind === 'template' ? styledTarget.body : ''
   let styledTouched = false
+  // A SAME-FILE styled OBJECT target's edits, merged + rendered into one patch below.
+  const objEdits: Array<[string, string]> = []
 
   const setStyleProp = (key: string, value: string) => {
     const i = styleProps.findIndex(([k]) => k === key)
@@ -732,6 +775,12 @@ export function computeStyleEdit(
         }
         continue
       }
+      // Same-file styled OBJECT (`styled.div({…})` / `css={{…}}`) — collect each CSS
+      // key; the merged object is rendered + patched once after the loop.
+      if (styledTarget.kind === 'object') {
+        for (const key of spec.css) objEdits.push([key, m.value])
+        continue
+      }
       // Imported styled component — defer to the server (it resolves the module and
       // edits the export's template). One intent per CSS key, like ModuleEdit.
       if (styledTarget.kind === 'import') {
@@ -792,6 +841,15 @@ export function computeStyleEdit(
   // above via the right-to-left splice below).
   if (styledTouched && styledTarget?.kind === 'template') {
     patches.push({ start: styledTarget.bodyStart, end: styledTarget.bodyEnd, text: styledBody })
+  }
+
+  // A styled OBJECT target's edited literal — merge the collected edits into the
+  // parsed props and rewrite the object in place (one patch on its range).
+  if (objEdits.length && styledTarget?.kind === 'object') {
+    const next = renderStyledObjectEdit(styledTarget.props, objEdits)
+    if (source.slice(styledTarget.objStart, styledTarget.objEnd) !== next) {
+      patches.push({ start: styledTarget.objStart, end: styledTarget.objEnd, text: next })
+    }
   }
 
   if (patches.length === 0) {

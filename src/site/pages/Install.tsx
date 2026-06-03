@@ -48,10 +48,10 @@ root.render(
       <H2 id="run">4. Run it</H2>
       <CodeBlock label="terminal">npm run dev</CodeBlock>
       <P>
-        Open your app and press <strong>L</strong> for Canvas Mode, or click the Muse button to chat.
-        Chat runs on the Claude CLI by default, on your subscription; set <Code>ANTHROPIC_API_KEY</Code>{' '}
-        to use the metered API instead. The <a className="underline" href="#/reference">Reference</a>{' '}
-        lists every option.
+        Open your app and click the Muse button in the corner. From there, click any element to shape it
+        directly, or Shift-click to hand it to the chat partner. Chat runs on the Claude CLI by default,
+        on your subscription; set <Code>ANTHROPIC_API_KEY</Code> to use the metered API instead. The{' '}
+        <a className="underline" href="#/reference">Reference</a> lists every option.
       </P>
     </article>
   )
