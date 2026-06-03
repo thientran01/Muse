@@ -39,6 +39,7 @@ function buildRoutes(ctx: MuseContext): Map<string, Handler> {
     ['POST /api/muse/observe', h.observe],
     ['POST /api/muse/write', h.write],
     ['POST /api/muse/style-edit', h.styleEdit],
+    ['POST /api/muse/style-scope', h.styleScope],
     ['POST /api/muse/text-edit', h.textEdit],
     ['POST /api/muse/text-editable', h.textEditable],
     ['POST /api/muse/reorder', h.reorder],

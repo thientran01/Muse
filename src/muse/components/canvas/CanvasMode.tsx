@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { museReorder, museReorderable, museStyleEdit, museTextEdit, museTextEditable, museWrite } from '../../api'
+import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, StyleMutation } from '../../types'
+import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, SharedConst, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -182,6 +182,12 @@ export function CanvasMode({
   // don't sit on top of the element being dragged (the lifted element + insertion
   // bar are the only chrome that should show mid-drag).
   const [reordering, setReordering] = useState(false)
+  // When the selected element's style is `style={X}` (a shared same-file const), the
+  // probe returns its summary so the panel can offer an "all instances" scope toggle.
+  // `scope` is the user's choice for the NEXT commit, reset to per-element on every new
+  // selection so a global mode never silently persists across elements (mode-error guard).
+  const [styleScope, setStyleScope] = useState<SharedConst | null>(null)
+  const [scope, setScope] = useState<'element' | 'const'>('element')
   const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
@@ -411,6 +417,29 @@ export function CanvasMode({
       cancelled = true
     }
   }, [selected])
+
+  // Probe whether the selection's style is a shared const, so the scope toggle shows
+  // when a global edit is possible. Reset the scope choice to per-element on every new
+  // selection (mode never persists across elements). Cancel-guarded against a fast
+  // reselect. EPHEMERAL has no backend write path for a const edit, so never offers it.
+  useEffect(() => {
+    setScope('element')
+    setStyleScope(null)
+    if (!selected || EPHEMERAL) return
+    let cancelled = false
+    void museStyleScope({
+      fileName: selected.fileName,
+      line: selected.line,
+      column: selected.column,
+      tag: selected.tag,
+      classNames: selected.node.getAttribute('class') ?? '',
+    }).then((s) => {
+      if (!cancelled) setStyleScope(s)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selected])
   // Keyboard reorder (a11y) — a keyboard-only equivalent of the drag, since the
   // pointer path isn't reachable without a mouse/touch. When a reorderable element
   // is selected, Cmd/Ctrl + arrow moves it one slot: Up/Left = back, Down/Right =
@@ -574,8 +603,11 @@ export function CanvasMode({
           tag: selected.tag,
           classNames: selected.node.getAttribute('class') ?? '',
           mutations,
+          scope,
         },
       ])
+      // (The shared-const toggle is driven solely by the on-select probe — not the commit
+      // response — so a slow commit can't clobber a newer selection's scope state.)
       if (warnings.length) console.warn('[muse] style-edit:', warnings.join(' · '))
       if (edits.length === 0) {
         clearPreview() // nothing was written — don't leave a phantom inline override
@@ -948,6 +980,9 @@ export function CanvasMode({
                   selectedKey={selected.key}
                   onPick={selectElement}
                   portalContainer={rootRef}
+                  sharedConst={styleScope}
+                  scope={scope}
+                  onScopeChange={setScope}
                   onPreview={applyPreview}
                   onCommit={commit}
                 />

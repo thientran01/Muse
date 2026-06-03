@@ -12,6 +12,7 @@ import type {
   ReorderRequest,
   ReorderResponse,
   SelectedElement,
+  SharedConst,
   StyleEditRequest,
   StyleEditResponse,
   StyleStrategy,
@@ -111,6 +112,27 @@ export async function museStyleEdit(
     edits: Array.isArray(data.edits) ? data.edits : [],
     originals: data.originals ?? {},
     warnings: Array.isArray(data.warnings) ? data.warnings : [],
+    sharedConst: data.sharedConst,
+  }
+}
+
+// Probe whether a selected element's style is a shared same-file const (`style={X}`),
+// so Canvas can show the "this element / all uses" scope toggle BEFORE a scrub. Fails
+// CLOSED (no toggle) on transport error — the per-element commit is always available.
+export async function museStyleScope(
+  req: Omit<StyleEditRequest, 'mutations' | 'scope'>,
+): Promise<SharedConst | null> {
+  if (EPHEMERAL) return null // no backend; const-scope edits need a real write
+  try {
+    const res = await fetch(apiUrl('/api/muse/style-scope'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    const data = (await res.json()) as { sharedConst?: SharedConst | null }
+    return data.sharedConst ?? null
+  } catch {
+    return null
   }
 }
 
