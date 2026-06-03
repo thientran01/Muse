@@ -223,3 +223,18 @@ One React instance only — mount from the host's own React, never a second copy
 - **Canvas Mode is free + deterministic** (no model call, no key). Chat is the AI path.
 - **Vendored copy** — it won't auto-update when Muse changes. Re-run the skill to
   refresh. The full per-host reference is the vendored `muse-server/HOSTING.md`.
+
+## Next.js gotchas
+
+- **SSR is fine.** The overlay is SSR-safe (it renders nothing until its shadow root
+  mounts client-side, and the store carries a server snapshot). If a host wrapper
+  still throws during SSR, mount via `next/dynamic` with `{ ssr: false }` as a
+  fallback — but you shouldn't need to.
+- **A "redundant babel-loader" notice** can appear once you wire the Track N
+  `turbopack.rules` rule. It's expected (Turbopack noting Babel runs alongside its
+  SWC); silence it with `experimental.turbopackUseBuiltinBabel: true` in
+  `next.config.js`. Not an error.
+- **Tailwind v4 scans the vendored `src/muse/`.** Muse source is kept Tailwind-scan-safe
+  (no parseable class strings in comments), so this is normally a no-op. If your host's
+  Tailwind ever flags a vendored Muse file, exclude `src/muse` from its content scan
+  (`@source not` in your CSS) — the overlay never needs the host's Tailwind.

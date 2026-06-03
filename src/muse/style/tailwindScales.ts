@@ -191,7 +191,7 @@ export const isFontSizeToken = (tok: string): boolean => {
 export const isFontWeightToken = (tok: string): boolean => {
   if (namedRe('font', FONT_WEIGHT_KEYS).test(tok)) return true
   const m = tok.match(/^font-\[(.+)\]$/)
-  return m ? isWeightArbitrary(m[1]) : false // excludes font-sans/serif/mono and font-[var(...)]
+  return m ? isWeightArbitrary(m[1]) : false // excludes font-sans/serif/mono and arbitrary font-var brackets
 }
 const leadingFamilyRe = new RegExp(`^leading-(?:${LEADING_KEYS.map(esc).join('|')}|\\d+(?:\\.5)?|\\[[^\\]]+\\])$`)
 const trackingFamilyRe = new RegExp(`^tracking-(?:${TRACKING_KEYS.map(esc).join('|')}|\\[[^\\]]+\\])$`)

@@ -284,5 +284,10 @@ export const nextThreadId = (): string => `m${++_id}`
 
 /** Subscribe a component to the entire store. Re-renders on any state change. */
 export function useMuseStore(): MuseState {
-  return useSyncExternalStore(museStore.subscribe, museStore.getState)
+  // Pass getState as the server snapshot too: SSR hosts (Next renders client
+  // components on the server) call useSyncExternalStore on the server, which
+  // THROWS without a getServerSnapshot. getState returns the module-level initial
+  // state, consistent across server + client, so this is SSR-safe (the overlay
+  // itself renders nothing until its shadow root mounts client-side).
+  return useSyncExternalStore(museStore.subscribe, museStore.getState, museStore.getState)
 }
