@@ -94,7 +94,11 @@ module.exports = {
 **Simpler but broader alternative:** drop a `babel.config.js` with
 `{ presets: ['next/babel'], plugins: ['./muse/babel/muse-loc.cjs'] }`. Turbopack
 auto-runs `babel-loader` when it finds a Babel config — but that applies to the **whole
-app and all builds**, so the scoped `turbopack.rules` form above is preferred.
+app and all builds**, so the scoped `turbopack.rules` form above is preferred. With this
+form the plugin's own `NODE_ENV === 'production'` guard is the *only* thing keeping the
+attribute out of prod, so it's safe **only if your build always sets `NODE_ENV=production`**
+(`next build` does; a bare `npm run build` in some CI setups may not). The scoped `dev`
+form above doesn't have this caveat.
 
 ### webpack hosts
 
@@ -159,10 +163,17 @@ For any host whose bundler can't serve the backend in-process,
 [`server/standaloneServer.ts`](../server/standaloneServer.ts) is a tiny Node http server:
 
 ```bash
-MUSE_ROOT=/path/to/your/app npx tsx server/standaloneServer.ts   # listens on :4747, CORS-enabled
+MUSE_ROOT=/path/to/your/app npx tsx server/standaloneServer.ts   # listens on :4747
 ```
 
 Then point the overlay at it (see §3): `configureMuse({ apiBase: 'http://localhost:4747' })`.
+
+> **⚠️ Run it on localhost only.** This server has **no authentication** and **rewrites
+> source files on disk**. Its CORS default allows localhost browser origins, but that is
+> not auth — any non-browser client that can reach the port can call the write endpoints.
+> Keep it on your own machine (don't bind it to a public interface or run it on a shared
+> network), and never deploy it. The same-origin Next route above is the safer default
+> when the host can serve it.
 
 ---
 
@@ -206,6 +217,16 @@ Canvas Mode (direct manipulation: spacing/type/color/text/reorder) is determinis
 needs **no API key** — only the AI chat does.
 
 ---
+
+## Troubleshooting
+
+- **Clicking an element does nothing / Canvas can't find the source.** The locator stamp
+  isn't reaching the DOM. Check `document.querySelector('[data-muse-loc]')` in the console:
+  if it's empty, the Babel rule isn't running on your source (wrong glob, prod gate firing,
+  or `babel-loader` not passing a `filename` — the plugin silently skips elements with no
+  filename). Confirm the rule's glob matches your folders and that you're in dev.
+- **The attribute shows up in a production build.** A build ran without `NODE_ENV=production`.
+  Prefer the scoped `dev` `turbopack.rules` form over a global `babel.config.js`.
 
 ## What's verified vs. pending
 
