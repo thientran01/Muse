@@ -178,6 +178,10 @@ export function CanvasMode({
   // host-only children — see computeReorderable). Gates the drag handle so it
   // only appears when a drop will actually commit. Probed per selection.
   const [reorderable, setReorderable] = useState<Reorderable | null>(null)
+  // Set when the selection is a COMPONENT instance and reorder must address the host
+  // CONTAINER (the DOM parent) instead of the clicked element — its source location +
+  // the commit's container flag. Null for a host child (the normal child-mode path).
+  const [reorderContainer, setReorderContainer] = useState<{ fileName: string; line: number; column: number; tag: string; classNames: string } | null>(null)
   // True while a reorder drag is in flight. The other overlays + panel hide so they
   // don't sit on top of the element being dragged (the lifted element + insertion
   // bar are the only chrome that should show mid-drag).
@@ -378,8 +382,20 @@ export function CanvasMode({
   useEffect(() => {
     if (!selected) {
       setReorderable(null)
+      setReorderContainer(null)
       return
     }
+    setReorderContainer(null)
+    // A COMPONENT instance (its source file differs from its DOM parent's) can't be
+    // located in source, so reorder must address the host CONTAINER (the DOM parent) +
+    // the dragged child's DOM index. A host child keeps the normal child-mode path.
+    const parentEl = selected.node.parentElement
+    const contLoc = parentEl ? getSourceLocation(parentEl) : null
+    const selfLoc = getSourceLocation(selected.node)
+    const container =
+      contLoc && selfLoc && contLoc.fileName !== selfLoc.fileName
+        ? { fileName: contLoc.fileName, line: contLoc.lineNumber, column: contLoc.columnNumber, tag: parentEl!.tagName.toLowerCase(), classNames: parentEl!.getAttribute('class') ?? '' }
+        : null
     // EPHEMERAL: there's no server probe — answer from the live DOM. A run is
     // reorderable when the parent has ≥2 visible element children including the
     // selection (DOM order is authoritative; an ephemeral move can't corrupt a
@@ -404,14 +420,15 @@ export function CanvasMode({
     }
     let cancelled = false
     setReorderable(null)
-    void museReorderable({
-      fileName: selected.fileName,
-      line: selected.line,
-      column: selected.column,
-      tag: selected.tag,
-      classNames: selected.node.getAttribute('class') ?? '',
-    }).then((r) => {
-      if (!cancelled) setReorderable(r)
+    // Container mode addresses the host parent (its children may be components); child
+    // mode addresses the selected host element itself.
+    const probe = container
+      ? { fileName: container.fileName, line: container.line, column: container.column, tag: container.tag, classNames: container.classNames, container: true }
+      : { fileName: selected.fileName, line: selected.line, column: selected.column, tag: selected.tag, classNames: selected.node.getAttribute('class') ?? '' }
+    void museReorderable(probe).then((r) => {
+      if (cancelled) return
+      setReorderable(r)
+      setReorderContainer(r.reorderable && container ? container : null)
     })
     return () => {
       cancelled = true
@@ -748,14 +765,12 @@ export function CanvasMode({
     }
 
     try {
-      const { edits, originals, warnings } = await museReorder({
-        fileName: el.fileName,
-        line: el.line,
-        column: el.column,
-        tag: el.tag,
-        classNames: el.node.getAttribute('class') ?? '',
-        toIndex,
-      })
+      // Container mode (component child): address the host CONTAINER + pass the dragged
+      // child's DOM index as fromIndex. Child mode: address the host element itself.
+      const req = reorderContainer
+        ? { ...reorderContainer, toIndex, fromIndex }
+        : { fileName: el.fileName, line: el.line, column: el.column, tag: el.tag, classNames: el.node.getAttribute('class') ?? '', toIndex }
+      const { edits, originals, warnings } = await museReorder(req)
       if (warnings.length) console.warn('[muse] reorder:', warnings.join(' · '))
       if (edits.length === 0) {
         const r = el.node.getBoundingClientRect()

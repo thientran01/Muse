@@ -21,6 +21,8 @@ import {
   computeTextEditable,
   computeReorder,
   computeReorderable,
+  computeReorderChildren,
+  computeReorderableContainer,
   computeStyleScope,
   computePropTextIntent,
   findPropLiteralUsages,
@@ -1487,7 +1489,7 @@ async function handleTextEditable(req: IncomingMessage, res: ServerResponse, ctx
 async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const body = JSON.parse(await readBody(req)) as {
-      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; toIndex?: unknown }>
+      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; toIndex?: unknown; fromIndex?: unknown }>
     }
     const rawEdits = Array.isArray(body.edits) ? body.edits : []
     if (rawEdits.length === 0) return sendJson(res, 400, { error: 'No edits provided.' })
@@ -1495,7 +1497,10 @@ async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: Mus
     const out: Array<{ fileName: string; newContent: string }> = []
     const originals: Record<string, string> = {}
     const warnings: string[] = []
-    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; toIndex: number }> }>()
+    // `fromIndex` present → CONTAINER mode: the location is the host CONTAINER and we move
+    // its child at fromIndex (the only way to reorder COMPONENT children, which can't be
+    // located in source). Absent → child mode (location is the moved host child).
+    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; toIndex: number; fromIndex: number | null }> }>()
 
     for (const e of rawEdits) {
       const abs = resolveInSrc(ctx.root, e?.fileName)
@@ -1507,6 +1512,7 @@ async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: Mus
       const line = Number(e?.line)
       const column = Number(e?.column)
       const toIndex = Number(e?.toIndex)
+      const fromIndex = Number.isInteger(Number(e?.fromIndex)) ? Number(e?.fromIndex) : null
       const tag = typeof e?.tag === 'string' ? e.tag : undefined
       const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
       if (!Number.isInteger(line) || line <= 0 || !Number.isInteger(toIndex) || toIndex < 0) {
@@ -1514,7 +1520,7 @@ async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: Mus
         continue
       }
       const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
-      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, toIndex })
+      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, toIndex, fromIndex })
       byFile.set(rel, bucket)
     }
 
@@ -1524,7 +1530,9 @@ async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: Mus
       let changed = false
       items.sort((a, b) => b.line - a.line)
       for (const it of items) {
-        const result = computeReorder(content, it.line, it.column, it.toIndex, it.tag, it.classNames, ctx.lineOffsetHint)
+        const result = it.fromIndex !== null
+          ? computeReorderChildren(content, it.line, it.column, it.fromIndex, it.toIndex, it.tag, it.classNames, ctx.lineOffsetHint)
+          : computeReorder(content, it.line, it.column, it.toIndex, it.tag, it.classNames, ctx.lineOffsetHint)
         if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
         if (result.changed) { content = result.newContent; changed = true }
       }
@@ -1549,16 +1557,21 @@ async function handleReorder(req: IncomingMessage, res: ServerResponse, ctx: Mus
 
 async function handleReorderable(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
-    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown }
+    const b = JSON.parse(await readBody(req)) as { fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; container?: unknown }
     const abs = resolveInSrc(ctx.root, b?.fileName)
     const line = Number(b?.line)
     if (!abs || !Number.isInteger(line) || line <= 0) {
       return sendJson(res, 200, { reorderable: false, reason: 'not a reorderable element' })
     }
     const source = fs.readFileSync(abs, 'utf8')
+    const col = Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0
     const tag = typeof b?.tag === 'string' ? b.tag : undefined
     const classNames = typeof b?.classNames === 'string' ? b.classNames : undefined
-    const result = computeReorderable(source, line, Number.isFinite(Number(b?.column)) ? Number(b?.column) : 0, tag, classNames, ctx.lineOffsetHint)
+    // `container: true` → the location is the host CONTAINER; probe whether ITS children
+    // (which may be components) can be reordered. Else the location is a host child.
+    const result = b?.container === true
+      ? computeReorderableContainer(source, line, col, tag, classNames, ctx.lineOffsetHint)
+      : computeReorderable(source, line, col, tag, classNames, ctx.lineOffsetHint)
     return sendJson(res, 200, result)
   } catch (err) {
     console.error('[muse] /reorderable error:', err)
