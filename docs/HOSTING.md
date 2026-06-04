@@ -233,11 +233,18 @@ needs **no API key** — only the AI chat does.
 - **The attribute shows up in a production build.** A build ran without `NODE_ENV=production`.
   Prefer the scoped `dev` `turbopack.rules` form over a global `babel.config.js`.
 
-## What's verified vs. pending
+## What's verified
 
-- **Verified here:** the locator plugin stamps correctly through bare `@babel/core` (the
-  `babel-loader` pathway) and is byte-identical to the Vite twin; the Web adapter routes,
-  reads bodies, and returns correct statuses; the overlay config is bundler-safe.
-- **Pending on a real host:** end-to-end on a live Next.js 16 + React 19 app (Turbopack
-  rule → stamp → select → same-origin route → write → reload). Wire it per the above and
-  confirm a Canvas scrub and a chat edit both round-trip.
+- **Vite + React 18:** the origin host — Canvas, chat, and reorder all round-trip in
+  development.
+- **Next.js 16 + React 19 + Turbopack (Windows):** verified end-to-end on a live app
+  (Turbopack `babel-loader` rule → `data-muse-loc` stamp → select → same-origin App
+  Router route → write → reload). Canvas style/text edits, the design-token panel, the
+  cross-file prop-text trace, and reorder all round-trip; CRLF line endings are preserved.
+  The Shadow-DOM overlay imports zero host CSS, so it coexists with the host's Tailwind v4
+  without collisions.
+- **Locator parity:** the Babel plugin stamps identically through bare `@babel/core` (the
+  `babel-loader` pathway) and the Vite twin, and the overlay config is bundler-safe.
+
+> **Re-vendor on install.** The engine is copied into the host, so a host can drift behind
+> this repo. When you install or update Muse on a host, re-vendor the engine to `main`.
