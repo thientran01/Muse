@@ -213,13 +213,15 @@ export function DevMuse() {
 
 | Var | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | the AI chat (`/chat`) on the `anthropic` backend + `/observe` (Haiku). |
-| `MUSE_BACKEND` | `claude-cli` (default, uses your Claude subscription via `claude -p`) or `anthropic`. |
 | `MUSE_ROOT` | project root for the standalone server (defaults to cwd). |
 | `MUSE_API_BASE` | client default for `apiBase` (or call `configureMuse`). |
+| `MUSE_DESIGN_MD` | path to a `DESIGN.md` brief, if it isn't at the project root. |
+| `MUSE_DESIGN_EXCLUDE` | comma-separated terms to drop from the evidence when generating a brief. |
 
 Canvas Mode (direct manipulation: spacing/type/color/text/reorder) is deterministic and
-needs **no API key** — only the AI chat does.
+needs **no API key**. The only model-backed feature is the optional **Generate design
+system** button, which shells out to the `claude` CLI on your logged-in subscription — so
+it needs Claude Code on PATH, but no `ANTHROPIC_API_KEY`.
 
 ---
 
@@ -235,7 +237,7 @@ needs **no API key** — only the AI chat does.
 
 ## What's verified
 
-- **Vite + React 18:** the origin host — Canvas, chat, and reorder all round-trip in
+- **Vite + React 18:** the origin host — Canvas and reorder all round-trip in
   development.
 - **Next.js 16 + React 19 + Turbopack (Windows):** verified end-to-end on a live app
   (Turbopack `babel-loader` rule → `data-muse-loc` stamp → select → same-origin App

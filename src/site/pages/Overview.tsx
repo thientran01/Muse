@@ -1,4 +1,4 @@
-import { Callout, Code, CodeBlock, Kbd } from '../ui'
+import { Callout, Code, CodeBlock } from '../ui'
 
 // Content is written inline (literal classes + literal text) on purpose: it makes
 // every heading, paragraph, button, and card here selectable AND editable by Canvas
@@ -36,8 +36,8 @@ export function Overview() {
 
       <Callout tone="try">
         <strong>This page is the playground.</strong> Open Muse from the button in the corner, then click
-        anything on this page to shape it: drag the spacing, recolor a button, rewrite text, then step back through it with Ctrl+Z and Ctrl+Shift+Z. Hold Shift and click instead
-        to hand an element to the chat partner. Edits live in your browser and clear when you refresh. Run
+        anything on this page to shape it: drag the spacing, recolor a button, rewrite text, then step back
+        through it with Ctrl+Z and Ctrl+Shift+Z. Edits live in your browser and clear when you refresh. Run
         Muse locally and the same moves rewrite your source files.
       </Callout>
 
@@ -98,16 +98,6 @@ export function Overview() {
       </div>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Or describe it
-      </h2>
-      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Some changes read better as a sentence than a drag. Shift-click an element to hand it to the chat
-        partner, tell Muse to make a card feel warmer and less boxy, and it answers with a few directions,
-        each a real edit you can preview in place before committing to one. The agent carries intent and
-        ambiguity, while Canvas carries the precise, hands-on work.
-      </p>
-
-      <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Edit loop
       </h2>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -121,8 +111,8 @@ export function Overview() {
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">2. Edit</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
-            Shape it by hand with Canvas, or Shift-click to describe the change and pick from a few
-            directions Muse drafts.
+            Shape it by hand: drag the spacing, scrub the type, pick a color, rewrite the copy, reorder
+            siblings.
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
@@ -147,8 +137,9 @@ export function Overview() {
         Keep edits on brand
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it before every chat edit, so the
-        model reaches for your real tokens rather than a guessed hex. It follows Google's{' '}
+        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it for the color picker's brand
+        swatches, so the palette you reach for is your real tokens rather than a guessed hex. It follows
+        Google's{' '}
         <a className="underline" href="https://github.com/google-labs-code/design.md">DESIGN.md format</a>.
       </p>
       <CodeBlock label="DESIGN.md">{`---
@@ -162,9 +153,9 @@ typography:
 ## Brand & Style
 Warm and tool-like. One brick accent, used sparingly.`}</CodeBlock>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Muse can draft one from your code: run <Code>npm run design:gen</Code>, or open the Muse panel,
-        where <strong>View design system</strong> shows the brief in use and can generate a fresh one.
-        Either way you refine it by hand afterward.
+        Muse can draft one from your code: run <Code>npm run design:gen</Code>, or open the{' '}
+        <strong>Design system</strong> popover from the toolbar, which shows the brief in use and can
+        generate a fresh one. Either way you refine it by hand afterward.
       </p>
     </article>
   )

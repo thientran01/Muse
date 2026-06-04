@@ -17,14 +17,12 @@ export function Reference() {
 
       <H2 id="shortcuts">Gestures and shortcuts</H2>
       <P>
-        Open Muse from the button in the corner — or press <Kbd>R</Kbd> to toggle it on and off — then the
-        gesture decides the surface: a plain click shapes the element directly, and a Shift-click hands it
-        to the chat partner.
+        Open Muse from the button in the corner — or press <Kbd>R</Kbd> to toggle it on and off — then
+        click any element to select and shape it directly.
       </P>
       <div className="mt-4 flex flex-col gap-2 text-[14px] text-stone-600 dark:text-stone-400">
         <div className="flex items-center gap-3"><Kbd>R</Kbd> toggle Muse on and off</div>
         <div className="flex items-center gap-3"><Kbd>Click</Kbd> select and shape an element</div>
-        <div className="flex items-center gap-3"><Kbd>⇧</Kbd> + click hand it to the chat partner</div>
         <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click step out to the parent</div>
         <div className="flex items-center gap-3"><Kbd>Double-click</Kbd> edit text in place</div>
         <div className="flex items-center gap-3"><Kbd>Drag</Kbd> an element among its siblings to reorder it — scroll while dragging to reach a spot off-screen</div>
@@ -34,11 +32,14 @@ export function Reference() {
       </div>
 
       <H2 id="env">Environment</H2>
+      <P>
+        Canvas needs no configuration and no API key. The variables below are optional and only touch the{' '}
+        <a className="underline" href="#/overview">DESIGN.md</a> brief that powers the color picker's brand
+        swatches.
+      </P>
       <div className="mt-4">
-        <Row k="MUSE_BACKEND" d={<><Code>claude-cli</Code> (subscription, default) or <Code>anthropic</Code> (API key) for chat.</>} />
-        <Row k="ANTHROPIC_API_KEY" d="Needed for the API backend and the cheap element-observation reads." />
-        <Row k="MUSE_MODEL" d={<>Chat model for the API backend. Defaults to <Code>claude-sonnet-4-6</Code>.</>} />
-        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief so edits stay on-brand.</>} />
+        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief, if it isn't at the project root.</>} />
+        <Row k="MUSE_DESIGN_EXCLUDE" d="Comma-separated terms to drop from the evidence when generating a brief." />
       </div>
 
       <H2 id="limits">Limitations</H2>
