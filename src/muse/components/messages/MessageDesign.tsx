@@ -76,7 +76,7 @@ export function MessageDesign({
       // vertically-centered against a 2-line paragraph reads as lost. Pairing it
       // with a concise primary line (and a quiet detail/time sub-line) gives the
       // size relationship a clear anchor.
-      <div className="animate-muse-rise flex items-start gap-2.5 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
+      <div role="status" className="animate-muse-rise flex items-start gap-2.5 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
         <CircleNotch size={16} weight="bold" aria-hidden className="mt-0.5 shrink-0 animate-spin text-fg-faint motion-reduce:animate-none" />
         <div className="space-y-0.5">
           <p className="text-sm leading-snug text-fg-muted">Writing your design brief…</p>

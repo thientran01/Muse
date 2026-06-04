@@ -27,12 +27,16 @@ type DesignState = {
   generator?: DesignGeneratorStatus
 }
 
-function IconBtn({ label, onClick, children, active = false }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
+function IconBtn({ label, onClick, children, active }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
   return (
     <button
       onClick={onClick}
       title={label}
       aria-label={label}
+      // `active` is only passed by toggle buttons (e.g. pause/resume animations), so
+      // emit aria-pressed only when it's defined — a plain action button stays
+      // undefined and renders no pressed semantic. Color is then not the lone signal.
+      aria-pressed={active}
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
