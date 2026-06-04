@@ -27,6 +27,8 @@ export function Reference() {
         <div className="flex items-center gap-3"><Kbd>⇧</Kbd> + click hand it to the chat partner</div>
         <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click step out to the parent</div>
         <div className="flex items-center gap-3"><Kbd>Double-click</Kbd> edit text in place</div>
+        <div className="flex items-center gap-3"><Kbd>Drag</Kbd> an element among its siblings to reorder it — scroll while dragging to reach a spot off-screen</div>
+        <div className="flex items-center gap-3"><Kbd>⌘</Kbd>/<Kbd>Ctrl</Kbd> + <Kbd>↑</Kbd><Kbd>↓</Kbd> reorder the selected element by keyboard</div>
         <div className="flex items-center gap-3"><Kbd>⌘</Kbd> <Kbd>Z</Kbd> undo, <Kbd>⌘</Kbd> <Kbd>⇧</Kbd> <Kbd>Z</Kbd> redo</div>
         <div className="flex items-center gap-3"><Kbd>Esc</Kbd> deselect, then close Muse</div>
       </div>
@@ -36,7 +38,7 @@ export function Reference() {
         <Row k="MUSE_BACKEND" d={<><Code>claude-cli</Code> (subscription, default) or <Code>anthropic</Code> (API key) for chat.</>} />
         <Row k="ANTHROPIC_API_KEY" d="Needed for the API backend and the cheap element-observation reads." />
         <Row k="MUSE_MODEL" d={<>Chat model for the API backend. Defaults to <Code>claude-sonnet-4-6</Code>.</>} />
-        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/features">DESIGN.md</a> brief so edits stay on-brand.</>} />
+        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief so edits stay on-brand.</>} />
       </div>
 
       <H2 id="limits">Limitations</H2>
