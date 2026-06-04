@@ -47,9 +47,8 @@ export function canvasChain(el: Element): CanvasElement[] {
   return out
 }
 
-// Widen a CanvasElement into the SelectedElement the agent/chat side speaks — it
-// carries classNames + a text snippet the observe call reads. Used when a
-// Shift-click hands the canvas target over to the agent, and for history entries.
+// Widen a CanvasElement into a SelectedElement — it carries classNames + a text
+// snippet. Used to build history entries (the elements an edit re-selects on undo).
 export function asSelected(el: CanvasElement): SelectedElement {
   return {
     fileName: el.fileName,
@@ -80,12 +79,8 @@ export function asSelected(el: CanvasElement): SelectedElement {
  * capture-phase listeners stay attached across selection (re-subscribing on every
  * selection would drop a frame and flicker); locking is a guard, not a re-sub.
  */
-export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => void; suspended?: boolean }) {
+export function useCanvasMode(opts?: { suspended?: boolean }) {
   const [active, setActive] = useState(false)
-  // Read inside the click listener via a ref so the listener effect doesn't
-  // re-subscribe when the parent passes a fresh callback each render.
-  const onEscalateRef = useRef(opts?.onEscalate)
-  onEscalateRef.current = opts?.onEscalate
   // While a reorder drag is in flight the parent sets `suspended` — Canvas stands
   // down (no hover, no select/drill, no dblclick) so dragging the cursor across other
   // elements can't re-hover or re-select them mid-drag. A mid-drag selection change
@@ -114,29 +109,13 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
   const [editing, setEditing] = useState<CanvasElement | null>(null)
   const editingRef = useRef<CanvasElement | null>(editing)
   editingRef.current = editing
-  // Whether Shift is currently held — drives the hover affordance that signals a
-  // hover-then-click will go to the AGENT (Shift-click), not Canvas. Tracked from
-  // pointer moves (covers the common "move toward an element holding Shift") plus
-  // key down/up + window blur (covers pressing/releasing Shift while stationary).
-  const [shiftHeld, setShiftHeld] = useState(false)
-  // Whether the floating properties card is held back for the current selection.
-  // A Shift-click hands the element to the AGENT, so we don't also detonate the big
-  // canvas card next to it — the lightweight on-element affordances (outline, edge
-  // handles, knobs) still show as the "reach". The card reveals on a deliberate
-  // PLAIN click (of this element or any other); a plain-click selection shows it
-  // immediately. (No hover-reveal — with the agent panel expanded, a card popping
-  // in as you move across elements reads as too much at once.)
-  const [panelDeferred, setPanelDeferred] = useState(false)
 
   const clearSelected = useCallback(() => setSelected(null), [])
   const exitEditing = useCallback(() => setEditing(null), [])
   // Select a specific element (a click, a breadcrumb crumb, or a programmatic
-  // retarget). Shows the properties card by default; a Shift-click passes
-  // {defer:true} so the card holds back (atomically — one panelDeferred write) while
-  // the agent takes focus.
-  const selectElement = useCallback((c: CanvasElement, opts?: { defer?: boolean }) => {
+  // retarget). The properties card reveals beside it.
+  const selectElement = useCallback((c: CanvasElement) => {
     setSelected(c)
-    setPanelDeferred(!!opts?.defer)
     setHoverRect(null)
     setHoverInfo(null)
   }, [])
@@ -146,14 +125,11 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       setHoverRect(null)
       setHoverInfo(null)
       setCursor(null)
-      setShiftHeld(false)
-      setPanelDeferred(false)
       return
     }
 
     const onMove = (e: MouseEvent) => {
       if (editingRef.current || suspendedRef.current) return // typing or mid-drag — leave the page alone
-      setShiftHeld(e.shiftKey)
       setCursor({ x: e.clientX, y: e.clientY })
       const el = e.target as Element | null
       const sel = selectedRef.current
@@ -196,18 +172,10 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
         const idx = chain.findIndex((c) => c.key === anchor.key)
         picked = chain[idx + 1] ?? anchor
       }
-      // A Shift-select hands the element to the agent AND defers the properties card
-      // (the agent panel is the focus — don't also stack the big card next to it);
-      // selectElement({defer}) sets the card + leave-sentinel atomically.
-      selectElement(picked, { defer: e.shiftKey })
-      // Shift escalates the picked element to the agent — the intentional gesture,
-      // and the ONLY thing that fires an observe call. Composes with Alt (Shift+Alt
-      // escalates the parent). Plain clicks stay canvas-only and never reach the agent.
-      if (e.shiftKey) onEscalateRef.current?.(asSelected(picked))
+      selectElement(picked)
     }
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') setShiftHeld(true) // track even while editing-guarded below
       if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
@@ -241,28 +209,19 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
       e.preventDefault()
     }
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') setShiftHeld(false)
-    }
-    const onBlur = () => setShiftHeld(false) // dropped Shift while tabbed away
-
     document.addEventListener('mousemove', onMove, true)
     document.addEventListener('click', onClick, true)
     document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
-    document.addEventListener('keyup', onKeyUp, true)
     document.addEventListener('dragstart', onDragStart, true)
-    window.addEventListener('blur', onBlur)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
-      document.removeEventListener('keyup', onKeyUp, true)
       document.removeEventListener('dragstart', onDragStart, true)
-      window.removeEventListener('blur', onBlur)
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
+  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
 }

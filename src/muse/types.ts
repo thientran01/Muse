@@ -109,116 +109,20 @@ export type ReorderRequest = {
 }
 export type ReorderResponse = StyleEditResponse
 
-// --- Tool I/O (mirrors the schemas in server/musePlugin.ts) ---
-export type QuestionOption = { label: string; description: string }
-export type ClarifyingQuestion = { question: string; options: QuestionOption[] }
-export type AskInput = { questions: ClarifyingQuestion[] }
-
+// A computed file rewrite: the new full contents the server should write to disk.
 export type FileEdit = { fileName: string; newContent: string }
-export type ProposeInput = { edits: FileEdit[]; rationale: string }
-
-// A single design direction Muse proposes. Each option is a complete, applyable
-// edit (one or more full-file rewrites). Multiple options let the user hover to
-// preview each take on the live element, then click the one they want.
-export type ProposedOption = {
-  id: string
-  label: string // short name — "Editorial", "Punchy"
-  description: string // one-line pitch for a non-technical user
-  edits: FileEdit[]
-}
-export type ProposeOptionsInput = { rationale: string; options: ProposedOption[] }
-
-// --- Observation opener (POST /api/muse/observe) ---
-// A one-line read of a freshly-selected element + 3 tag-aware starter prompts.
-// Rendered as the opener of every new target context.
-export type ObserveResult = { observation: string; chips: string[] }
-
-// --- Anthropic content blocks (the subset we care about) ---
-export type TextBlock = { type: 'text'; text: string }
-export type ToolUseBlock = {
-  type: 'tool_use'
-  id: string
-  name: 'ask_clarifying_questions' | 'propose_edit' | 'propose_options'
-  input: unknown
-}
-export type ContentBlock = TextBlock | ToolUseBlock | { type: string; [k: string]: unknown }
-
-export type ChatResponse = {
-  content?: ContentBlock[]
-  stop_reason?: string
-  originals?: Record<string, string> // fileName -> original contents, for diffing
-  error?: string
-}
 
 // One applied batch — covers every file changed in a single apply, so undo/redo
 // restores the whole multi-file change as a unit.
 export type HistoryEntry = {
   files: Array<{ fileName: string; before: string; after: string }>
-  // Elements selected when the edit was applied — restored on undo/redo so the
-  // panel reopens ready for follow-up edits.
+  // Elements selected when the edit was applied (the Canvas target). Carried for
+  // labelling/symmetry with multi-file edits.
   elements: SelectedElement[]
   label: string
-  // EPHEMERAL (demo) only: DOM snapshots so an applied chat edit persists in the
-  // browser and undo/redo replays it, since there's no source write/HMR. Each
-  // entry holds a live node + its className/cssText before and after the apply.
-  dom?: Array<{ node: HTMLElement; before: string; after: string; beforeStyle: string; afterStyle: string }>
 }
 
-// Anthropic message shape we send back and forth.
-export type ChatMessage =
-  | { role: 'user'; content: string }
-  | { role: 'user'; content: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> }
-  | { role: 'assistant'; content: ContentBlock[] }
-
-// --- Thread render model (UI-facing) ---
-// The thread is the timeline of bubbles shown in the panel. It runs parallel
-// to `messages` (the Anthropic-facing transcript): every meaningful event the
-// user should *see* becomes a ThreadMessage, even ones that don't appear in
-// the transcript (target handoffs, applied confirmations, errors).
-//
 // Whether the design-brief generator can run on this host. `available: false`
 // carries a human reason (script not vendored, or the `claude` CLI isn't on PATH)
 // so the UI shows a setup hint instead of a button that errors after the click.
 export type DesignGeneratorStatus = { available: boolean; reason?: string }
-
-// Bubbles are append-only history; the most recent `clarify` / `option-set`
-// is the "active" one (renders its action UI) — older ones freeze when a
-// new turn moves past them.
-export type ThreadMessage =
-  | { id: string; kind: 'user'; text: string }
-  | {
-      id: string
-      kind: 'observation'
-      // The element this opener is about. Carried in full (not just its key) so
-      // clicking one of its starter chips can re-target Muse to THIS element,
-      // even if the active target has since moved on.
-      target: SelectedElement
-      observation: string
-      chips: string[]
-      // True while the instant heuristic is showing and the LLM read is still
-      // in flight; flips false when the read lands (or the fetch gives up).
-      pending: boolean
-    }
-  | {
-      id: string
-      kind: 'clarify'
-      toolUseId: string
-      questions: ClarifyingQuestion[]
-      // Frozen snapshot of the user's answers, captured the moment this
-      // clarify stops being active (next turn fires). Inactive rendering
-      // reads from here instead of the live store map, which gets cleared
-      // for the next clarify.
-      answeredWith?: Record<number, string>
-    }
-  | { id: string; kind: 'option-set'; toolUseId: string; options: ProposedOption[]; rationale: string }
-  | { id: string; kind: 'applied'; fileCount: number; rationale: string }
-  | { id: string; kind: 'target-handoff'; target: SelectedElement }
-  | { id: string; kind: 'error'; text: string }
-  // A quiet acknowledgement that the user undid / redid / reverted, so the thread
-  // narrates history actions instead of leaving the change unexplained. `label`
-  // names the change for undo/redo (the option/Canvas-edit label); revert has none.
-  | { id: string; kind: 'history'; action: 'undo' | 'redo' | 'revert'; label?: string }
-  // The app's design system (DESIGN.md). `offer` → no brief yet, prompt to make
-  // one; `generating` → the LLM is writing it; `view` → show the brief (content set).
-  // `generator` reports whether the "Generate" button can run (script + claude CLI).
-  | { id: string; kind: 'design'; status: 'offer' | 'generating' | 'view'; content?: string; path?: string; generator?: DesignGeneratorStatus }
