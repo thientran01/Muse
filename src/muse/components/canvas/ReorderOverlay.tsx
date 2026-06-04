@@ -35,7 +35,10 @@ const MAX_MEASURE_MEMBERS = 200
 // Two things make follow-the-cursor safe: (1) the lift is a CSS transform, which
 // moves the element WITHOUT reflowing siblings, so the drop geometry stays stable;
 // (2) we FREEZE the other siblings' rects at pickup, EXCLUDING the dragged node —
-// otherwise its rect would move with the pointer and always match itself.
+// otherwise its rect would move with the pointer and always match itself. (exactMakeRoom
+// does perform a controlled SYNCHRONOUS ghost reflow on a slot-change to measure the real
+// landing — but it reverts the DOM + transforms before returning, before any frame paints,
+// and never re-reads the frozen rects, so the drop geometry above stays stable.)
 // setPointerCapture retargets the compat mouse events to the node during a drag,
 // so useCanvasMode's hover highlight sees the node (contained) and self-clears
 // instead of flickering across siblings.
@@ -525,7 +528,18 @@ function measureReorderDisplacements(
   } catch {
     return null // fall back to the approximation; `finally` still restores DOM + transforms
   } finally {
-    if (moved) parent.insertBefore(node, back) // always undo the ghost move
+    // Revert the ghost move. `back` is `node`'s original nextSibling — a live child of `parent`
+    // (or null = end), because the measure is fully SYNCHRONOUS so no host mutation can interleave
+    // mid-revert. Guarded + try-wrapped anyway so the revert can NEVER throw and strand `node` at
+    // the ghost slot (this is the user's LIVE DOM), and so the transform restore below always runs.
+    if (moved) {
+      try {
+        if (back === null || back.parentNode === parent) parent.insertBefore(node, back)
+        else parent.appendChild(node) // defensive: `back` gone — re-attach in-parent (self-heals on render)
+      } catch {
+        /* practically unreachable (synchronous) — leave it to the next host render to reconcile */
+      }
+    }
     node.style.transform = savedNode
     frozen.nodes.forEach((n, i) => (n.style.transform = savedOthers[i]))
   }
