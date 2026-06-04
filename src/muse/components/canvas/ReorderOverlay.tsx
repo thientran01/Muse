@@ -119,6 +119,16 @@ export function ReorderOverlay({
     // Exact per-sibling make-room displacements, measured (ghost reorder) once per
     // target slot and cached so re-hovering a slot is free — see exactMakeRoom.
     measureCache: Map<number, number[]>
+    // The parent's viewport rect at pickup + the last pointer position. All drop geometry
+    // is frozen in PICKUP-viewport coords, so when the page scrolls mid-drag we fold the
+    // scroll delta back in (element follows the cursor; drop slot tracks the now-visible
+    // content). We read the delta from the PARENT's rect shift (not window.scrollY) so it
+    // works for any scroll container — a nested scroller, not just the window. `last*` lets
+    // a scroll event re-run the follow without a pointer move (the wheel emits none).
+    frozenParentLeft: number
+    frozenParentTop: number
+    lastClientX: number
+    lastClientY: number
   } | null>(null)
 
   useEffect(() => {
@@ -129,6 +139,119 @@ export function ReorderOverlay({
     // A pending one-shot click-swallower (set on drop), tracked so teardown can
     // cancel it if the component unmounts in the gap before the trailing click.
     let cancelSwallow: (() => void) | null = null
+
+    // The point that drives the drop slot. We key it off the dragged element's BODY
+    // (its projected center) rather than the raw cursor, so the insertion tracks what
+    // the user SEES — the card — no matter where on the card they grabbed it. With a
+    // cursor-only rule, grabbing a card near its edge and dragging it over a TALLER
+    // neighbor left the card fully overlapping that neighbor while the cursor was still
+    // short of the neighbor's center, so no gap opened and the drag felt stuck ("can't
+    // get through the big card"). Keying off the card's midpoint makes the swap fire
+    // when the card's center crosses the neighbor's center — the standard sortable feel,
+    // independent of grab offset. Reduced motion never moves the element (onPointerMove
+    // skips the follow transform), so there the cursor is the only signal — fall back to it.
+    // How far the scroll moved the content since pickup, read from the parent's rect shift
+    // (works for window OR a nested scroller). Positive = scrolled toward the content's end.
+    const scrollShift = (p: NonNullable<typeof press.current>) => {
+      // A detached parent (e.g. an RSC host swapping the subtree mid-drag — see #89)
+      // reports an all-zero rect, which would read as a huge bogus delta and jump the
+      // element / mis-target the slot. No parent = no measurable scroll → no shift.
+      if (!parent.isConnected) return { sdx: 0, sdy: 0 }
+      const pr = parent.getBoundingClientRect()
+      return { sdx: p.frozenParentLeft - pr.left, sdy: p.frozenParentTop - pr.top }
+    }
+
+    const dropPoint = (clientX: number, clientY: number, p: NonNullable<typeof press.current>) => {
+      // Fold in the scroll delta so the point lands in the same PICKUP-viewport frame the
+      // frozen sibling rects live in.
+      const { sdx, sdy } = scrollShift(p)
+      if (prefersReducedMotion() || !p.frozen) return { x: clientX + sdx, y: clientY + sdy }
+      const dr = p.frozen.draggedRect
+      return { x: dr.left + dr.width / 2 + (clientX - p.startX) + sdx, y: dr.top + dr.height / 2 + (clientY - p.startY) + sdy }
+    }
+
+    // Apply the follow-transform + recompute the drop slot for a given cursor position,
+    // at the CURRENT scroll. Called from pointermove (cursor moved) and from scroll (page
+    // moved under a still cursor — the wheel emits no pointermove, so the drag must keep
+    // up on its own). Everything is expressed against the pickup-viewport frame by adding
+    // the scroll delta, so a scrolled drag drops exactly where the cursor points.
+    const applyDragAt = (clientX: number, clientY: number) => {
+      const p = press.current
+      if (!p || !p.dragging || !p.frozen) return
+      p.lastClientX = clientX
+      p.lastClientY = clientY
+      const { sdx, sdy } = scrollShift(p)
+      // Follow the cursor AND the scroll: +scrollDelta keeps the lifted element pinned
+      // under the cursor as the page scrolls beneath it (its layout box scrolls away, the
+      // transform compensates). Reduced motion keeps it in place (no follow transform).
+      if (!prefersReducedMotion()) node.style.transform = `translate(${clientX - p.startX + sdx}px, ${clientY - p.startY + sdy}px) scale(1.03)`
+      const dp = dropPoint(clientX, clientY, p)
+      const target = computeDrop(dp.x, dp.y, p.frozen, p.fromIndex)
+      // When make-room is active, the opened gap IS the affordance — slide the siblings
+      // and hide the bar. Otherwise show the bar (2D / reduced-motion), shifted back into
+      // the CURRENT viewport (it was computed from pickup-frame rects). NOTE: `p.sibPrev`
+      // is always null under reduced motion (primeMakeRoom is gated on !prefersReducedMotion),
+      // so reduced-motion drags ALWAYS take the bar branch — it's their only affordance.
+      // Keep that gating in sync if make-room priming ever moves.
+      if (target && p.sibPrev) {
+        exactMakeRoom(parent, node, p.frozen, p.members, target.toIndex, target.slot, p.fromIndex, p.measureCache)
+        setDrop({ ...target, bar: null })
+      } else if (target?.bar) {
+        setDrop({ ...target, bar: { ...target.bar, top: target.bar.top - sdy, left: target.bar.left - sdx } })
+      } else {
+        setDrop(target)
+      }
+      // The ghost-measure inside exactMakeRoom briefly MOVES the node in the DOM (an
+      // insertBefore + revert) to read the real reflow. Some engines drop pointer capture
+      // when a captured node is detached even momentarily — and a lost capture FREEZES the
+      // drag: pointer events stop retargeting to the node, so onPointerMove goes silent and
+      // the stream leaks to whatever's under the cursor (which then re-hovers/selects). It
+      // only bites when you cross into a NEW slot (the measure runs), which is exactly "gets
+      // stuck when I move through a card, fine if I go around it." Re-assert capture each
+      // move (the pointer is still active during a drag) so the stream keeps flowing to us.
+      if (!node.hasPointerCapture(p.pointerId)) {
+        try {
+          node.setPointerCapture(p.pointerId)
+        } catch {
+          /* pointer no longer active (race with pointerup) — nothing to recapture */
+        }
+      }
+    }
+
+    // Keep the drag following a wheel/programmatic scroll, which fires no pointermove.
+    // The capture-phase listener hears scrolls from ANY scroller on the page, so skip the
+    // recompute (a ghost-measure reflow in exactMakeRoom) when our parent didn't actually
+    // move — e.g. an unrelated sidebar scrolling while a drag is live.
+    const onScroll = () => {
+      const p = press.current
+      if (!p?.dragging) return
+      const { sdx, sdy } = scrollShift(p)
+      if (sdx === 0 && sdy === 0) return
+      applyDragAt(p.lastClientX, p.lastClientY)
+    }
+
+    // Native text selection competes with the pointer drag: dragging a card across
+    // text-bearing siblings makes the browser HIGHLIGHT their text (the blue smear),
+    // which owns the same gesture and the drag "sticks" on those elements — worse the
+    // more text you cross, so a multi-slot drag jams while a one-slot drag survives.
+    // Suppress selection for the whole drag: block `selectstart` while a press is live
+    // (kills it from the very first move, before threshold), clear any range already
+    // made, and pin user-select:none. Restored on every exit. `selectstart` is the
+    // primary guard (works even mid-gesture); user-select:none is the cursor/back-stop.
+    let prevUserSelect: string | null = null
+    const suppressSelection = () => {
+      prevUserSelect = document.documentElement.style.userSelect
+      document.documentElement.style.userSelect = 'none'
+      window.getSelection()?.removeAllRanges()
+    }
+    const restoreSelection = () => {
+      if (prevUserSelect === null) return
+      document.documentElement.style.userSelect = prevUserSelect
+      prevUserSelect = null
+    }
+    const onSelectStart = (e: Event) => {
+      if (press.current) e.preventDefault()
+    }
 
     // Advertise the body as draggable BEFORE any press (siblings set their cursor
     // unconditionally too); saved/restored so we don't clobber a host cursor.
@@ -147,6 +270,7 @@ export function ReorderOverlay({
       }
       if (p?.sibPrev) restoreMakeRoom(p.sibPrev) // put the slid siblings back
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
+      restoreSelection() // let the page select text again
       press.current = null
       setDrop(null)
     }
@@ -169,6 +293,10 @@ export function ReorderOverlay({
         prevStyle: null,
         sibPrev: null,
         measureCache: new Map(),
+        frozenParentLeft: parent.getBoundingClientRect().left,
+        frozenParentTop: parent.getBoundingClientRect().top,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
       }
     }
 
@@ -187,6 +315,7 @@ export function ReorderOverlay({
           return
         }
         node.setPointerCapture(e.pointerId) // now retarget the stream to the node
+        suppressSelection() // stop the page from text-selecting as we drag across it
         p.frozen = frozen
         p.dragging = true
         p.prevStyle = applyLift(node)
@@ -196,20 +325,7 @@ export function ReorderOverlay({
         onDragChangeRef.current?.(true) // hide the other canvas chrome for this drag
       }
       e.preventDefault()
-      const dx = e.clientX - p.startX
-      const dy = e.clientY - p.startY
-      // Follow the cursor. Reduced-motion keeps the element in place (no scale/
-      // translate) — the shadow + raised layer still signal "picked up".
-      if (!prefersReducedMotion()) node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)`
-      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
-      // When make-room is active, the opened gap IS the affordance — slide the
-      // siblings and hide the bar. Otherwise show the bar (2D / reduced-motion).
-      if (target && p.sibPrev) {
-        exactMakeRoom(parent, node, p.frozen!, p.members, target.toIndex, target.slot, p.fromIndex, p.measureCache)
-        setDrop({ ...target, bar: null })
-      } else {
-        setDrop(target)
-      }
+      applyDragAt(e.clientX, e.clientY) // follow + recompute drop (handles scroll too)
     }
 
     const onUp = (e: PointerEvent) => {
@@ -220,6 +336,7 @@ export function ReorderOverlay({
         return
       }
       node.releasePointerCapture?.(e.pointerId)
+      restoreSelection() // drag's over — let the page select text again (committed path skips teardown)
       e.preventDefault()
       // A threshold-crossing drag still emits a trailing `click` at the drop point.
       // useCanvasMode's click handler is on document (capture), so it would select
@@ -242,7 +359,8 @@ export function ReorderOverlay({
       window.addEventListener('click', swallowClick, true)
       cancelSwallow = cleanupSwallow
       node.releasePointerCapture?.(e.pointerId)
-      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
+      const dp = dropPoint(e.clientX, e.clientY, p)
+      const target = computeDrop(dp.x, dp.y, p.frozen!, p.fromIndex)
 
       // A drop back into your own slot is a no-op — restore + un-hide now.
       if (!target || target.noop) {
@@ -347,11 +465,21 @@ export function ReorderOverlay({
     node.addEventListener('pointermove', onPointerMove)
     node.addEventListener('pointerup', onUp)
     node.addEventListener('pointercancel', onCancel)
+    // Document-level so a selection starting anywhere under the drag is blocked; only
+    // acts while a press on THIS handle is live (press.current), so normal text
+    // selection elsewhere is untouched.
+    document.addEventListener('selectstart', onSelectStart, true)
+    // Capture-phase so a scroll on ANY ancestor scroller (not just window) keeps the
+    // drag in sync; no-ops unless a drag is live.
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       node.removeEventListener('pointerdown', onDown)
       node.removeEventListener('pointermove', onPointerMove)
       node.removeEventListener('pointerup', onUp)
       node.removeEventListener('pointercancel', onCancel)
+      document.removeEventListener('selectstart', onSelectStart, true)
+      window.removeEventListener('scroll', onScroll, true)
+      restoreSelection() // never strand user-select:none if we unmount mid-drag
       cancelSwallow?.() // don't leave a window click-swallower alive past unmount
       teardown() // restore the lift if we unmount mid-drag (e.g. HMR)
       if (node.isConnected) node.style.cursor = prevCursor
@@ -686,10 +814,13 @@ function freezeSiblings(parent: HTMLElement, all: HTMLElement[], dragged: HTMLEl
   return { nodes, rects, layout, draggedRect, gap, oneAxis }
 }
 
-// Map a pointer position to an insertion slot among the FROZEN (other) siblings:
-// nearest neighbor by center distance (handles 2D), then leading/trailing edge
-// along the reading axis. `slot` is an index in OTHER-sibling space (0..others);
-// lift it back into full source order using `fromIndex` (the dragged node's slot).
+// Map a position to an insertion slot among the FROZEN (other) siblings: nearest
+// neighbor by center distance (handles 2D), then leading/trailing edge along the
+// reading axis. `slot` is an index in OTHER-sibling space (0..others); lift it back
+// into full source order using `fromIndex` (the dragged node's slot). NB: (px,py) is
+// the dragged element's projected MIDPOINT (see dropPoint), not the raw cursor — so
+// the swap fires when the card's center crosses a neighbor's center, regardless of
+// where on the card it was grabbed (a cursor-only rule felt stuck over tall neighbors).
 function computeDrop(px: number, py: number, frozen: Frozen, fromIndex: number): DropTarget | null {
   const { rects, layout } = frozen
   if (rects.length === 0) return null

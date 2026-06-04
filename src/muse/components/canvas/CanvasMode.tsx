@@ -221,8 +221,13 @@ export function CanvasMode({
   onEscalate?: (el: SelectedElement) => void
   onTuckTarget?: (node: HTMLElement | null) => void
 }) {
+  // True while a reorder drag is in flight. Declared before useCanvasMode so it can
+  // SUSPEND Canvas's hover + selection during the drag — otherwise moving the cursor
+  // over another element mid-drag re-hovers/re-selects it, which remounts the overlay
+  // on a new node and kills the drag (and leaves the passed-over element wedged).
+  const [reordering, setReordering] = useState(false)
   const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, selectElement, editing, exitEditing, miss } =
-    useCanvasMode({ onEscalate })
+    useCanvasMode({ onEscalate, suspended: reordering })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -244,10 +249,9 @@ export function CanvasMode({
   // child key-list so the overlay can match DOM↔source members (skipping component-injected
   // nodes + out-of-flow phantoms). Null on the container path.
   const [reorderSelfKeys, setReorderSelfKeys] = useState<ReorderChild[] | null>(null)
-  // True while a reorder drag is in flight. The other overlays + panel hide so they
-  // don't sit on top of the element being dragged (the lifted element + insertion
-  // bar are the only chrome that should show mid-drag).
-  const [reordering, setReordering] = useState(false)
+  // (`reordering` is declared above useCanvasMode so it can suspend hover/selection
+  // during a drag; the other overlays + panel also hide while it's true so they don't
+  // sit on top of the element being dragged.)
   // When the selected element's style is `style={X}` (a shared same-file const), the
   // probe returns its summary so the panel can offer an "all instances" scope toggle.
   // `scope` is the user's choice for the NEXT commit, reset to per-element on every new
@@ -554,6 +558,7 @@ export function CanvasMode({
   useEffect(() => {
     if (!selected || !reorderable?.reorderable) return
     const onKey = (e: KeyboardEvent) => {
+      if (reordering) return // a pointer drag is mid-flight — don't fire a second concurrent write
       if (!(e.metaKey || e.ctrlKey)) return
       const dir = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : 0
       if (dir === 0) return
@@ -579,7 +584,7 @@ export function CanvasMode({
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, reorderable, reorderSelfKeys])
+  }, [selected, reorderable, reorderSelfKeys, reordering])
 
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => cancelStripWatch(), [])
