@@ -1,3 +1,5 @@
+(OUTDATED)
+
 # Muse
 
 **Point at anything in your running app, say what you want, and Muse rewrites the real source code.** A visual editing layer for design engineers — change the rendered product, get a mergeable diff.
