@@ -1,25 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ClockCounterClockwise, FileText, Pause, Play, X } from '@phosphor-icons/react'
+import { FileText, Pause, Play, X } from '@phosphor-icons/react'
 import { museDesignGenerate, museDesignGet } from '../api'
 import type { DesignGeneratorStatus } from '../types'
-import type { ArchivedThread } from '../store'
 import type { HistoryControls } from '../MuseOverlay'
 import { UfoIcon } from './UfoIcon'
 import { UndoRedoBar } from './UndoRedoBar'
-import { MuseHistory } from './MuseHistory'
 import { MessageDesign } from './messages/MessageDesign'
 
 // Muse's idle dock — ONE persistent pill that morphs between the FAB and the
 // toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
-// (manta + past-proposals · design · X). The transition is a real expand: the
-// trailing label and the icon group animate their max-width, so the same pill
-// physically widens leftward out of the FAB (and shrinks back on close) instead
-// of one element scale-popping in over another. The top banner already teaches
-// the Shift-click gesture, so the dock is pure utility; history + the design
-// brief open as a popover above it (the bar stays put). Shift-clicking a page
-// element opens the full agent panel — this is only the resting state.
+// (manta + design · pause · X). The transition is a real expand: the trailing
+// label and the icon group animate their max-width, so the same pill physically
+// widens leftward out of the FAB (and shrinks back on close) instead of one
+// element scale-popping in over another. The dock is pure utility; the design
+// brief opens as a popover above it (the bar stays put).
 
-type Pop = 'none' | 'history' | 'design'
+type Pop = 'none' | 'design'
 type DesignState = {
   status: 'offer' | 'generating' | 'view'
   content?: string
@@ -52,8 +48,6 @@ export function MuseToolbar({
   expanded,
   onOpen,
   onClose,
-  archived,
-  onPickHistory,
   hasHistory,
   historyControls,
   animationsPaused,
@@ -63,8 +57,6 @@ export function MuseToolbar({
   expanded: boolean
   onOpen: () => void
   onClose: () => void
-  archived: ArchivedThread[]
-  onPickHistory: (id: string) => void
   hasHistory: boolean
   historyControls: HistoryControls
   animationsPaused: boolean
@@ -113,9 +105,9 @@ export function MuseToolbar({
 
   return (
     <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
-      {/* Undo/redo lives above the FAB when collapsed (with history) — same as the
-          old idle corner; hidden once expanded (the agent panel carries its own). */}
-      {!expanded && hasHistory && (
+      {/* Undo/redo floats above the dock whenever there's history — in both the
+          FAB and toolbar forms (Canvas commits land on this same stack). */}
+      {hasHistory && (
         <UndoRedoBar
           canUndo={historyControls.canUndo}
           canRedo={historyControls.canRedo}
@@ -132,26 +124,18 @@ export function MuseToolbar({
           <header className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
               <UfoIcon size={16} className="text-accent" />
-              {pop === 'history' ? 'Past proposals' : 'Design system'}
+              Design system
             </div>
             <button
               onClick={() => setPop('none')}
-              aria-label={`Close ${pop === 'history' ? 'past proposals' : 'design system'}`}
+              aria-label="Close design system"
               className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <X size={15} />
             </button>
           </header>
           <div className="max-h-[50vh] overflow-y-auto px-3 pb-3">
-            {pop === 'history' ? (
-              archived.length > 0 ? (
-                <MuseHistory entries={archived} onPick={onPickHistory} />
-              ) : (
-                <p className="px-1 py-2 text-xs leading-relaxed text-fg-faint">
-                  No past proposals yet. Closed edits you haven't applied show up here.
-                </p>
-              )
-            ) : design ? (
+            {design ? (
               <MessageDesign status={design.status} content={design.content} path={design.path} generator={design.generator} onGenerate={generateDesign} />
             ) : (
               <p className="px-1 py-2 text-xs text-fg-faint">Loading…</p>
@@ -194,9 +178,6 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
-          <IconBtn label="Past proposals" onClick={() => setPop((p) => (p === 'history' ? 'none' : 'history'))}>
-            <ClockCounterClockwise size={17} weight="bold" />
-          </IconBtn>
           <IconBtn label="Design system" onClick={() => setPop((p) => (p === 'design' ? 'none' : 'design'))}>
             <FileText size={17} />
           </IconBtn>

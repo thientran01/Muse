@@ -4,7 +4,7 @@ import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, ReorderChild, Reorderable, SelectedElement, SharedConst, StyleMutation } from '../../types'
+import type { CanvasElement, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -214,20 +214,16 @@ function waitForParentRepaint(parent: HTMLElement | null, cap: number): Promise<
 // chat edits.
 export function CanvasMode({
   onExit,
-  onEscalate,
-  onTuckTarget,
 }: {
   onExit: () => void
-  onEscalate?: (el: SelectedElement) => void
-  onTuckTarget?: (node: HTMLElement | null) => void
 }) {
   // True while a reorder drag is in flight. Declared before useCanvasMode so it can
   // SUSPEND Canvas's hover + selection during the drag — otherwise moving the cursor
   // over another element mid-drag re-hovers/re-selects it, which remounts the overlay
   // on a new node and kills the drag (and leaves the passed-over element wedged).
   const [reordering, setReordering] = useState(false)
-  const { active, setActive, hoverRect, hoverInfo, cursor, shiftHeld, panelDeferred, selected, selectElement, editing, exitEditing, miss } =
-    useCanvasMode({ onEscalate, suspended: reordering })
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } =
+    useCanvasMode({ suspended: reordering })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -284,16 +280,6 @@ export function CanvasMode({
   // overflow (the color picker).
   const rootRef = useRef<HTMLDivElement>(null)
   useHostTheme(rootRef)
-
-  // Tell the overlay which element the agent panel should tuck away from: ONLY a
-  // plain-click (Canvas) selection — that's a direct-manipulation intent, so the
-  // panel should yield. A Shift-click hands the element to the agent (panelDeferred),
-  // so we report null and the panel stays put (you asked for the agent). Clear on
-  // unmount so a stale node can't keep the panel tucked while it's closing.
-  useEffect(() => {
-    onTuckTarget?.(selected && !panelDeferred ? selected.node : null)
-  }, [selected, panelDeferred, onTuckTarget])
-  useEffect(() => () => onTuckTarget?.(null), [onTuckTarget])
 
   // Enter canvas mode on mount; tell the parent when it's dismissed (Esc).
   const startedRef = useRef(false)
@@ -435,9 +421,7 @@ export function CanvasMode({
       window.removeEventListener('resize', place)
       ro.disconnect()
     }
-    // panelDeferred: re-place + re-attach the ResizeObserver when the card reveals
-    // (it wasn't mounted while deferred, so panelRef was null on the first pass).
-  }, [selected, revision, panelDeferred])
+  }, [selected, revision])
 
   // Clear any stray inline preview when the target changes or we leave.
   useEffect(() => clearPreview, [selected])
@@ -615,8 +599,8 @@ export function CanvasMode({
         await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f[side] })))
         museStore.setState((st) =>
           dir === 'undo'
-            ? { past: st.past.slice(0, -1), future: [entry, ...st.future], applied: false }
-            : { future: st.future.slice(1), past: [...st.past, entry], applied: true },
+            ? { past: st.past.slice(0, -1), future: [entry, ...st.future] }
+            : { future: st.future.slice(1), past: [...st.past, entry] },
         )
         window.setTimeout(() => bump((v) => v + 1), 160)
       } catch (e) {
@@ -735,7 +719,7 @@ export function CanvasMode({
           elements: [asSelected(selected)],
           label,
         }
-        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       } else {
         console.warn('[muse] style-edit: missing originals, skipping undo entry')
       }
@@ -804,7 +788,7 @@ export function CanvasMode({
           elements: [asSelected(el)],
           label: `text "${raw.slice(0, 40)}"`,
         }
-        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       }
       exitEditing()
     } catch (e) {
@@ -886,7 +870,7 @@ export function CanvasMode({
           elements: [asSelected(el)],
           label: `reorder ${el.tag}`,
         }
-        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       } else {
         console.warn('[muse] reorder: missing originals, skipping undo entry')
       }
@@ -1031,7 +1015,7 @@ export function CanvasMode({
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
-      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} shiftHeld={shiftHeld} />}
+      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
 
       {/* Quiet hint — unmappable click, or text that isn't statically editable.
           z-20 keeps it above the properties panel (same overlay container). */}
@@ -1072,14 +1056,10 @@ export function CanvasMode({
             />
             {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
             <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
-            {/* Lazy card: a Shift-click hands the element to the agent, so the big
-                properties card holds back (the outline + edges + knobs above are the
-                "reach"); it reveals on a deliberate PLAIN click (this element or any
-                other). A plain-click selection shows it immediately. A commit error
-                force-reveals it so the message can't be swallowed (the edge/resize
-                handles still commit while the card is deferred). It mounts on reveal,
-                so animate-muse-step gives it the system's "appears on action" entrance. */}
-            {panelPos && (!panelDeferred || error) && (
+            {/* The properties card reveals on selection, positioned beside the element.
+                It mounts on reveal, so animate-muse-step gives it the system's "appears
+                on action" entrance. */}
+            {panelPos && (
               <div ref={panelRef} className="pointer-events-auto absolute animate-muse-step motion-reduce:animate-none" style={{ top: panelPos.top, left: panelPos.left }}>
                 {/* Key by element so the per-side expand state re-derives from the
                     new element's values instead of carrying over the last one's. */}
@@ -1119,9 +1099,7 @@ export function CanvasMode({
         </>
       )}
 
-      {/* Active-selection banner — one surface, two gestures: plain-click edits
-          directly (Canvas), Shift-click hands the element to the agent. The full
-          manta-marked rewrite + Shift-held hover affordance lands in PR2. */}
+      {/* Active-selection banner — teaches the direct-manipulation gestures. */}
       <div className="absolute left-1/2 top-4 -translate-x-1/2">
         <div className="pointer-events-auto flex items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur">
           <span>
@@ -1129,9 +1107,9 @@ export function CanvasMode({
               ? 'Editing text · Enter to save · Esc to cancel'
               : selected
                 ? reorderable?.reorderable
-                  ? 'Drag to reorder · double-click to edit · ⇧-click to ask Muse · Esc to deselect'
-                  : 'Double-click to edit · ⇧-click to ask Muse · Esc to deselect'
-                : <>Click to edit · ⇧-click to ask Muse · <BannerKbd>Esc</BannerKbd> or <BannerKbd>R</BannerKbd> to exit</>}
+                  ? 'Drag to reorder · double-click to edit · Esc to deselect'
+                  : 'Double-click to edit · Esc to deselect'
+                : <>Click to edit · <BannerKbd>Esc</BannerKbd> or <BannerKbd>R</BannerKbd> to exit</>}
           </span>
           <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
