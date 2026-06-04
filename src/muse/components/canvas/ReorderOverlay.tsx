@@ -250,10 +250,25 @@ export function ReorderOverlay({
       //
       // We first set the dropped element DOWN into its destination slot (eased), so
       // during the hold it visibly settles into the gap the siblings already opened.
-      const { frozen, prevStyle, sibPrev } = p
+      const { frozen, prevStyle, sibPrev, members } = p
       setDrop(null)
       press.current = null // drag is over; saved styles captured in locals above
-      if (frozen && prevStyle) landToDestination(node, frozen, p.fromIndex, target.toIndex, prevStyle)
+      if (frozen && prevStyle) {
+        // Measure the REAL post-reorder layout (ghost move) and hold THAT, so clearing the
+        // transforms on the repaint is a visual no-op even on non-uniform content — no snap.
+        // Falls back to the uniform-extent approximation if the measure can't run.
+        const measured = measureReorderDisplacements(parent, node, frozen, members, target.toIndex)
+        landToDestination(node, frozen, p.fromIndex, target.toIndex, prevStyle, measured?.dragged)
+        // Ease the made-room siblings from their approximate drag positions to the EXACT
+        // measured positions (they keep primeMakeRoom's transition), so the whole held
+        // arrangement equals the real layout.
+        if (measured && sibPrev) {
+          for (let i = 0; i < frozen.nodes.length; i++) {
+            const d = measured.others[i]
+            frozen.nodes[i].style.transform = d === 0 ? '' : frozen.layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
+          }
+        }
+      }
 
       // TWO separate moments, deliberately NOT merged:
       //
@@ -422,15 +437,63 @@ function destOffset(frozen: Frozen, fromIndex: number, toIndex: number): number 
 // scale, ease the follow-transform to the destination offset, fade the shadow out —
 // a soft "click into the gap." The made-room siblings are already at their final
 // positions, so the whole arrangement now equals the post-reorder layout, held until
-// the content swaps. Reduced-motion never lifted/made-room, so it no-ops.
-function landToDestination(node: HTMLElement, frozen: Frozen, fromIndex: number, toIndex: number, prev: SavedStyle) {
+// the content swaps. Reduced-motion never lifted/made-room, so it no-ops. `measuredOff`,
+// when supplied, is the EXACT post-reorder displacement (from a ghost measure) and is used
+// in place of the uniform-extent `destOffset` approximation — which lands non-uniform
+// content (a tall embed among short paragraphs) far off the real spot, causing a snap when
+// the transforms clear on repaint.
+function landToDestination(node: HTMLElement, frozen: Frozen, fromIndex: number, toIndex: number, prev: SavedStyle, measuredOff?: number) {
   if (!node.isConnected || prefersReducedMotion()) return
-  const off = destOffset(frozen, fromIndex, toIndex)
+  const off = measuredOff ?? destOffset(frozen, fromIndex, toIndex)
   const s = node.style
   s.transition = `transform ${SLIDE_MS}ms ${EASE_OUT}, box-shadow ${SLIDE_MS}ms ${EASE_OUT}, opacity ${SLIDE_MS}ms ${EASE_OUT}`
   s.transform = off === 0 ? prev.transform : frozen.layout.vertical ? `translateY(${off}px)` : `translateX(${off}px)`
   s.boxShadow = prev.boxShadow
   s.opacity = prev.opacity
+}
+
+// Measure the EXACT post-reorder geometry by performing the reorder in the DOM (a "ghost"
+// move), reading the reflowed positions, then moving the node back — all SYNCHRONOUSLY, so
+// the browser never paints the intermediate state (getBoundingClientRect/offsetWidth force
+// layout, not paint). This replaces the uniform-extent approximation (destOffset +
+// applyMakeRoom's single step + median gap), which is only correct on near-uniform lists:
+// with a tall embed among short paragraphs the held arrangement lands far off the real
+// layout (margin-collapse + size mismatch), and the gap shows as a snap the instant the
+// transforms clear on repaint. Returns per-element axis displacements (the dragged node +
+// each frozen sibling, index-aligned to frozen.nodes), or null if it can't measure cleanly
+// (caller falls back to the approximation). Transforms are cleared for the read and restored
+// after, so there is no visual change once it returns.
+function measureReorderDisplacements(
+  parent: HTMLElement,
+  node: HTMLElement,
+  frozen: Frozen,
+  members: HTMLElement[],
+  toIndex: number,
+): { dragged: number; others: number[] } | null {
+  if (!node.isConnected || node.parentElement !== parent) return null
+  const ref = members[toIndex] ?? null // the member to land BEFORE (null = end); see spliceReorder
+  if (ref === node) return null // self-target (noop) — guarded upstream, but never ghost onto self
+  const lead = (r: DOMRect) => (frozen.layout.vertical ? r.top : r.left)
+  // Clear every member's live transform so the rects read PURE LAYOUT (not the drag's
+  // follow / make-room offsets), saved to restore unchanged afterwards.
+  const savedNode = node.style.transform
+  const savedOthers = frozen.nodes.map((n) => n.style.transform)
+  node.style.transform = 'none'
+  frozen.nodes.forEach((n) => (n.style.transform = 'none'))
+  void parent.offsetWidth // reflow with transforms cleared → fresh "before" layout
+  const beforeNode = lead(node.getBoundingClientRect())
+  const beforeOthers = frozen.nodes.map((n) => lead(n.getBoundingClientRect()))
+  // Ghost-reorder: remember the restore point, move to the target, reflow, read the TRUE
+  // post-reorder positions, then move back. React never sees it (direct DOM, reverted).
+  const back = node.nextSibling
+  parent.insertBefore(node, ref)
+  void parent.offsetWidth
+  const dragged = lead(node.getBoundingClientRect()) - beforeNode
+  const others = frozen.nodes.map((n, i) => lead(n.getBoundingClientRect()) - beforeOthers[i])
+  parent.insertBefore(node, back) // restore the original DOM order
+  node.style.transform = savedNode
+  frozen.nodes.forEach((n, i) => (n.style.transform = savedOthers[i]))
+  return { dragged, others }
 }
 
 // --- drop-target geometry (the 2D → 1D mapping) ---
