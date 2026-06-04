@@ -274,26 +274,41 @@ export function ReorderOverlay({
 
       // TWO separate moments, deliberately NOT merged:
       //
-      // (1) CLEAR TRANSFORMS — must happen in the exact frame the content swaps, or
-      //     the held transforms briefly show the original order (the fakeout). The
-      //     MutationObserver on the container is the SOLE driver (fires after the DOM
-      //     mutation, before paint → swap + clear are atomic). It is deliberately NOT
-      //     also cleared from onReorder's finally: on a host whose repaint is decoupled
-      //     from the write (Next/Turbopack RSC, which refreshes on its own slower clock),
-      //     onReorder can resolve BEFORE the swap, and an early clear there would snap the
-      //     element back to its old slot — the exact fakeout we're avoiding. The held
-      //     destination transform shows the correct final position until the real swap.
+      // (1) CLEAR TRANSFORMS — must happen in the exact frame the content swaps, or the held
+      //     transforms briefly show the wrong order (the fakeout). Two host shapes:
+      //       • Vite HMR rewrites content IN PLACE — the nodes don't move, so the held
+      //         position-offset stays valid right up to the clear (characterData mutation).
+      //       • Next/Turbopack RSC RELOCATES nodes — childList add/remove moves (or replaces)
+      //         the held node into its new slot. Its offset is relative to the OLD box, so the
+      //         instant the node moves it double-displaces (newSlot + offset) until cleared.
+      //     The MutationObserver fires after the DOM mutation but BEFORE paint, so clearing
+      //     there is atomic with the swap on EITHER host. It is the SOLE clear driver — NOT
+      //     also cleared from onReorder's finally, which can resolve before the swap on a
+      //     write-decoupled host and snap the node back to its old slot (the fakeout).
       let cleared = false
+      let raf = 0
       const clearTransforms = () => {
         if (cleared) return
         cleared = true
         obs.disconnect()
         window.clearTimeout(safety)
+        if (raf) cancelAnimationFrame(raf)
         if (prevStyle && node.isConnected) restoreLift(node, prevStyle) // transform/shadow/z/…
         if (sibPrev) restoreMakeRoom(sibPrev) // sibling transforms — same frame as the swap
       }
       const obs = new MutationObserver(clearTransforms)
       obs.observe(parent, { childList: true, subtree: true, characterData: true })
+      // Relocation backstop: the observer is scoped to `parent`. If RSC REPLACES `parent`
+      // itself (a whole-subtree re-render), the swap mutation lands on the grandparent and the
+      // observer never fires — the held node is detached and its transform would otherwise
+      // strand until SETTLE_CAP_MS. Watch the dragged node per-frame and clear the moment it
+      // detaches (the replacement node is already clean), recovering in ~1 frame instead of 2.5s.
+      const watchDetach = () => {
+        if (cleared) return
+        if (!node.isConnected) return clearTransforms()
+        raf = requestAnimationFrame(watchDetach)
+      }
+      raf = requestAnimationFrame(watchDetach)
       // Strand-guard if no mutation ever fires. Sized for a slow, write-decoupled RSC refresh
       // (not just Vite HMR), so it can't pre-empt a late-but-real swap; the observer resolves
       // earlier whenever the swap actually lands.
