@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReorderChild } from '../../types'
+import { getSourceLocation } from '../../sourceLocation'
 
 const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 
@@ -140,7 +141,7 @@ export function ReorderOverlay({
       // crosses the threshold must remain a plain click for useCanvasMode to
       // select/drill, and capturing early can suppress touch-scroll + muddy click
       // routing. Capture is deferred to engage (below).
-      const nodes = resolveMembers(parent, sourceKeysRef.current)
+      const nodes = resolveMembers(parent, sourceKeysRef.current, node)
       press.current = {
         startX: e.clientX,
         startY: e.clientY,
@@ -471,49 +472,48 @@ function inFlowChildren(parent: HTMLElement): HTMLElement[] {
   })
 }
 
-// SELF-ANCHOR: build the movable run by MATCHING the parent's in-flow children to the
-// engine's source-child keys (tag + static className), in source order. The parent here
-// is a component-internal host (e.g. Section's <motion.div>) that may inject its own nodes
-// (a label) beside the projected source children, so a raw child list would mis-count /
-// mis-index. Greedy by tag, preferring an exact static-className match so an injected
-// look-alike of the same tag is skipped in favour of the real source child. Returns the
-// matched nodes in source order, or null if any source key has no live counterpart (then
-// the caller fails closed — no drag — rather than move the wrong element).
-function matchMovableMembers(parent: HTMLElement, sourceKeys: ReorderChild[]): HTMLElement[] | null {
+// SELF-ANCHOR: reconcile the parent's in-flow children to the engine's source-child run
+// (the probe's `children` key-list, in source order). The parent here is a component-internal
+// host (e.g. Section's <motion.div>) that may INJECT its own nodes (a `<p class="section-label">`)
+// beside the projected source children, so a raw child list mis-counts / mis-indexes.
+//
+// The injected node can't be told apart by tag (it shares the tag) OR by className (real content
+// is often `style={obj}` with NO className, and a real child's live className can diverge from its
+// authored one). The robust signal is the SOURCE FILE: a self-anchor source child is authored at
+// the USAGE site, so its `data-muse-loc` file equals the dragged element's file; a component-
+// injected node is authored in the COMPONENT file → a different file. So we keep only in-flow
+// children stamped to `anchorFile` (the dragged element's file). This drops the injected label
+// regardless of its className/count, and keeps style-object AND dynamic-className content alike.
+// Then the remainder must be 1:1 with the keys, same tags in source order (DOM order === source
+// order is the reorder invariant). Returns the run, or null (caller fails closed — no drag) on any
+// unreconcilable divergence, rather than risk moving the wrong element. (A same-file inline
+// injecting component can't be separated this way → it fails closed, which is safe.)
+function matchMovableMembers(parent: HTMLElement, sourceKeys: ReorderChild[], anchorFile: string | null): HTMLElement[] | null {
   const kids = inFlowChildren(parent)
-  // Extra in-flow nodes beyond the source keys mean the parent INJECTS its own nodes
-  // (e.g. Section's label). With injection present, a tag-only match — the source key has
-  // no static className (a dynamic `className={…}` → openingClassName null), or none matched
-  // exactly — can't reliably tell the injected look-alike from the real source child, so we
-  // FAIL CLOSED there rather than risk a wrong-target write. A clean 1:1 (no injection) is
-  // safe to zip by tag even without a className.
-  const injected = kids.length > sourceKeys.length
-  const out: HTMLElement[] = []
-  let from = 0
-  for (const key of sourceKeys) {
-    let found = -1
-    let exactHit = false
-    for (let k = from; k < kids.length; k++) {
-      if (kids[k].tagName.toLowerCase() !== key.tag) continue
-      // An EXACT class match is a positive identity; a null key className is NOT exact (it's
-      // ambiguous against a same-tag injected node) even though it's an acceptable 1:1 zip.
-      const exact = key.classNames != null && (kids[k].getAttribute('class') ?? '') === key.classNames
-      if (found < 0) found = k // first tag candidate — used if no exact match appears
-      if (exact) { found = k; exactHit = true; break } // prefer an exact static-class match
-    }
-    if (found < 0) return null // a source sibling has no live node → diverged, fail closed
-    if (injected && !exactHit) return null // ambiguous tag-only match amid injected nodes
-    out.push(kids[found])
-    from = found + 1
+  // Without a file to anchor on we can't tell injected from real → only the clean no-injection
+  // case (exact count) is safe; anything else fails closed below.
+  const run = anchorFile ? kids.filter((c) => getSourceLocation(c)?.fileName === anchorFile) : kids
+  if (run.length !== sourceKeys.length) return null // injected/hidden/foreign node → fail closed
+  for (let i = 0; i < run.length; i++) {
+    if (run[i].tagName.toLowerCase() !== sourceKeys[i].tag) return null // tag drift → fail closed
   }
-  return out
+  return run
 }
 
 // The movable sibling run in source order: matched members for self-anchor (sourceKeys
 // present), else every visible child (the proven raw path). [] when matching diverges.
-// Exported so the client's keyboard reorder + post-commit re-select read the SAME run.
-export function resolveMembers(parent: HTMLElement, sourceKeys: ReorderChild[] | null | undefined): HTMLElement[] {
-  if (sourceKeys && sourceKeys.length) return matchMovableMembers(parent, sourceKeys) ?? []
+// `anchorNode` is the dragged/selected element — its source file anchors the self-anchor
+// member match (injected nodes live in a different file). Exported so the client's keyboard
+// reorder + post-commit re-select read the SAME run.
+export function resolveMembers(
+  parent: HTMLElement,
+  sourceKeys: ReorderChild[] | null | undefined,
+  anchorNode?: HTMLElement | null,
+): HTMLElement[] {
+  if (sourceKeys && sourceKeys.length) {
+    const anchorFile = anchorNode ? getSourceLocation(anchorNode)?.fileName ?? null : null
+    return matchMovableMembers(parent, sourceKeys, anchorFile) ?? []
+  }
   return movableSiblings(parent)
 }
 

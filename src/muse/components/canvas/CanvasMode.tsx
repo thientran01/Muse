@@ -538,8 +538,9 @@ export function CanvasMode({
       const parent = selected.node.parentElement
       if (!parent) return
       // Same movable run the drag uses: matched members for self-anchor (skips the
-      // component-injected nodes), every visible child otherwise.
-      const kids = resolveMembers(parent, reorderSelfKeys)
+      // component-injected nodes via the selected element's source file), every visible
+      // child otherwise.
+      const kids = resolveMembers(parent, reorderSelfKeys, selected.node)
       const from = kids.indexOf(selected.node)
       if (from < 0) return
       // toIndex is an insertion slot in SOURCE order (lands BEFORE the child there).
@@ -798,7 +799,7 @@ export function CanvasMode({
     // The dragged element's index among its movable siblings (the matched member run for
     // self-anchor, every visible child otherwise) — used to land selection back on it
     // post-HMR. EPHEMERAL has no self keys, so this is the raw visible-child list there.
-    const siblings = parent ? resolveMembers(parent, selfKeys) : []
+    const siblings = parent ? resolveMembers(parent, selfKeys, el.node) : []
     const fromIndex = siblings.indexOf(el.node)
     const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
 
@@ -862,7 +863,7 @@ export function CanvasMode({
       // re-select: never throw on a stale/ready-diverged node.
       await new Promise<void>((resolve) =>
         window.setTimeout(() => {
-          const kids = parent?.isConnected ? resolveMembers(parent, selfKeys) : []
+          const kids = parent?.isConnected ? resolveMembers(parent, selfKeys, el.node) : []
           const moved = kids[newIndex]
           if (moved instanceof HTMLElement) {
             const c = canvasChain(moved)[0]
