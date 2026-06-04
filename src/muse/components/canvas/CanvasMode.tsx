@@ -4,7 +4,7 @@ import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, Reorderable, SelectedElement, SharedConst, StyleMutation } from '../../types'
+import type { CanvasElement, HistoryEntry, ReorderChild, Reorderable, SelectedElement, SharedConst, StyleMutation } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -12,7 +12,7 @@ import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
-import { ReorderOverlay } from './ReorderOverlay'
+import { ReorderOverlay, resolveMembers } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
@@ -154,6 +154,36 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
   return blocked
 }
 
+// Whether `el`'s visual position is PINNED by explicit CSS placement — grid line/area
+// placement, flex/grid `order`, or out-of-flow positioning. A source reorder shuffles
+// DOM/source order but WON'T move a pinned element (its placement re-fixes it), so we
+// refuse the drag handle on it rather than silently shuffle source to no visual effect
+// (the homepage bento's grid-placed cards).
+//
+// getComputedStyle is the primary read — it resolves placement from ANY source (class,
+// inline style, Tailwind v4 arbitrary props) at the current viewport. Its one blind spot
+// is RESPONSIVE placement inactive at the current width (e.g. `lg:col-start-1` viewed on
+// mobile), so we supplement with a scan for breakpoint-prefixed placement utilities in the
+// class string. Together: viewport-independent. Scoped to THIS element only — a pinned
+// sibling (a decorative absolute badge) must never lock its in-flow neighbours.
+function isPositionPinned(el: HTMLElement): boolean {
+  // getComputedStyle on a DETACHED node (e.g. mid-HMR, between select and probe) returns
+  // empty strings, and `'' !== 'auto'` would read as a false-positive "pinned" → wrongly
+  // refusing a valid reorder. A disconnected node isn't laid out, so treat it as not pinned.
+  if (!el.isConnected) return false
+  const cs = getComputedStyle(el)
+  if (cs.position === 'absolute' || cs.position === 'fixed') return true
+  // Explicit grid line/area placement — auto-flow leaves these 'auto'.
+  if (cs.gridColumnStart && cs.gridColumnStart !== 'auto') return true
+  if (cs.gridRowStart && cs.gridRowStart !== 'auto') return true
+  if (cs.order && cs.order !== '0') return true // flex/grid visual reorder ≠ DOM order
+  // Responsive placement that's inactive at the current width — getComputedStyle can't see
+  // it, so catch the breakpoint-prefixed Tailwind utilities statically.
+  const cls = el.getAttribute('class') ?? ''
+  if (/(^|\s)(sm|md|lg|xl|2xl):(col-start-|col-end-|row-start-|row-end-|order-)/.test(cls)) return true
+  return false
+}
+
 // The direct-manipulation mode. Picks an element, shows a floating spacing
 // popover + box-model overlay, scrubs live (inline style), and commits each
 // change to source deterministically — landing in the same undo/redo history as
@@ -174,14 +204,22 @@ export function CanvasMode({
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
-  // Whether the selected element's siblings can be reordered (host parent +
-  // host-only children — see computeReorderable). Gates the drag handle so it
-  // only appears when a drop will actually commit. Probed per selection.
+  // Whether the selected element's siblings can be reordered. Gates the drag handle so
+  // it only appears when a drop will actually commit. Probed per selection, container-
+  // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
+  // fallback — see the probe effect.
   const [reorderable, setReorderable] = useState<Reorderable | null>(null)
-  // Set when the selection is a COMPONENT instance and reorder must address the host
-  // CONTAINER (the DOM parent) instead of the clicked element — its source location +
-  // the commit's container flag. Null for a host child (the normal child-mode path).
+  // Set when reorder addresses the host CONTAINER (the DOM parent, stamped at the usage
+  // site) instead of the clicked element — its source location + the commit's container
+  // flag. This is the PRIMARY path (host children + component instances). Null when the
+  // self-anchor fallback won instead.
   const [reorderContainer, setReorderContainer] = useState<{ fileName: string; line: number; column: number; tag: string; classNames: string } | null>(null)
+  // Set when the SELF-ANCHOR fallback won (container-anchor refused): the clicked element
+  // is content authored inside a component (e.g. a <p> written as <Section>'s child), so
+  // we reorder among the located element's own AST siblings. Carries the probe's source
+  // child key-list so the overlay can match DOM↔source members (skipping component-injected
+  // nodes + out-of-flow phantoms). Null on the container path.
+  const [reorderSelfKeys, setReorderSelfKeys] = useState<ReorderChild[] | null>(null)
   // True while a reorder drag is in flight. The other overlays + panel hide so they
   // don't sit on top of the element being dragged (the lifted element + insertion
   // bar are the only chrome that should show mid-drag).
@@ -383,21 +421,21 @@ export function CanvasMode({
     if (!selected) {
       setReorderable(null)
       setReorderContainer(null)
+      setReorderSelfKeys(null)
       return
     }
     setReorderContainer(null)
-    // Reorder addresses the host CONTAINER (the DOM parent, stamped at the usage site) +
-    // the dragged child's DOM index. This is the ONLY way to reorder a COMPONENT child
-    // (whose own DOM node points into the component, not its usage site) — and it's parity-
-    // identical to child mode for host children, so we use it whenever the parent carries a
-    // source stamp (covers same-file inline components too — a file-difference heuristic
-    // missed those). Fall back to child mode only when the parent has no stamp.
-    const parentEl = selected.node.parentElement
-    const contLoc = parentEl ? getSourceLocation(parentEl) : null
-    const container =
-      contLoc && parentEl
-        ? { fileName: contLoc.fileName, line: contLoc.lineNumber, column: contLoc.columnNumber, tag: parentEl.tagName.toLowerCase(), classNames: parentEl.getAttribute('class') ?? '' }
-        : null
+    setReorderSelfKeys(null)
+
+    // PINNING GATE (selected element only): refuse the handle on an element whose visual
+    // position is pinned by explicit CSS placement (grid lines/area, flex/grid order,
+    // absolute/fixed) — a source reorder shuffles DOM order but wouldn't move it, so a
+    // silent no-effect shuffle is worse than no handle. Never gate on a sibling's pinning.
+    if (isPositionPinned(selected.node)) {
+      setReorderable({ reorderable: false, reason: 'this element is placed by CSS — reordering the source won’t move it' })
+      return
+    }
+
     // EPHEMERAL: there's no server probe — answer from the live DOM. A run is
     // reorderable when the parent has ≥2 visible element children including the
     // selection (DOM order is authoritative; an ephemeral move can't corrupt a
@@ -422,16 +460,38 @@ export function CanvasMode({
     }
     let cancelled = false
     setReorderable(null)
-    // Container mode addresses the host parent (its children may be components); child
-    // mode addresses the selected host element itself.
-    const probe = container
-      ? { fileName: container.fileName, line: container.line, column: container.column, tag: container.tag, classNames: container.classNames, container: true }
-      : { fileName: selected.fileName, line: selected.line, column: selected.column, tag: selected.tag, classNames: selected.node.getAttribute('class') ?? '' }
-    void museReorderable(probe).then((r) => {
+    // Resolve the reorderable group CONTAINER-ANCHOR first (the DOM parent, stamped at the
+    // usage site): covers host children + component instances (the marquee) — the proven
+    // path, unchanged. If that refuses — e.g. the DOM parent is a component-internal
+    // projector whose children are `{children}` — fall back to SELF-ANCHOR on the clicked
+    // element itself, which now reorders among its own AST siblings even when the AST parent
+    // is a component (content authored inside a <Section>). The self-anchor commit derives
+    // fromIndex from source, and the overlay matches DOM↔source members via the key-list.
+    const parentEl = selected.node.parentElement
+    const contLoc = parentEl ? getSourceLocation(parentEl) : null
+    const container =
+      contLoc && parentEl
+        ? { fileName: contLoc.fileName, line: contLoc.lineNumber, column: contLoc.columnNumber, tag: parentEl.tagName.toLowerCase(), classNames: parentEl.getAttribute('class') ?? '' }
+        : null
+    const self = { fileName: selected.fileName, line: selected.line, column: selected.column, tag: selected.tag, classNames: selected.node.getAttribute('class') ?? '' }
+    void (async () => {
+      if (container) {
+        const r = await museReorderable({ ...container, container: true })
+        if (cancelled) return
+        if (r.reorderable) {
+          setReorderable(r)
+          setReorderContainer(container)
+          setReorderSelfKeys(null)
+          return
+        }
+      }
+      // Self-anchor fallback — the clicked element's own loc, no container flag.
+      const r = await museReorderable(self)
       if (cancelled) return
       setReorderable(r)
-      setReorderContainer(r.reorderable && container ? container : null)
-    })
+      setReorderContainer(null)
+      setReorderSelfKeys(r.reorderable ? r.children : null)
+    })()
     return () => {
       cancelled = true
     }
@@ -477,9 +537,9 @@ export function CanvasMode({
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       const parent = selected.node.parentElement
       if (!parent) return
-      const kids = ([...parent.children] as Element[]).filter(
-        (c): c is HTMLElement => c instanceof HTMLElement && c.getClientRects().length > 0,
-      )
+      // Same movable run the drag uses: matched members for self-anchor (skips the
+      // component-injected nodes), every visible child otherwise.
+      const kids = resolveMembers(parent, reorderSelfKeys)
       const from = kids.indexOf(selected.node)
       if (from < 0) return
       // toIndex is an insertion slot in SOURCE order (lands BEFORE the child there).
@@ -494,7 +554,7 @@ export function CanvasMode({
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, reorderable])
+  }, [selected, reorderable, reorderSelfKeys])
 
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => cancelStripWatch(), [])
@@ -730,11 +790,15 @@ export function CanvasMode({
   // index (best-effort) to keep the panel anchored to what the user just moved.
   async function commitReorder(el: CanvasElement, toIndex: number) {
     const parent = el.node.parentElement
-    // The dragged element's index among its movable siblings (DOM order === source
-    // order under the host-only gate) — used to land selection back on it post-HMR.
-    const siblings = parent
-      ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
-      : []
+    // Capture the self-anchor key-list NOW: the post-HMR re-select reads it ~200ms later
+    // inside a setTimeout, by which point the live `reorderSelfKeys` could belong to a
+    // different selection — which would build the wrong member run and re-select the wrong
+    // node. Pin it to this commit (same reason `frozen`/`prevStyle` are captured up front).
+    const selfKeys = reorderSelfKeys
+    // The dragged element's index among its movable siblings (the matched member run for
+    // self-anchor, every visible child otherwise) — used to land selection back on it
+    // post-HMR. EPHEMERAL has no self keys, so this is the raw visible-child list there.
+    const siblings = parent ? resolveMembers(parent, selfKeys) : []
     const fromIndex = siblings.indexOf(el.node)
     const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
 
@@ -798,9 +862,7 @@ export function CanvasMode({
       // re-select: never throw on a stale/ready-diverged node.
       await new Promise<void>((resolve) =>
         window.setTimeout(() => {
-          const kids = parent?.isConnected
-            ? ([...parent.children] as Element[]).filter((c) => c instanceof HTMLElement && c.getClientRects().length > 0)
-            : []
+          const kids = parent?.isConnected ? resolveMembers(parent, selfKeys) : []
           const moved = kids[newIndex]
           if (moved instanceof HTMLElement) {
             const c = canvasChain(moved)[0]
@@ -1019,6 +1081,7 @@ export function CanvasMode({
             <ReorderOverlay
               node={selected.node}
               expectedCount={reorderable.count}
+              sourceKeys={reorderSelfKeys}
               onReorder={(toIndex) => commitReorder(selected, toIndex)}
               onDragChange={setReordering}
             />
