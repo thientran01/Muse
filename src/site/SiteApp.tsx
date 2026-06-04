@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { UfoIcon } from '../muse/components/UfoIcon'
 import { NAV, pageFromHash, type PageId } from './nav'
 import { Overview } from './pages/Overview'
 import { Install } from './pages/Install'
@@ -126,14 +127,18 @@ export default function SiteApp() {
   )
 }
 
-// The manta-ray mark, simplified for the host site header (the overlay has its own
-// animated version). Inline so the docs site has no dependency on Muse internals.
+// The manta-ray brand mark — the same UfoIcon the overlay uses, set into the docs
+// header lockup so the logo matches the real mark exactly (no more hand-drawn blob).
+// The body inherits `currentColor` (white here); the badge sets --muse-surface to its
+// own brick so the manta's eye cut-outs punch through to the badge color (UfoIcon's
+// tokens are otherwise scoped to [data-muse-ui], which this chrome sits outside of).
 function MuseMark() {
   return (
-    <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#7f2f2f] text-white">
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
-        <path d="M12 4c-1 0-2 .8-3.2 2.2C7 8 4 9.5 3 12c2.2-.4 3.8-.2 5.2.6-.4 1.2-.3 2.6.3 4 .9-1.4 1.7-2.2 2.5-2.5v.002c.8.3 1.6 1.1 2.5 2.5.6-1.4.7-2.8.3-4 1.4-.8 3-1 5.2-.6-1-2.5-4-4-5.8-5.8C14 4.8 13 4 12 4z" />
-      </svg>
+    <span
+      className="grid h-7 w-7 place-items-center rounded-lg bg-[#7f2f2f] text-white"
+      style={{ '--muse-surface': '127 47 47' } as CSSProperties}
+    >
+      <UfoIcon size={16} />
     </span>
   )
 }

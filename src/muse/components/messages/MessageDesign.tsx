@@ -72,9 +72,16 @@ export function MessageDesign({
 
   if (status === 'generating') {
     return (
-      <div className="animate-muse-rise flex items-center gap-2 rounded-xl bg-line/[0.03] p-3 text-sm text-fg-muted ring-1 ring-line/10 motion-reduce:animate-none">
-        <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
-        Reading your styles and writing a brief… (~45s)
+      // Two tiers, spinner top-aligned to the first line: a tiny spinner floating
+      // vertically-centered against a 2-line paragraph reads as lost. Pairing it
+      // with a concise primary line (and a quiet detail/time sub-line) gives the
+      // size relationship a clear anchor.
+      <div role="status" className="animate-muse-rise flex items-start gap-2.5 rounded-xl bg-line/[0.03] p-3 ring-1 ring-line/10 motion-reduce:animate-none">
+        <CircleNotch size={16} weight="bold" aria-hidden className="mt-0.5 shrink-0 animate-spin text-fg-faint motion-reduce:animate-none" />
+        <div className="space-y-0.5">
+          <p className="text-sm leading-snug text-fg-muted">Writing your design brief…</p>
+          <p className="text-xs text-fg-faint">Reading your styles · ~45s</p>
+        </div>
       </div>
     )
   }

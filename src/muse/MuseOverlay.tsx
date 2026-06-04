@@ -886,7 +886,6 @@ export function MuseOverlay() {
           <MusePanel
             mock={MOCK}
             closing={closing}
-            loading={loading || historyLoading}
             historyControls={hasHistory ? historyControls : undefined}
             archivedCount={archived.length}
             showingHistory={historyOpen}
