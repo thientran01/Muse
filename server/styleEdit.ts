@@ -1653,16 +1653,18 @@ function resolveSiblings(
   const found = locateElementWithParent(ast, line, column, tag, classNames, offsetHint)
   if (!found) return { reason: `no JSX element found at line ${line}` }
   if (found.parent.type !== 'JSXElement') {
-    // Fragment / expression / component-root parent → its children render into a
-    // different DOM node, so DOM geometry can't map slots safely.
+    // Fragment / expression parent → its children don't map to a single addressable
+    // JSX container element, so we can't reorder among them.
     return { reason: 'these elements are not in a reorderable container' }
   }
   const parent = found.parent
-  if (!isHostOpening(parent.openingElement)) {
-    // A component parent (<Card>…</Card>) renders its children into a different
-    // DOM node, so DOM geometry can't map slots safely.
-    return { reason: 'these elements are not in a reorderable container' }
-  }
+  // The AST parent may be a HOST element (<div>) OR a COMPONENT (<Section>). Self-anchor
+  // (this path) is reached only as the client's FALLBACK when container-anchor refused —
+  // i.e. the clicked element is content authored at the usage site (e.g. a <p> written as
+  // <Section>'s child in page.tsx). The engine derives fromIndex from the located element's
+  // own source identity, and the CLIENT maps DOM↔source members (matching the host children
+  // the component renders, skipping any nodes the component injects), so a component parent
+  // is safe here — unlike the original host-parent-only gate, an artifact of the fiber locator.
   const scan = scanReorderChildren(parent)
   if (!scan.ok) return { reason: scan.reason }
   return { el: found.el, parent, elements: scan.elements }

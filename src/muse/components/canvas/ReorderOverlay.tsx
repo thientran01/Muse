@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReorderChild } from '../../types'
 
 const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 
@@ -38,6 +39,7 @@ const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 export function ReorderOverlay({
   node,
   expectedCount,
+  sourceKeys,
   onReorder,
   onDragChange,
 }: {
@@ -48,6 +50,13 @@ export function ReorderOverlay({
   // (display:none → no client rect) the live count diverges and an index could
   // mis-target. We fail closed in that case rather than move the wrong element.
   expectedCount: number
+  // SELF-ANCHOR only: the engine's source-child key-list (tag + static className), in
+  // source order. When present, the dragged node's parent is a component-internal host
+  // (e.g. Section's <motion.div>) that may INJECT its own nodes (a label) beside the
+  // projected source children — so the movable set is built by MATCHING the parent's
+  // in-flow DOM children to these keys (skipping injected + out-of-flow nodes) instead of
+  // taking every child. Absent (container-anchor / host child) → the proven raw path.
+  sourceKeys?: ReorderChild[] | null
   // Move the selected element to insertion slot `toIndex` (the source-order
   // position it lands BEFORE; siblings.length === drop at the end). Returns a
   // promise that resolves once the edit is written AND HMR has repainted +
@@ -69,6 +78,8 @@ export function ReorderOverlay({
   onReorderRef.current = onReorder
   const expectedCountRef = useRef(expectedCount)
   expectedCountRef.current = expectedCount
+  const sourceKeysRef = useRef(sourceKeys)
+  sourceKeysRef.current = sourceKeys
   const onDragChangeRef = useRef(onDragChange)
   onDragChangeRef.current = onDragChange
 
@@ -82,6 +93,10 @@ export function ReorderOverlay({
     pointerId: number
     dragging: boolean
     fromIndex: number
+    // The movable sibling run in SOURCE order, snapshotted at press start (the matched
+    // members for self-anchor, or every visible child for the raw path). Frozen here so
+    // the engage-time geometry reads the same set the index was computed against.
+    members: HTMLElement[]
     frozen: Frozen | null
     prevStyle: SavedStyle | null
     // Make-room: the sibling transition/transform inline values we override, saved
@@ -125,13 +140,14 @@ export function ReorderOverlay({
       // crosses the threshold must remain a plain click for useCanvasMode to
       // select/drill, and capturing early can suppress touch-scroll + muddy click
       // routing. Capture is deferred to engage (below).
-      const nodes = movableSiblings(parent)
+      const nodes = resolveMembers(parent, sourceKeysRef.current)
       press.current = {
         startX: e.clientX,
         startY: e.clientY,
         pointerId: e.pointerId,
         dragging: false,
         fromIndex: nodes.indexOf(node),
+        members: nodes,
         frozen: null,
         prevStyle: null,
         sibPrev: null,
@@ -144,7 +160,7 @@ export function ReorderOverlay({
       if (!p.dragging) {
         if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) < THRESHOLD) return
         // Engage: snapshot geometry (excluding the dragged node), lift the element.
-        const frozen = freezeSiblings(parent, node)
+        const frozen = freezeSiblings(parent, p.members, node)
         // Fail closed: the dragged node must be a known movable sibling, and the
         // live movable count (others + dragged) must match what the engine sees in
         // source — else an index could mis-target. Abandon, leave it a no-op.
@@ -445,13 +461,59 @@ function movableSiblings(parent: HTMLElement): HTMLElement[] {
   )
 }
 
+// The parent's visible children that are IN FLOW (excludes position:absolute/fixed —
+// out-of-flow nodes overlap the flow run and would corrupt the nearest-neighbour drop
+// search). Used to build the self-anchor member set.
+function inFlowChildren(parent: HTMLElement): HTMLElement[] {
+  return movableSiblings(parent).filter((c) => {
+    const pos = getComputedStyle(c).position
+    return pos !== 'absolute' && pos !== 'fixed'
+  })
+}
+
+// SELF-ANCHOR: build the movable run by MATCHING the parent's in-flow children to the
+// engine's source-child keys (tag + static className), in source order. The parent here
+// is a component-internal host (e.g. Section's <motion.div>) that may inject its own nodes
+// (a label) beside the projected source children, so a raw child list would mis-count /
+// mis-index. Greedy by tag, preferring an exact static-className match so an injected
+// look-alike of the same tag is skipped in favour of the real source child. Returns the
+// matched nodes in source order, or null if any source key has no live counterpart (then
+// the caller fails closed — no drag — rather than move the wrong element).
+function matchMovableMembers(parent: HTMLElement, sourceKeys: ReorderChild[]): HTMLElement[] | null {
+  const kids = inFlowChildren(parent)
+  const out: HTMLElement[] = []
+  let from = 0
+  for (const key of sourceKeys) {
+    let found = -1
+    for (let k = from; k < kids.length; k++) {
+      if (kids[k].tagName.toLowerCase() !== key.tag) continue
+      const exact = key.classNames == null || (kids[k].getAttribute('class') ?? '') === key.classNames
+      if (found < 0) found = k // first tag candidate — used if no exact match appears
+      if (exact) { found = k; break } // prefer an exact static-class match
+    }
+    if (found < 0) return null // a source sibling has no live node → diverged, fail closed
+    out.push(kids[found])
+    from = found + 1
+  }
+  return out
+}
+
+// The movable sibling run in source order: matched members for self-anchor (sourceKeys
+// present), else every visible child (the proven raw path). [] when matching diverges.
+// Exported so the client's keyboard reorder + post-commit re-select read the SAME run.
+export function resolveMembers(parent: HTMLElement, sourceKeys: ReorderChild[] | null | undefined): HTMLElement[] {
+  if (sourceKeys && sourceKeys.length) return matchMovableMembers(parent, sourceKeys) ?? []
+  return movableSiblings(parent)
+}
+
 // Snapshot at pickup: the OTHER siblings (nodes + rects, dragged excluded), the
 // dragged element's own rect, the inter-sibling gap, the axis, and whether this is
-// a genuine single line (so make-room is geometrically valid).
-function freezeSiblings(parent: HTMLElement, dragged: HTMLElement): Frozen {
+// a genuine single line (so make-room is geometrically valid). `all` is the movable
+// run (matched members or raw), computed once at press start and passed in so the
+// geometry reads the same set the drag index was derived from.
+function freezeSiblings(parent: HTMLElement, all: HTMLElement[], dragged: HTMLElement): Frozen {
   const layout = readLayout(parent)
   const draggedRect = dragged.getBoundingClientRect()
-  const all = movableSiblings(parent)
   const nodes = all.filter((n) => n !== dragged)
   const rects = nodes.map((n) => n.getBoundingClientRect())
 
