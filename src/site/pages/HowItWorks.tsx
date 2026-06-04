@@ -5,7 +5,7 @@ export function HowItWorks() {
     <article>
       <H1>How it works</H1>
       <Lead>
-        A look under the hood: how Muse turns a click into a source edit, why direct edits land
+        How Muse turns a click into a source edit, why direct edits land
         instantly, and how the agent works as a partner when you would rather describe a change than
         make it by hand.
       </Lead>
