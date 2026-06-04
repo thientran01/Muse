@@ -5,8 +5,8 @@ export function HowItWorks() {
     <article>
       <H1>How it works</H1>
       <Lead>
-        How Muse turns a click into a source edit, why direct edits land instantly, and how the writes
-        stay safe.
+        How Muse turns a click into a source edit, why direct edits land instantly, and how every write
+        stays bounded to your source.
       </Lead>
 
       <H2 id="mapping">From a click to a source file</H2>
@@ -39,7 +39,7 @@ export function HowItWorks() {
         Writes are sandboxed to <Code>src/</Code>, with paths resolved through realpath rather than a
         string check, and Muse can only touch files it read in the same request. Every file is validated
         before any of them is written, so a batch lands whole or gets rejected together. Undo, redo, and
-        revert stay open throughout.
+        revert are available at any point.
       </P>
     </article>
   )

@@ -215,7 +215,7 @@ export function DevMuse() {
 |---|---|
 | `MUSE_ROOT` | project root for the standalone server (defaults to cwd). |
 | `MUSE_API_BASE` | client default for `apiBase` (or call `configureMuse`). |
-| `MUSE_DESIGN_MD` | path to a `DESIGN.md` brief, if it isn't at the project root. |
+| `MUSE_DESIGN_MD` | path to a `DESIGN.md` brief, if it isn't at a standard location (`DESIGN.md` or `src/DESIGN.md`). |
 | `MUSE_DESIGN_EXCLUDE` | comma-separated terms to drop from the evidence when generating a brief. |
 
 Canvas Mode (direct manipulation: spacing/type/color/text/reorder) is deterministic and

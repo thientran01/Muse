@@ -41,11 +41,11 @@ It detects your bundler (Vite, Next.js, or webpack), copies the engine in, and w
 
 ### Configuration
 
-All optional environment variables, read at dev-server start. They only touch the `DESIGN.md` brief that powers the color picker's brand swatches:
+All optional environment variables, read at dev-server start. They only touch the `DESIGN.md` brief behind the Design system popover (which powers the color picker's brand swatches):
 
 | Var | Default | What it controls |
 |---|---|---|
-| `MUSE_DESIGN_MD` | — | Path to a `DESIGN.md` brief, if it isn't at the project root. |
+| `MUSE_DESIGN_MD` | — | Path to a `DESIGN.md` brief, if it isn't at a standard location (`DESIGN.md` or `src/DESIGN.md`). |
 | `MUSE_DESIGN_EXCLUDE` | — | Comma-separated terms to drop from the evidence when generating a brief. |
 
 The optional **Generate design system** button (in the toolbar's Design system popover) shells out to the `claude` CLI on your logged-in subscription — so generating a brief needs Claude Code installed and on PATH, but **no `ANTHROPIC_API_KEY`**. You can also run it from the terminal with `npm run design:gen`.

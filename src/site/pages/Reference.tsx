@@ -38,7 +38,7 @@ export function Reference() {
         swatches.
       </P>
       <div className="mt-4">
-        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief, if it isn't at the project root.</>} />
+        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief, if it isn't at a standard location (<Code>DESIGN.md</Code> or <Code>src/DESIGN.md</Code>).</>} />
         <Row k="MUSE_DESIGN_EXCLUDE" d="Comma-separated terms to drop from the evidence when generating a brief." />
       </div>
 

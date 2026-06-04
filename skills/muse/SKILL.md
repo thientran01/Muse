@@ -232,7 +232,7 @@ One React instance only — mount from the host's own React, never a second copy
    element, scrub its padding — it updates live and the change is written to the
    real source file (`git diff`). Undo with Cmd/Ctrl+Z. (To see the rest: double-
    click prop text to trace it to its usage site, select an element styled via a
-   shared `style={const}` for the scope toggle, or open the design-system card →
+   shared `style={const}` for the scope toggle, or open the design-system popover →
    **Edit tokens**.)
 4. (Optional) Design-system generator: confirm `scripts/gen-design-md.mjs` exists
    (`ls scripts/gen-design-md.mjs`) and the `claude` CLI is on PATH (`claude --version`).

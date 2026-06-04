@@ -137,9 +137,9 @@ export function Overview() {
         Keep edits on brand
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Drop a <Code>DESIGN.md</Code> in your project and Muse reads it for the color picker's brand
-        swatches, so the palette you reach for is your real tokens rather than a guessed hex. It follows
-        Google's{' '}
+        Drop a <Code>DESIGN.md</Code> in your project to capture your tokens and brand in one place. Muse
+        reads its colors for the picker's brand swatches, so the palette you reach for is your real tokens
+        rather than a guessed hex. It follows Google's{' '}
         <a className="underline" href="https://github.com/google-labs-code/design.md">DESIGN.md format</a>.
       </p>
       <CodeBlock label="DESIGN.md">{`---
