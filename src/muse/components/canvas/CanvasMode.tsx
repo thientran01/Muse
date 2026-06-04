@@ -558,6 +558,7 @@ export function CanvasMode({
   useEffect(() => {
     if (!selected || !reorderable?.reorderable) return
     const onKey = (e: KeyboardEvent) => {
+      if (reordering) return // a pointer drag is mid-flight — don't fire a second concurrent write
       if (!(e.metaKey || e.ctrlKey)) return
       const dir = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : 0
       if (dir === 0) return
@@ -583,7 +584,7 @@ export function CanvasMode({
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, reorderable, reorderSelfKeys])
+  }, [selected, reorderable, reorderSelfKeys, reordering])
 
   // Cancel a pending post-commit strip on unmount so it can't fire on a gone node.
   useEffect(() => () => cancelStripWatch(), [])

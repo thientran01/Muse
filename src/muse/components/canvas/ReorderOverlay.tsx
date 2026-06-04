@@ -153,6 +153,10 @@ export function ReorderOverlay({
     // How far the scroll moved the content since pickup, read from the parent's rect shift
     // (works for window OR a nested scroller). Positive = scrolled toward the content's end.
     const scrollShift = (p: NonNullable<typeof press.current>) => {
+      // A detached parent (e.g. an RSC host swapping the subtree mid-drag — see #89)
+      // reports an all-zero rect, which would read as a huge bogus delta and jump the
+      // element / mis-target the slot. No parent = no measurable scroll → no shift.
+      if (!parent.isConnected) return { sdx: 0, sdy: 0 }
       const pr = parent.getBoundingClientRect()
       return { sdx: p.frozenParentLeft - pr.left, sdy: p.frozenParentTop - pr.top }
     }
@@ -185,7 +189,10 @@ export function ReorderOverlay({
       const target = computeDrop(dp.x, dp.y, p.frozen, p.fromIndex)
       // When make-room is active, the opened gap IS the affordance — slide the siblings
       // and hide the bar. Otherwise show the bar (2D / reduced-motion), shifted back into
-      // the CURRENT viewport (it was computed from pickup-frame rects).
+      // the CURRENT viewport (it was computed from pickup-frame rects). NOTE: `p.sibPrev`
+      // is always null under reduced motion (primeMakeRoom is gated on !prefersReducedMotion),
+      // so reduced-motion drags ALWAYS take the bar branch — it's their only affordance.
+      // Keep that gating in sync if make-room priming ever moves.
       if (target && p.sibPrev) {
         exactMakeRoom(parent, node, p.frozen, p.members, target.toIndex, target.slot, p.fromIndex, p.measureCache)
         setDrop({ ...target, bar: null })
@@ -212,9 +219,15 @@ export function ReorderOverlay({
     }
 
     // Keep the drag following a wheel/programmatic scroll, which fires no pointermove.
+    // The capture-phase listener hears scrolls from ANY scroller on the page, so skip the
+    // recompute (a ghost-measure reflow in exactMakeRoom) when our parent didn't actually
+    // move — e.g. an unrelated sidebar scrolling while a drag is live.
     const onScroll = () => {
       const p = press.current
-      if (p?.dragging) applyDragAt(p.lastClientX, p.lastClientY)
+      if (!p?.dragging) return
+      const { sdx, sdy } = scrollShift(p)
+      if (sdx === 0 && sdy === 0) return
+      applyDragAt(p.lastClientX, p.lastClientY)
     }
 
     // Native text selection competes with the pointer drag: dragging a card across
