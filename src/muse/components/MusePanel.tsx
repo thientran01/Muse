@@ -7,7 +7,6 @@ import {
   X,
 } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
-import { UfoIcon } from './UfoIcon'
 
 // Panel chrome: rounded card + header + a flexbox column slot below.
 // Content (target strip + thread + composer) is composed in MuseOverlay
@@ -16,7 +15,6 @@ import { UfoIcon } from './UfoIcon'
 export function MusePanel({
   mock = false,
   closing = false,
-  loading = false,
   historyControls,
   archivedCount = 0,
   showingHistory = false,
@@ -26,7 +24,6 @@ export function MusePanel({
 }: {
   mock?: boolean
   closing?: boolean
-  loading?: boolean
   historyControls?: HistoryControls
   archivedCount?: number
   showingHistory?: boolean
@@ -44,11 +41,10 @@ export function MusePanel({
     >
       <header className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
-          <UfoIcon size={18} loading={loading} className="text-accent" />
           Muse
           {mock && (
             <span className="ml-1 rounded border border-line/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
-              mock
+              demo
             </span>
           )}
         </div>

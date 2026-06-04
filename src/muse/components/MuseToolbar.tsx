@@ -27,13 +27,17 @@ type DesignState = {
   generator?: DesignGeneratorStatus
 }
 
-function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function IconBtn({ label, onClick, children, active = false }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
   return (
     <button
       onClick={onClick}
       title={label}
       aria-label={label}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-faint transition hover:bg-line/10 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100"
+      // active = a sticky "on" state (e.g. animations paused) — the brick accent
+      // tint + tone, the same selected/active treatment the panel header uses.
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
+        active ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
+      }`}
     >
       {children}
     </button>
@@ -169,7 +173,15 @@ export function MuseToolbar({
             <UfoIcon size={18} className="text-accent" />
           </span>
           <span className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '0fr' : '1fr', opacity: expanded ? 0 : 1 }}>
-            <span className="pl-1 pr-2.5 text-sm font-medium text-fg">Muse</span>
+            {/* Mirror the trailing group: a FLEX box as the grid item. A bare text
+                node won't shrink below its word width at 0fr (it would just go
+                transparent and hold a ~37–51px phantom gap), but a flex container
+                compresses to 0 and clips the inner label AND its padding — so the
+                manta sits flush with the icons when expanded, then the box grows
+                back to the label width at 1fr in the collapsed FAB. */}
+            <span className="flex">
+              <span className="pl-1 pr-2.5 text-sm font-medium text-fg">Muse</span>
+            </span>
           </span>
         </button>
 
@@ -187,8 +199,9 @@ export function MuseToolbar({
           <IconBtn
             label={animationsPaused ? 'Resume animations' : 'Pause animations'}
             onClick={onToggleAnimations}
+            active={animationsPaused}
           >
-            {animationsPaused ? <Play size={17} /> : <Pause size={17} />}
+            {animationsPaused ? <Play size={17} weight="fill" /> : <Pause size={17} />}
           </IconBtn>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
           <IconBtn label="Close Muse" onClick={onClose}>
