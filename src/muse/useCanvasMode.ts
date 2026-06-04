@@ -80,12 +80,20 @@ export function asSelected(el: CanvasElement): SelectedElement {
  * capture-phase listeners stay attached across selection (re-subscribing on every
  * selection would drop a frame and flicker); locking is a guard, not a re-sub.
  */
-export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => void }) {
+export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => void; suspended?: boolean }) {
   const [active, setActive] = useState(false)
   // Read inside the click listener via a ref so the listener effect doesn't
   // re-subscribe when the parent passes a fresh callback each render.
   const onEscalateRef = useRef(opts?.onEscalate)
   onEscalateRef.current = opts?.onEscalate
+  // While a reorder drag is in flight the parent sets `suspended` — Canvas stands
+  // down (no hover, no select/drill, no dblclick) so dragging the cursor across other
+  // elements can't re-hover or re-select them mid-drag. A mid-drag selection change
+  // would remount ReorderOverlay on a new node and abort the drag (and the passed-over
+  // element would stay un-passable until reselected). Read via a ref so the listener
+  // effect doesn't re-subscribe each time the flag flips.
+  const suspendedRef = useRef(opts?.suspended)
+  suspendedRef.current = opts?.suspended
   const [hoverRect, setHoverRect] = useState<Rect | null>(null)
   const [hoverInfo, setHoverInfo] = useState<ElementInfo | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
@@ -144,7 +152,7 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
     }
 
     const onMove = (e: MouseEvent) => {
-      if (editingRef.current) return // typing — leave the page alone
+      if (editingRef.current || suspendedRef.current) return // typing or mid-drag — leave the page alone
       setShiftHeld(e.shiftKey)
       setCursor({ x: e.clientX, y: e.clientY })
       const el = e.target as Element | null
@@ -164,8 +172,10 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
 
     const onClick = (e: MouseEvent) => {
       // While editing text, let clicks through untouched (native caret placement);
-      // clicking away just blurs+commits the editor (handled on the node).
-      if (editingRef.current) return
+      // clicking away just blurs+commits the editor (handled on the node). While a
+      // reorder drag is in flight, ignore clicks so the trailing drop-click (or any
+      // stray click) can't change the selection out from under the drag.
+      if (editingRef.current || suspendedRef.current) return
       const el = e.target as Element | null
       if (!el || isMuseUI(el)) return // let the controls popover handle its own clicks
       e.preventDefault()
@@ -210,7 +220,7 @@ export function useCanvasMode(opts?: { onEscalate?: (el: SelectedElement) => voi
     // it actually renders editable text, so a double-click on a non-text element is
     // a no-op). The dblclick's own first click has already selected it.
     const onDblClick = (e: MouseEvent) => {
-      if (editingRef.current) return // already editing — don't start a second session
+      if (editingRef.current || suspendedRef.current) return // already editing or mid-drag — don't start a session
       const el = e.target as Element | null
       if (!el || isMuseUI(el) || !(el instanceof HTMLElement)) return
       const leaf = canvasChain(el)[0]

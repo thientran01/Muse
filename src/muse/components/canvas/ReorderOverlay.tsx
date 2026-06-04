@@ -146,6 +146,29 @@ export function ReorderOverlay({
       return { x: dr.left + dr.width / 2 + (e.clientX - p.startX), y: dr.top + dr.height / 2 + (e.clientY - p.startY) }
     }
 
+    // Native text selection competes with the pointer drag: dragging a card across
+    // text-bearing siblings makes the browser HIGHLIGHT their text (the blue smear),
+    // which owns the same gesture and the drag "sticks" on those elements — worse the
+    // more text you cross, so a multi-slot drag jams while a one-slot drag survives.
+    // Suppress selection for the whole drag: block `selectstart` while a press is live
+    // (kills it from the very first move, before threshold), clear any range already
+    // made, and pin user-select:none. Restored on every exit. `selectstart` is the
+    // primary guard (works even mid-gesture); user-select:none is the cursor/back-stop.
+    let prevUserSelect: string | null = null
+    const suppressSelection = () => {
+      prevUserSelect = document.documentElement.style.userSelect
+      document.documentElement.style.userSelect = 'none'
+      window.getSelection()?.removeAllRanges()
+    }
+    const restoreSelection = () => {
+      if (prevUserSelect === null) return
+      document.documentElement.style.userSelect = prevUserSelect
+      prevUserSelect = null
+    }
+    const onSelectStart = (e: Event) => {
+      if (press.current) e.preventDefault()
+    }
+
     // Advertise the body as draggable BEFORE any press (siblings set their cursor
     // unconditionally too); saved/restored so we don't clobber a host cursor.
     const prevCursor = node.style.cursor
@@ -163,6 +186,7 @@ export function ReorderOverlay({
       }
       if (p?.sibPrev) restoreMakeRoom(p.sibPrev) // put the slid siblings back
       if (p?.prevStyle && node.isConnected) restoreLift(node, p.prevStyle)
+      restoreSelection() // let the page select text again
       press.current = null
       setDrop(null)
     }
@@ -203,6 +227,7 @@ export function ReorderOverlay({
           return
         }
         node.setPointerCapture(e.pointerId) // now retarget the stream to the node
+        suppressSelection() // stop the page from text-selecting as we drag across it
         p.frozen = frozen
         p.dragging = true
         p.prevStyle = applyLift(node)
@@ -227,6 +252,22 @@ export function ReorderOverlay({
       } else {
         setDrop(target)
       }
+      // The ghost-measure inside exactMakeRoom briefly MOVES the node in the DOM (an
+      // insertBefore + revert) to read the real reflow. Some engines drop pointer capture
+      // when a captured node is detached even momentarily — and a lost capture FREEZES the
+      // drag: pointer events stop retargeting to the node, so onPointerMove goes silent and
+      // the stream leaks to whatever's under the cursor (which then re-hovers/selects). It
+      // only bites when you cross into a NEW slot (the measure fires), which is exactly the
+      // "gets stuck the moment I move through another card; works if I go around it" report.
+      // Re-assert capture each move (the pointer is still active during a drag) so the
+      // stream keeps flowing to us. Cheap no-op when capture was never lost.
+      if (!node.hasPointerCapture(p.pointerId)) {
+        try {
+          node.setPointerCapture(p.pointerId)
+        } catch {
+          /* pointer no longer active (race with pointerup) — nothing to recapture */
+        }
+      }
     }
 
     const onUp = (e: PointerEvent) => {
@@ -237,6 +278,7 @@ export function ReorderOverlay({
         return
       }
       node.releasePointerCapture?.(e.pointerId)
+      restoreSelection() // drag's over — let the page select text again (committed path skips teardown)
       e.preventDefault()
       // A threshold-crossing drag still emits a trailing `click` at the drop point.
       // useCanvasMode's click handler is on document (capture), so it would select
@@ -365,11 +407,17 @@ export function ReorderOverlay({
     node.addEventListener('pointermove', onPointerMove)
     node.addEventListener('pointerup', onUp)
     node.addEventListener('pointercancel', onCancel)
+    // Document-level so a selection starting anywhere under the drag is blocked; only
+    // acts while a press on THIS handle is live (press.current), so normal text
+    // selection elsewhere is untouched.
+    document.addEventListener('selectstart', onSelectStart, true)
     return () => {
       node.removeEventListener('pointerdown', onDown)
       node.removeEventListener('pointermove', onPointerMove)
       node.removeEventListener('pointerup', onUp)
       node.removeEventListener('pointercancel', onCancel)
+      document.removeEventListener('selectstart', onSelectStart, true)
+      restoreSelection() // never strand user-select:none if we unmount mid-drag
       cancelSwallow?.() // don't leave a window click-swallower alive past unmount
       teardown() // restore the lift if we unmount mid-drag (e.g. HMR)
       if (node.isConnected) node.style.cursor = prevCursor
