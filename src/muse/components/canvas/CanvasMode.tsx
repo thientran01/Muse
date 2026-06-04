@@ -210,8 +210,7 @@ function waitForParentRepaint(parent: HTMLElement | null, cap: number): Promise<
 
 // The direct-manipulation mode. Picks an element, shows a floating spacing
 // popover + box-model overlay, scrubs live (inline style), and commits each
-// change to source deterministically — landing in the same undo/redo history as
-// chat edits.
+// change to source deterministically — landing in the shared undo/redo history.
 export function CanvasMode({
   onExit,
 }: {
@@ -274,7 +273,7 @@ export function CanvasMode({
   const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string>; before: Map<HTMLElement, string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
   const stripObsRef = useRef<MutationObserver | null>(null)
-  // Canvas renders its OWN [data-muse-ui] root (separate from the chat overlay's),
+  // Canvas renders its OWN [data-muse-ui] root (separate from the dock's),
   // so it needs its own data-theme or muse.css's dark defaults win on a light host.
   // This ref doubles as the portal target for popovers that must escape the panel's
   // overflow (the color picker).
@@ -370,11 +369,9 @@ export function CanvasMode({
       const panelH = measured ?? Math.min(window.innerHeight * 0.7, 520)
       const top = Math.max(GAP, Math.min(r.top, window.innerHeight - panelH - GAP))
       // Sit beside the element — to its RIGHT by default, flipped to its LEFT when
-      // the right won't fit OR would cover the bottom-right dock / agent panel (it
-      // marks itself with data-muse-dock). Two guards keep the flip from misfiring:
-      //   - CLAMP each dock rect to the viewport: the agent panel tucks off-screen
-      //     via a transform, so its raw rect runs past the edge — only its visible
-      //     footprint should push the panel aside.
+      // the right won't fit OR would cover the bottom-right dock (the FAB/toolbar,
+      // which marks itself with data-muse-dock). Two guards keep the flip from misfiring:
+      //   - CLAMP each dock rect to the viewport so only its visible footprint counts.
       //   - Skip avoidance until the panel's real height is measured: the first pass
       //     uses the tall fallback cap, which would over-report vertical overlap and
       //     flip for one frame before the rAF re-measure corrects it.
@@ -580,8 +577,8 @@ export function CanvasMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [miss?.id])
 
-  // Native-feeling undo/redo on the SAME shared history stack chat writes to —
-  // file-only (no chat-panel side effects), so Cmd/Ctrl+Z works in canvas too.
+  // Native-feeling undo/redo on the shared history stack — file-only, so
+  // Cmd/Ctrl+Z works in canvas alongside the toolbar's undo/redo buttons.
   useEffect(() => {
     const step = async (dir: 'undo' | 'redo') => {
       // EPHEMERAL: undo/redo run on the DOM-snapshot stack, not file content.

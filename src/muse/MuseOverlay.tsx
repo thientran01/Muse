@@ -61,13 +61,17 @@ export function MuseOverlay() {
   // Canvas commit lands in. CanvasMode also drives Cmd/Ctrl+Z directly; these are
   // the toolbar buttons. (EPHEMERAL Canvas edits use the in-browser ephemeral
   // stack via CanvasMode's keyboard path, so `past`/`future` stay empty there.)
+  // Each reads a FRESH store snapshot (not the render-time closure) and bails while
+  // a write is already in flight, so a rapid double-click — or the toolbar button
+  // racing CanvasMode's Cmd/Ctrl+Z — can't enqueue two writes against one entry.
   async function undo() {
-    if (past.length === 0) return
-    const entry = past[past.length - 1]
+    const s = museStore.getState()
+    if (s.historyLoading || s.past.length === 0) return
+    const entry = s.past[s.past.length - 1]
     museStore.setState({ historyLoading: true })
     try {
       await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f.before })))
-      museStore.setState((s) => ({ past: s.past.slice(0, -1), future: [entry, ...s.future] }))
+      museStore.setState((st) => ({ past: st.past.slice(0, -1), future: [entry, ...st.future] }))
     } catch (e) {
       console.error('[muse] undo failed', e)
     } finally {
@@ -76,12 +80,13 @@ export function MuseOverlay() {
   }
 
   async function redo() {
-    if (future.length === 0) return
-    const entry = future[0]
+    const s = museStore.getState()
+    if (s.historyLoading || s.future.length === 0) return
+    const entry = s.future[0]
     museStore.setState({ historyLoading: true })
     try {
       await museWrite(entry.files.map((f) => ({ fileName: f.fileName, newContent: f.after })))
-      museStore.setState((s) => ({ future: s.future.slice(1), past: [...s.past, entry] }))
+      museStore.setState((st) => ({ future: st.future.slice(1), past: [...st.past, entry] }))
     } catch (e) {
       console.error('[muse] redo failed', e)
     } finally {
@@ -90,12 +95,13 @@ export function MuseOverlay() {
   }
 
   async function revertToOriginal() {
-    if (past.length === 0) return
+    const s = museStore.getState()
+    if (s.historyLoading || s.past.length === 0) return
     museStore.setState({ historyLoading: true })
     try {
       // Restore every touched file to its EARLIEST pre-Muse content.
       const earliest = new Map<string, string>()
-      for (const entry of past) {
+      for (const entry of s.past) {
         for (const f of entry.files) if (!earliest.has(f.fileName)) earliest.set(f.fileName, f.before)
       }
       await museWrite([...earliest].map(([fileName, before]) => ({ fileName, newContent: before })))

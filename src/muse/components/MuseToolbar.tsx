@@ -145,8 +145,8 @@ export function MuseToolbar({
       )}
 
       {/* The morphing pill. mounts with the FAB "catch" (only fires on a fresh
-          mount — e.g. after the agent panel closes — never on the in-place
-          FAB↔toolbar morph, since the element persists across it). */}
+          mount — i.e. at startup — never on the in-place FAB↔toolbar morph,
+          since the element persists across it). */}
       <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10 animate-muse-fab-catch motion-reduce:animate-none">
         {/* Leading: manta + "Muse" label. Collapsed, the whole thing is the FAB
             (click to open). Expanded, the label collapses to 0 and this is just
@@ -155,6 +155,7 @@ export function MuseToolbar({
           type="button"
           onClick={() => { if (!expanded) onOpen() }}
           aria-label={expanded ? 'Muse' : 'Open Muse'}
+          aria-expanded={expanded}
           className={`flex shrink-0 items-center rounded-full ${expanded ? 'cursor-default' : ''}`}
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center">
