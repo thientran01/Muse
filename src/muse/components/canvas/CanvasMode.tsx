@@ -184,6 +184,34 @@ function isPositionPinned(el: HTMLElement): boolean {
   return false
 }
 
+// How long to wait for the host to repaint the parent in the new order after a reorder
+// write, before finalizing best-effort. Vite HMR repaints in tens of ms (the write IS the
+// repaint); Next/Turbopack's RSC refresh runs on its OWN, slower clock, fully decoupled from
+// the write — so a fixed delay can't serve both. The cap only bites if no repaint ever lands
+// (broken/headless refresh); the actual repaint resolves the wait early whenever it comes.
+const REPAINT_SETTLE_CAP_MS = 2500
+
+// Resolve when `parent` next mutates (children/content change = the new order painted) or
+// after `cap` ms — host-agnostic, so the reorder finalizes on the ACTUAL repaint rather than
+// a clock-specific delay. Observes attribute-free (childList/characterData) so the dragged
+// node's own inline-style transforms don't spuriously trip it.
+function waitForParentRepaint(parent: HTMLElement | null, cap: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (!parent || !parent.isConnected) return resolve()
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      obs.disconnect()
+      window.clearTimeout(timer)
+      resolve()
+    }
+    const obs = new MutationObserver(finish)
+    obs.observe(parent, { childList: true, subtree: true, characterData: true })
+    const timer = window.setTimeout(finish, cap)
+  })
+}
+
 // The direct-manipulation mode. Picks an element, shows a floating spacing
 // popover + box-model overlay, scrubs live (inline style), and commits each
 // change to source deterministically — landing in the same undo/redo history as
@@ -844,6 +872,11 @@ export function CanvasMode({
         flashHint(r.left, r.top, (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, ''))
         return // ReorderOverlay's no-op/cancel teardown already un-hid the chrome
       }
+      // Start listening for the repaint BEFORE the write triggers it — the parent's order
+      // changing is the only DOM signal that the new order is on screen, and on Vite the
+      // write IS the repaint (it can fire the instant the write lands). Starting first
+      // closes the race where a fast HMR mutation beats the observer.
+      const repainted = waitForParentRepaint(parent, REPAINT_SETTLE_CAP_MS)
       await museWrite(edits)
       const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
       if (haveAllOriginals) {
@@ -856,27 +889,22 @@ export function CanvasMode({
       } else {
         console.warn('[muse] reorder: missing originals, skipping undo entry')
       }
-      // Wait for HMR to repaint the parent in the new order, THEN re-select the
-      // moved element at its new index and resolve — so ReorderOverlay holds its
-      // eased set-down + the hidden chrome until the new order is actually on
-      // screen, then finalizes (no flash at the old location). Best-effort
-      // re-select: never throw on a stale/ready-diverged node.
-      await new Promise<void>((resolve) =>
-        window.setTimeout(() => {
-          const kids = parent?.isConnected ? resolveMembers(parent, selfKeys, el.node) : []
-          const moved = kids[newIndex]
-          if (moved instanceof HTMLElement) {
-            const c = canvasChain(moved)[0]
-            if (c) selectElement(c)
-          }
-          bump((v) => v + 1)
-          // Resolve only AFTER the re-select has re-rendered + the panel re-anchored
-          // (the useLayoutEffect on `selected` runs before the next paint). Two rAFs
-          // clears that frame, so the overlay's un-hide finds the chrome already
-          // positioned at the new location — no flash at the old slot.
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-        }, 200),
-      )
+      // Hold the overlay's eased set-down + hidden chrome until the parent ACTUALLY shows the
+      // new order (the repaint mutation), then re-select the moved element — now correctly
+      // painted — and resolve, so the overlay un-hides re-anchored at the new location with no
+      // flash at the old slot. Gating on the real repaint (not a fixed delay) keeps Vite
+      // instant AND survives Next/Turbopack's slower, write-decoupled RSC refresh. Best-effort
+      // re-select: never throw on a stale/detached parent (e.g. RSC replaced the subtree).
+      await repainted
+      const kids = parent?.isConnected ? resolveMembers(parent, selfKeys, el.node) : []
+      const moved = kids[newIndex]
+      if (moved instanceof HTMLElement) {
+        const c = canvasChain(moved)[0]
+        if (c) selectElement(c)
+      }
+      bump((v) => v + 1)
+      // Two rAFs so the re-select's useLayoutEffect re-anchors the panel before we resolve.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     } catch (e) {
       setError((e as Error).message)
       setReordering(false) // an error path won't reach the overlay's finalize — un-hide here
