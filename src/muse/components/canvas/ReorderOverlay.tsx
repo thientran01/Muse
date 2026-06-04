@@ -8,6 +8,11 @@ const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 // late-but-real swap; the MutationObserver clears earlier on the actual swap. Exported so
 // CanvasMode's repaint-wait shares the SAME cap (overlay clear + re-select finalize together).
 export const SETTLE_CAP_MS = 2500
+// Above this many movable siblings, skip the exact per-slot ghost measure and use the analytic
+// local-gap make-room — a guard for a pathologically large group, where the measures could
+// accumulate. Profiled at ~1ms/measure on a heavy real page (18.5k-px doc, embeds, framer), so
+// this is generous; the measure only fires on a user-paced slot-change, never per frame.
+const MAX_MEASURE_MEMBERS = 200
 
 // Figma-style drag-to-reorder, gesture = press the element body + drag.
 //
@@ -30,7 +35,10 @@ export const SETTLE_CAP_MS = 2500
 // Two things make follow-the-cursor safe: (1) the lift is a CSS transform, which
 // moves the element WITHOUT reflowing siblings, so the drop geometry stays stable;
 // (2) we FREEZE the other siblings' rects at pickup, EXCLUDING the dragged node —
-// otherwise its rect would move with the pointer and always match itself.
+// otherwise its rect would move with the pointer and always match itself. (exactMakeRoom
+// does perform a controlled SYNCHRONOUS ghost reflow on a slot-change to measure the real
+// landing — but it reverts the DOM + transforms before returning, before any frame paints,
+// and never re-reads the frozen rects, so the drop geometry above stays stable.)
 // setPointerCapture retargets the compat mouse events to the node during a drag,
 // so useCanvasMode's hover highlight sees the node (contained) and self-clears
 // instead of flickering across siblings.
@@ -108,6 +116,9 @@ export function ReorderOverlay({
     // Make-room: the sibling transition/transform inline values we override, saved
     // per node so we can restore exactly on teardown. Only set when oneAxis.
     sibPrev: Map<HTMLElement, { transition: string; transform: string }> | null
+    // Exact per-sibling make-room displacements, measured (ghost reorder) once per
+    // target slot and cached so re-hovering a slot is free — see exactMakeRoom.
+    measureCache: Map<number, number[]>
   } | null>(null)
 
   useEffect(() => {
@@ -157,6 +168,7 @@ export function ReorderOverlay({
         frozen: null,
         prevStyle: null,
         sibPrev: null,
+        measureCache: new Map(),
       }
     }
 
@@ -193,7 +205,7 @@ export function ReorderOverlay({
       // When make-room is active, the opened gap IS the affordance — slide the
       // siblings and hide the bar. Otherwise show the bar (2D / reduced-motion).
       if (target && p.sibPrev) {
-        applyMakeRoom(p.frozen!, target.slot, p.fromIndex)
+        exactMakeRoom(parent, node, p.frozen!, p.members, target.toIndex, target.slot, p.fromIndex, p.measureCache)
         setDrop({ ...target, bar: null })
       } else {
         setDrop(target)
@@ -516,7 +528,18 @@ function measureReorderDisplacements(
   } catch {
     return null // fall back to the approximation; `finally` still restores DOM + transforms
   } finally {
-    if (moved) parent.insertBefore(node, back) // always undo the ghost move
+    // Revert the ghost move. `back` is `node`'s original nextSibling — a live child of `parent`
+    // (or null = end), because the measure is fully SYNCHRONOUS so no host mutation can interleave
+    // mid-revert. Guarded + try-wrapped anyway so the revert can NEVER throw and strand `node` at
+    // the ghost slot (this is the user's LIVE DOM), and so the transform restore below always runs.
+    if (moved) {
+      try {
+        if (back === null || back.parentNode === parent) parent.insertBefore(node, back)
+        else parent.appendChild(node) // defensive: `back` gone — re-attach in-parent (self-heals on render)
+      } catch {
+        /* practically unreachable (synchronous) — leave it to the next host render to reconcile */
+      }
+    }
     node.style.transform = savedNode
     frozen.nodes.forEach((n, i) => (n.style.transform = savedOthers[i]))
   }
@@ -742,6 +765,37 @@ function applyMakeRoom(frozen: Frozen, slot: number, fromIndex: number) {
     const finalK = i < slot ? i : i + 1
     const d = (finalK - frozenK) * step // ∈ {-step, 0, +step}
     nodes[i].style.transform = d === 0 ? '' : layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
+  }
+}
+
+// Make-room driven by the EXACT post-reorder geometry (ghost measure) instead of the analytic
+// uniform-step applyMakeRoom: slides each sibling to its REAL position for the hovered slot, so
+// the held drop arrangement equals the real layout and nothing settles afterward (margin-collapse
+// included — which no analytic step can model). The measure (~1ms) runs only on a slot-CHANGE and
+// is cached per `toIndex`, so re-hovering a slot is free; the cost is a few sub-ms reflows per
+// user-paced drag, not per frame. Falls back to applyMakeRoom for a pathologically large group
+// (guard) or if a measure can't run (e.g. a stale target after a mid-drag host re-render).
+function exactMakeRoom(
+  parent: HTMLElement,
+  node: HTMLElement,
+  frozen: Frozen,
+  members: HTMLElement[],
+  toIndex: number,
+  slot: number,
+  fromIndex: number,
+  cache: Map<number, number[]>,
+) {
+  if (members.length > MAX_MEASURE_MEMBERS) return applyMakeRoom(frozen, slot, fromIndex)
+  let disps = cache.get(toIndex)
+  if (!disps) {
+    const m = measureReorderDisplacements(parent, node, frozen, members, toIndex)
+    if (!m) return applyMakeRoom(frozen, slot, fromIndex) // measure bailed → analytic fallback
+    disps = m.others
+    cache.set(toIndex, disps)
+  }
+  for (let i = 0; i < frozen.nodes.length; i++) {
+    const d = disps[i]
+    frozen.nodes[i].style.transform = d === 0 ? '' : frozen.layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
   }
 }
 
