@@ -3,7 +3,6 @@ import { UfoIcon } from '../muse/components/UfoIcon'
 import { NAV, pageFromHash, type PageId } from './nav'
 import { Overview } from './pages/Overview'
 import { Install } from './pages/Install'
-import { Features } from './pages/Features'
 import { HowItWorks } from './pages/HowItWorks'
 import { Reference } from './pages/Reference'
 import { FeedbackWidget } from './FeedbackWidget'
@@ -16,7 +15,6 @@ import { ThemeToggle } from './ThemeToggle'
 const PAGES: Record<PageId, () => JSX.Element> = {
   overview: Overview,
   install: Install,
-  features: Features,
   how: HowItWorks,
   reference: Reference,
 }
@@ -89,10 +87,7 @@ export default function SiteApp() {
               </a>
             ))}
           </nav>
-          <div className="mt-auto flex items-center justify-between pt-6">
-            <a href="https://github.com/thientran01/Muse" className="rounded text-[12px] text-stone-600 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:text-stone-400 dark:hover:text-stone-200 dark:focus-visible:ring-[#e3a384]/50">
-              GitHub ↗
-            </a>
+          <div className="mt-auto flex items-center justify-end pt-6">
             <ThemeToggle />
           </div>
         </aside>

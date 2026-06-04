@@ -10,8 +10,14 @@ import { useEffect } from 'react'
  *   2. `prefers-color-scheme: dark` media query
  *
  * Listens to both, so toggling the host's theme propagates without a refresh.
+ *
+ * `ready` lets the caller re-run this once the ref is actually attached. The
+ * overlay is portaled into a Shadow DOM root that mounts asynchronously, so on
+ * first render `rootRef.current` is still null — without a changing dependency
+ * the effect would bail on that null and never write `data-theme`, leaving the
+ * overlay stuck on its CSS default (dark) no matter the host theme.
  */
-export function useHostTheme(rootRef: React.RefObject<HTMLElement>) {
+export function useHostTheme(rootRef: React.RefObject<HTMLElement>, ready?: unknown) {
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
@@ -38,5 +44,5 @@ export function useHostTheme(rootRef: React.RefObject<HTMLElement>) {
       mo.disconnect()
       mql.removeEventListener('change', apply)
     }
-  }, [rootRef])
+  }, [rootRef, ready])
 }

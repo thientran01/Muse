@@ -93,7 +93,9 @@ export function MuseOverlay() {
   // past it and stack duplicates. This closes the window on the first click.
   const showingDesignRef = useRef(false)
 
-  useHostTheme(rootRef)
+  // Pass shadowMount so the theme re-applies once the overlay is actually
+  // portaled in — rootRef.current is null until that async mount lands.
+  useHostTheme(rootRef, shadowMount)
   const { preview, restore } = usePreviewLayer()
 
   // When the selected target changes:
