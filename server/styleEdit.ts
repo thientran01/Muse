@@ -1665,6 +1665,10 @@ function resolveSiblings(
   // own source identity, and the CLIENT maps DOM↔source members (matching the host children
   // the component renders, skipping any nodes the component injects), so a component parent
   // is safe here — unlike the original host-parent-only gate, an artifact of the fiber locator.
+  // Children stay HOST-ONLY (no allowComponents): the self-anchor client maps DOM↔source by
+  // (tag, className), which a component child breaks (its rendered DOM tag ≠ its `<Foo>` AST
+  // tag), so a component sibling is intentionally refused. (Component *instances* reorder via
+  // the container-anchor path instead.) Only the PARENT gate is dropped, not the child gate.
   const scan = scanReorderChildren(parent)
   if (!scan.ok) return { reason: scan.reason }
   return { el: found.el, parent, elements: scan.elements }

@@ -481,17 +481,28 @@ function inFlowChildren(parent: HTMLElement): HTMLElement[] {
 // the caller fails closed — no drag — rather than move the wrong element).
 function matchMovableMembers(parent: HTMLElement, sourceKeys: ReorderChild[]): HTMLElement[] | null {
   const kids = inFlowChildren(parent)
+  // Extra in-flow nodes beyond the source keys mean the parent INJECTS its own nodes
+  // (e.g. Section's label). With injection present, a tag-only match — the source key has
+  // no static className (a dynamic `className={…}` → openingClassName null), or none matched
+  // exactly — can't reliably tell the injected look-alike from the real source child, so we
+  // FAIL CLOSED there rather than risk a wrong-target write. A clean 1:1 (no injection) is
+  // safe to zip by tag even without a className.
+  const injected = kids.length > sourceKeys.length
   const out: HTMLElement[] = []
   let from = 0
   for (const key of sourceKeys) {
     let found = -1
+    let exactHit = false
     for (let k = from; k < kids.length; k++) {
       if (kids[k].tagName.toLowerCase() !== key.tag) continue
-      const exact = key.classNames == null || (kids[k].getAttribute('class') ?? '') === key.classNames
+      // An EXACT class match is a positive identity; a null key className is NOT exact (it's
+      // ambiguous against a same-tag injected node) even though it's an acceptable 1:1 zip.
+      const exact = key.classNames != null && (kids[k].getAttribute('class') ?? '') === key.classNames
       if (found < 0) found = k // first tag candidate — used if no exact match appears
-      if (exact) { found = k; break } // prefer an exact static-class match
+      if (exact) { found = k; exactHit = true; break } // prefer an exact static-class match
     }
     if (found < 0) return null // a source sibling has no live node → diverged, fail closed
+    if (injected && !exactHit) return null // ambiguous tag-only match amid injected nodes
     out.push(kids[found])
     from = found + 1
   }

@@ -167,6 +167,10 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // class string. Together: viewport-independent. Scoped to THIS element only — a pinned
 // sibling (a decorative absolute badge) must never lock its in-flow neighbours.
 function isPositionPinned(el: HTMLElement): boolean {
+  // getComputedStyle on a DETACHED node (e.g. mid-HMR, between select and probe) returns
+  // empty strings, and `'' !== 'auto'` would read as a false-positive "pinned" → wrongly
+  // refusing a valid reorder. A disconnected node isn't laid out, so treat it as not pinned.
+  if (!el.isConnected) return false
   const cs = getComputedStyle(el)
   if (cs.position === 'absolute' || cs.position === 'fixed') return true
   // Explicit grid line/area placement — auto-flow leaves these 'auto'.
@@ -786,10 +790,15 @@ export function CanvasMode({
   // index (best-effort) to keep the panel anchored to what the user just moved.
   async function commitReorder(el: CanvasElement, toIndex: number) {
     const parent = el.node.parentElement
+    // Capture the self-anchor key-list NOW: the post-HMR re-select reads it ~200ms later
+    // inside a setTimeout, by which point the live `reorderSelfKeys` could belong to a
+    // different selection — which would build the wrong member run and re-select the wrong
+    // node. Pin it to this commit (same reason `frozen`/`prevStyle` are captured up front).
+    const selfKeys = reorderSelfKeys
     // The dragged element's index among its movable siblings (the matched member run for
     // self-anchor, every visible child otherwise) — used to land selection back on it
     // post-HMR. EPHEMERAL has no self keys, so this is the raw visible-child list there.
-    const siblings = parent ? resolveMembers(parent, reorderSelfKeys) : []
+    const siblings = parent ? resolveMembers(parent, selfKeys) : []
     const fromIndex = siblings.indexOf(el.node)
     const newIndex = fromIndex !== -1 && toIndex > fromIndex ? toIndex - 1 : toIndex
 
@@ -853,7 +862,7 @@ export function CanvasMode({
       // re-select: never throw on a stale/ready-diverged node.
       await new Promise<void>((resolve) =>
         window.setTimeout(() => {
-          const kids = parent?.isConnected ? resolveMembers(parent, reorderSelfKeys) : []
+          const kids = parent?.isConnected ? resolveMembers(parent, selfKeys) : []
           const moved = kids[newIndex]
           if (moved instanceof HTMLElement) {
             const c = canvasChain(moved)[0]
