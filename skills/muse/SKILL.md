@@ -6,9 +6,8 @@ description: Install the Muse visual editing overlay into a running React app (V
 # Muse Setup
 
 Install Muse — an in-context visual editor: select any element in your running
-app and edit its **real source code**. The AI chat describes a change in plain
-English and proposes a real edit; **Canvas Mode** makes deterministic edits with
-no API key:
+app and edit its **real source code**. **Canvas Mode** makes deterministic edits
+with no API key:
 
 - scrub spacing / size / type / color, and drag to reorder siblings
 - edit static text in place — and **prop-driven text** (`<span>{label}</span>`),
@@ -92,17 +91,15 @@ destination folder names if they collide with the host's layout.
 
 ## Step 2 — Install dependencies
 
-The engine parses ASTs and (for chat) calls Anthropic; the overlay uses Phosphor
-icons. Detect the package manager (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn, else
-npm) and install:
+The engine parses ASTs; the overlay uses Phosphor icons. Detect the package
+manager (`pnpm-lock.yaml`→pnpm, `yarn.lock`→yarn, else npm) and install:
 
 ```bash
-npm install @babel/parser @babel/traverse @babel/types @anthropic-ai/sdk @phosphor-icons/react
+npm install @babel/parser @babel/traverse @babel/types @phosphor-icons/react
 npm install -D @types/babel__traverse babel-loader   # babel-loader only needed for Track N/W
 ```
 
-Canvas Mode is deterministic and needs no API key. `@anthropic-ai/sdk` is only
-used by the chat path; install it so the server type-checks.
+Canvas Mode is deterministic and needs no API key.
 
 ## Step 3 — Wire the locator (`data-muse-loc`)
 
@@ -235,15 +232,13 @@ One React instance only — mount from the host's own React, never a second copy
    element, scrub its padding — it updates live and the change is written to the
    real source file (`git diff`). Undo with Cmd/Ctrl+Z. (To see the rest: double-
    click prop text to trace it to its usage site, select an element styled via a
-   shared `style={const}` for the scope toggle, or open the design-system card →
+   shared `style={const}` for the scope toggle, or open the design-system popover →
    **Edit tokens**.)
-4. (Optional) Chat needs `ANTHROPIC_API_KEY` in the env, or the `claude` CLI on
-   PATH with `MUSE_BACKEND=claude-cli`. Canvas Mode needs neither.
-5. (Optional) Design-system generator: confirm `scripts/gen-design-md.mjs` exists
+4. (Optional) Design-system generator: confirm `scripts/gen-design-md.mjs` exists
    (`ls scripts/gen-design-md.mjs`) and the `claude` CLI is on PATH (`claude --version`).
-   Open the design-system card (toolbar FileText icon, or the target strip) — it
-   resolves to **Generate** when both are present, or a **"Needs setup: …"** hint
-   naming what's missing. Either is fine; the rest of Muse works regardless.
+   Open the design-system popover (toolbar FileText icon) — it resolves to
+   **Generate** when both are present, or a **"Needs setup: …"** hint naming what's
+   missing. Either is fine; the rest of Muse works regardless.
 
 ## Notes
 
@@ -252,7 +247,7 @@ One React instance only — mount from the host's own React, never a second copy
   dev-gated — nothing reaches a production build.
 - **Works on React 18 and 19, any bundler that runs Babel.** The `data-muse-loc`
   stamp replaced the old React-18-only fiber dependency.
-- **Canvas Mode is free + deterministic** (no model call, no key). Chat is the AI path.
+- **Canvas Mode is free + deterministic** (no model call, no key).
 - **Vendored copy** — it won't auto-update when Muse changes. Re-run the skill to
   refresh. The full per-host reference is the vendored `muse-server/HOSTING.md`.
 

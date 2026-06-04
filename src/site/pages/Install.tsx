@@ -70,10 +70,9 @@ root.render(
       <CodeBlock label="terminal">npm run dev</CodeBlock>
       <P>
         Open your app and click the Muse button in the corner. From there, click any element to shape it
-        directly, or Shift-click to hand it to the chat partner. Chat runs on the Claude CLI by default,
-        on your subscription; set <Code>ANTHROPIC_API_KEY</Code> to use the metered API instead. Canvas
-        needs no key at all. The <a className="underline" href="#/reference">Reference</a> lists every
-        option.
+        directly: drag the spacing, scrub the type, pick a color, rewrite the copy, reorder siblings.
+        Canvas needs no API key at all. The <a className="underline" href="#/reference">Reference</a> lists
+        every option.
       </P>
 
       <H2 id="requirements">Requirements</H2>
