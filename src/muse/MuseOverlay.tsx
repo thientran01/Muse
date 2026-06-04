@@ -665,6 +665,26 @@ export function MuseOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, closing, pending, allAnswered, loading])
 
+  // Global hotkey: R toggles Muse on/off from anywhere on the page. Guarded so it
+  // never fires while typing — composedPath()[0] is the REAL focused node even
+  // through the overlay's Shadow DOM (a document-level event is retargeted to the
+  // host, so e.target alone would miss the overlay's own inputs). Modifier combos
+  // (e.g. Cmd/Ctrl+R reload) are left to the browser.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return
+      const el = e.composedPath()[0] as HTMLElement | undefined
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      e.preventDefault()
+      if (open && !closing) requestClose()
+      else if (closing) cancelClose()
+      else setOpen(true)
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, closing])
+
   // --- Panel tucks aside ---
   // When the element handed to the agent sits under the panel, the panel slides off
   // the right edge, leaving a small tab peeking; the element underneath is fully

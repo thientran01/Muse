@@ -107,8 +107,14 @@ function ColorRow({
   useEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => {
-      const t = e.target as Node
-      if (rowRef.current?.contains(t) || popRef.current?.contains(t)) return
+      // The overlay lives in a Shadow DOM, so a document-level listener sees the
+      // event RETARGETED to the shadow host — e.target is no longer the real inner
+      // node, and contains() would (wrongly) report every click as outside, closing
+      // the picker on its own controls. composedPath() keeps the true path through
+      // the shadow boundary; test membership against it instead.
+      const path = e.composedPath()
+      const inside = (el: Node | null) => !!el && path.includes(el)
+      if (inside(rowRef.current) || inside(popRef.current)) return
       setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
@@ -483,7 +489,11 @@ function ScopeToggle({
           role="radio"
           aria-checked={scope === 'const'}
           onClick={() => onChange('const')}
-          className={`${seg} ${scope === 'const' ? 'bg-accent/15 text-accent ring-1 ring-accent' : 'text-fg-muted hover:text-fg'}`}
+          // Identical neutral chip to "This element" — the toggle reads as one calm
+          // segmented control (no accent on the panel), and the scope is carried by
+          // the label. Accent-on-tint draws the eye and fails contrast at this size;
+          // cream/ink-on-surface is high-contrast in both themes.
+          className={`${seg} ${scope === 'const' ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
         >
           {allLabel}
         </button>
