@@ -130,6 +130,22 @@ export function ReorderOverlay({
     // cancel it if the component unmounts in the gap before the trailing click.
     let cancelSwallow: (() => void) | null = null
 
+    // The point that drives the drop slot. We key it off the dragged element's BODY
+    // (its projected center) rather than the raw cursor, so the insertion tracks what
+    // the user SEES — the card — no matter where on the card they grabbed it. With a
+    // cursor-only rule, grabbing a card near its edge and dragging it over a TALLER
+    // neighbor left the card fully overlapping that neighbor while the cursor was still
+    // short of the neighbor's center, so no gap opened and the drag felt stuck ("can't
+    // get through the big card"). Keying off the card's midpoint makes the swap fire
+    // when the card's center crosses the neighbor's center — the standard sortable feel,
+    // independent of grab offset. Reduced motion never moves the element (onPointerMove
+    // skips the follow transform), so there the cursor is the only signal — fall back to it.
+    const dropPoint = (e: PointerEvent, p: NonNullable<typeof press.current>) => {
+      if (prefersReducedMotion() || !p.frozen) return { x: e.clientX, y: e.clientY }
+      const dr = p.frozen.draggedRect
+      return { x: dr.left + dr.width / 2 + (e.clientX - p.startX), y: dr.top + dr.height / 2 + (e.clientY - p.startY) }
+    }
+
     // Advertise the body as draggable BEFORE any press (siblings set their cursor
     // unconditionally too); saved/restored so we don't clobber a host cursor.
     const prevCursor = node.style.cursor
@@ -201,7 +217,8 @@ export function ReorderOverlay({
       // Follow the cursor. Reduced-motion keeps the element in place (no scale/
       // translate) — the shadow + raised layer still signal "picked up".
       if (!prefersReducedMotion()) node.style.transform = `translate(${dx}px, ${dy}px) scale(1.03)`
-      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
+      const dp = dropPoint(e, p)
+      const target = computeDrop(dp.x, dp.y, p.frozen!, p.fromIndex)
       // When make-room is active, the opened gap IS the affordance — slide the
       // siblings and hide the bar. Otherwise show the bar (2D / reduced-motion).
       if (target && p.sibPrev) {
@@ -242,7 +259,8 @@ export function ReorderOverlay({
       window.addEventListener('click', swallowClick, true)
       cancelSwallow = cleanupSwallow
       node.releasePointerCapture?.(e.pointerId)
-      const target = computeDrop(e.clientX, e.clientY, p.frozen!, p.fromIndex)
+      const dp = dropPoint(e, p)
+      const target = computeDrop(dp.x, dp.y, p.frozen!, p.fromIndex)
 
       // A drop back into your own slot is a no-op — restore + un-hide now.
       if (!target || target.noop) {
@@ -686,10 +704,13 @@ function freezeSiblings(parent: HTMLElement, all: HTMLElement[], dragged: HTMLEl
   return { nodes, rects, layout, draggedRect, gap, oneAxis }
 }
 
-// Map a pointer position to an insertion slot among the FROZEN (other) siblings:
-// nearest neighbor by center distance (handles 2D), then leading/trailing edge
-// along the reading axis. `slot` is an index in OTHER-sibling space (0..others);
-// lift it back into full source order using `fromIndex` (the dragged node's slot).
+// Map a position to an insertion slot among the FROZEN (other) siblings: nearest
+// neighbor by center distance (handles 2D), then leading/trailing edge along the
+// reading axis. `slot` is an index in OTHER-sibling space (0..others); lift it back
+// into full source order using `fromIndex` (the dragged node's slot). NB: (px,py) is
+// the dragged element's projected MIDPOINT (see dropPoint), not the raw cursor — so
+// the swap fires when the card's center crosses a neighbor's center, regardless of
+// where on the card it was grabbed (a cursor-only rule felt stuck over tall neighbors).
 function computeDrop(px: number, py: number, frozen: Frozen, fromIndex: number): DropTarget | null {
   const { rects, layout } = frozen
   if (rects.length === 0) return null
