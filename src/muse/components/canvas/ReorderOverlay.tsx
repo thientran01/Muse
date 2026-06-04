@@ -3,6 +3,11 @@ import type { ReorderChild } from '../../types'
 import { getSourceLocation } from '../../sourceLocation'
 
 const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
+// Strand-guard for the held lift/make-room transforms if the post-drop repaint never fires.
+// Must exceed a slow, write-decoupled RSC refresh (Next/Turbopack) so it can't pre-empt a
+// late-but-real swap; the MutationObserver clears earlier on the actual swap. Exported so
+// CanvasMode's repaint-wait shares the SAME cap (overlay clear + re-select finalize together).
+export const SETTLE_CAP_MS = 2500
 
 // Figma-style drag-to-reorder, gesture = press the element body + drag.
 //
@@ -253,9 +258,14 @@ export function ReorderOverlay({
       // TWO separate moments, deliberately NOT merged:
       //
       // (1) CLEAR TRANSFORMS — must happen in the exact frame the content swaps, or
-      //     the held transforms briefly show the original order (the fakeout). Driven
-      //     by a MutationObserver on the container (fires after the DOM mutation,
-      //     before paint), so swap + clear are atomic.
+      //     the held transforms briefly show the original order (the fakeout). The
+      //     MutationObserver on the container is the SOLE driver (fires after the DOM
+      //     mutation, before paint → swap + clear are atomic). It is deliberately NOT
+      //     also cleared from onReorder's finally: on a host whose repaint is decoupled
+      //     from the write (Next/Turbopack RSC, which refreshes on its own slower clock),
+      //     onReorder can resolve BEFORE the swap, and an early clear there would snap the
+      //     element back to its old slot — the exact fakeout we're avoiding. The held
+      //     destination transform shows the correct final position until the real swap.
       let cleared = false
       const clearTransforms = () => {
         if (cleared) return
@@ -267,17 +277,21 @@ export function ReorderOverlay({
       }
       const obs = new MutationObserver(clearTransforms)
       obs.observe(parent, { childList: true, subtree: true, characterData: true })
-      const safety = window.setTimeout(clearTransforms, 1200) // strand-guard if no mutation
+      // Strand-guard if no mutation ever fires. Sized for a slow, write-decoupled RSC refresh
+      // (not just Vite HMR), so it can't pre-empt a late-but-real swap; the observer resolves
+      // earlier whenever the swap actually lands.
+      const safety = window.setTimeout(clearTransforms, SETTLE_CAP_MS)
 
       // (2) UN-HIDE THE CHROME — must wait for the RE-SELECT, not the content swap.
       //     HMR reuses nodes positionally, so right after the swap `selected` still
       //     points at the dragged element's ORIGINAL physical node, now showing the
       //     other element's content at the old slot. Un-hiding then would flash the
       //     chrome at the old location before commitReorder's re-select moves it.
-      //     onReorder resolves only AFTER that re-select, so un-hide in its finally —
-      //     the chrome fades back in already anchored to the new location.
+      //     onReorder now resolves only AFTER the parent's real repaint + re-select
+      //     (it awaits the same mutation, host-agnostically), so un-hide in its finally —
+      //     the chrome fades back in already anchored to the new location. Clearing the
+      //     transforms is left entirely to the observer above (see note there).
       void onReorderRef.current(target.toIndex).finally(() => {
-        clearTransforms() // belt-and-suspenders: ensure nothing strands if no mutation fired
         onDragChangeRef.current?.(false)
       })
     }
