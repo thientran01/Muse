@@ -12,7 +12,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { spawn, execFileSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   computeStyleEdit,
@@ -436,7 +435,6 @@ function findClaudeBin(): string | null {
   claudeBinCache = { value }
   return value
 }
-
 
 // Path to the design-brief generator script, if it was vendored into the host.
 function designGeneratorScript(root: string): string {
