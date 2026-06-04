@@ -35,8 +35,6 @@ import { createMuseHandlers, type MuseContext, type Handler } from './museCore'
 function buildRoutes(ctx: MuseContext): Map<string, Handler> {
   const h = createMuseHandlers(ctx)
   return new Map<string, Handler>([
-    ['POST /api/muse/chat', h.chat],
-    ['POST /api/muse/observe', h.observe],
     ['POST /api/muse/write', h.write],
     ['POST /api/muse/style-edit', h.styleEdit],
     ['POST /api/muse/style-scope', h.styleScope],
