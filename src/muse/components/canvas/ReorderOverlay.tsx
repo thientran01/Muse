@@ -5,9 +5,9 @@ import { getSourceLocation } from '../../sourceLocation'
 const THRESHOLD = 5 // px the pointer must travel before a press becomes a drag
 // Strand-guard for the held lift/make-room transforms if the post-drop repaint never fires.
 // Must exceed a slow, write-decoupled RSC refresh (Next/Turbopack) so it can't pre-empt a
-// late-but-real swap; the MutationObserver clears earlier on the actual swap. Kept in sync
-// with CanvasMode's REPAINT_SETTLE_CAP_MS so the overlay clear + the re-select finalize together.
-const SETTLE_CAP_MS = 2500
+// late-but-real swap; the MutationObserver clears earlier on the actual swap. Exported so
+// CanvasMode's repaint-wait shares the SAME cap (overlay clear + re-select finalize together).
+export const SETTLE_CAP_MS = 2500
 
 // Figma-style drag-to-reorder, gesture = press the element body + drag.
 //

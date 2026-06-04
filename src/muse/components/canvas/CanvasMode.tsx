@@ -12,7 +12,7 @@ import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
-import { ReorderOverlay, resolveMembers } from './ReorderOverlay'
+import { ReorderOverlay, resolveMembers, SETTLE_CAP_MS } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
@@ -184,17 +184,13 @@ function isPositionPinned(el: HTMLElement): boolean {
   return false
 }
 
-// How long to wait for the host to repaint the parent in the new order after a reorder
-// write, before finalizing best-effort. Vite HMR repaints in tens of ms (the write IS the
-// repaint); Next/Turbopack's RSC refresh runs on its OWN, slower clock, fully decoupled from
-// the write — so a fixed delay can't serve both. The cap only bites if no repaint ever lands
-// (broken/headless refresh); the actual repaint resolves the wait early whenever it comes.
-const REPAINT_SETTLE_CAP_MS = 2500
-
 // Resolve when `parent` next mutates (children/content change = the new order painted) or
 // after `cap` ms — host-agnostic, so the reorder finalizes on the ACTUAL repaint rather than
-// a clock-specific delay. Observes attribute-free (childList/characterData) so the dragged
-// node's own inline-style transforms don't spuriously trip it.
+// a clock-specific delay. Vite HMR repaints in tens of ms (the write IS the repaint);
+// Next/Turbopack's RSC refresh runs on its own slower clock, decoupled from the write, so a
+// fixed delay can't serve both. The cap (shared SETTLE_CAP_MS) only bites if no repaint ever
+// lands. Observes attribute-free (childList/characterData) so the dragged node's own inline-
+// style transforms don't spuriously trip it.
 function waitForParentRepaint(parent: HTMLElement | null, cap: number): Promise<void> {
   return new Promise((resolve) => {
     if (!parent || !parent.isConnected) return resolve()
@@ -876,7 +872,7 @@ export function CanvasMode({
       // changing is the only DOM signal that the new order is on screen, and on Vite the
       // write IS the repaint (it can fire the instant the write lands). Starting first
       // closes the race where a fast HMR mutation beats the observer.
-      const repainted = waitForParentRepaint(parent, REPAINT_SETTLE_CAP_MS)
+      const repainted = waitForParentRepaint(parent, SETTLE_CAP_MS)
       await museWrite(edits)
       const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
       if (haveAllOriginals) {
