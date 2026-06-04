@@ -16,11 +16,6 @@
 //    MUSE_PORT          Port to listen on (default: 4747)
 //    MUSE_HOST          Interface to bind (default: 127.0.0.1 — localhost only)
 //    MUSE_CORS_ORIGIN   Allowed origin (default: localhost-only; set to "*" to allow any)
-//    ANTHROPIC_API_KEY  For the /observe endpoint (Haiku) and api backend /chat
-//    MUSE_BACKEND       "claude-cli" (default) | "anthropic"
-//    MUSE_MODEL         Model for /chat anthropic backend
-//    MUSE_CLI_MODEL     Model alias for /chat claude-cli backend
-//    MUSE_OBSERVE_MODEL Model for /observe
 //    MUSE_DESIGN_MD     Path to DESIGN.md override
 //    MUSE_DESIGN_EXCLUDE Comma-separated terms to drop from design brief evidence
 // ============================================================
@@ -65,8 +60,6 @@ function addCors(req: IncomingMessage, res: ServerResponse) {
 // Map "METHOD /path" → handler. /design/generate must come before /design so the
 // longer prefix wins (unlike Connect middleware, we do an exact key lookup).
 const ROUTES = new Map<string, Handler>([
-  ['POST /api/muse/chat',            handlers.chat],
-  ['POST /api/muse/observe',         handlers.observe],
   ['POST /api/muse/write',           handlers.write],
   ['POST /api/muse/style-edit',      handlers.styleEdit],
   ['POST /api/muse/style-scope',     handlers.styleScope],
@@ -115,7 +108,6 @@ server.listen(port, host, () => {
   console.log(`[muse] standalone server  http://${host}:${port}`)
   console.log(`[muse] bind              ${host}${isLoopback ? ' (localhost only)' : ''}`)
   console.log(`[muse] root              ${root}`)
-  console.log(`[muse] backend           ${ctx.backend}`)
   console.log(`[muse] cors origin       ${corsOverride ?? 'localhost-only (default)'}`)
   if (!corsOverride) console.log(`[muse] tip: set MUSE_CORS_ORIGIN='*' to allow any dev origin`)
   if (!isLoopback) {

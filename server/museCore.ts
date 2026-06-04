@@ -14,7 +14,6 @@ import fs from 'node:fs'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import Anthropic from '@anthropic-ai/sdk'
 import {
   computeStyleEdit,
   computeTextEdit,
@@ -40,12 +39,7 @@ import { setTemplateProperty } from '../src/muse/style/styledEdit'
 
 // ---- Constants ----------------------------------------------------------------
 
-export const DEFAULT_BACKEND = 'claude-cli'
-export const DEFAULT_MODEL = 'claude-sonnet-4-6'        // anthropic backend, /chat
-export const DEFAULT_CLI_MODEL = 'sonnet'               // claude-cli backend (alias = latest)
-export const DEFAULT_OBSERVE_MODEL = 'claude-haiku-4-5' // /observe — cheap + fast
 const MAX_WRITE_BYTES = 200_000
-const CLI_TIMEOUT_MS = 300_000
 const MAX_DESIGN_BYTES = 40_000
 const DESIGN_MD_CANDIDATES = ['DESIGN.md', 'src/DESIGN.md', 'src/demo/DESIGN.md']
 
@@ -53,12 +47,6 @@ const DESIGN_MD_CANDIDATES = ['DESIGN.md', 'src/DESIGN.md', 'src/demo/DESIGN.md'
 
 export type MuseContext = {
   root: string
-  apiKey: string
-  model: string
-  backend: string
-  cliModel: string
-  observeModel: string
-  claudeBin: string
   designMdOverride: string
   designExclude: string[]
   // Mutable session state
@@ -72,15 +60,8 @@ export function createMuseContext(
   root: string,
 ): MuseContext {
   const get = (key: string) => env[key] ?? ''
-  const backend = (get('MUSE_BACKEND') || DEFAULT_BACKEND).trim()
   return {
     root,
-    apiKey: get('ANTHROPIC_API_KEY'),
-    model: get('MUSE_MODEL') || DEFAULT_MODEL,
-    backend,
-    cliModel: get('MUSE_CLI_MODEL') || DEFAULT_CLI_MODEL,
-    observeModel: get('MUSE_OBSERVE_MODEL') || DEFAULT_OBSERVE_MODEL,
-    claudeBin: backend === 'claude-cli' ? resolveClaudeBin() : 'claude',
     designMdOverride: get('MUSE_DESIGN_MD'),
     designExclude: get('MUSE_DESIGN_EXCLUDE')
       .split(',')
@@ -97,8 +78,6 @@ export function createMuseContext(
 export type Handler = (req: IncomingMessage, res: ServerResponse) => Promise<void>
 
 export type MuseHandlers = {
-  chat: Handler
-  observe: Handler
   write: Handler
   styleEdit: Handler
   styleScope: Handler
@@ -114,8 +93,6 @@ export type MuseHandlers = {
 
 export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
   return {
-    chat:           (req, res) => handleChat(req, res, ctx),
-    observe:        (req, res) => handleObserve(req, res, ctx),
     write:          (req, res) => handleWrite(req, res, ctx),
     styleEdit:      (req, res) => handleStyleEdit(req, res, ctx),
     styleScope:     (req, res) => handleStyleScope(req, res, ctx),
@@ -397,31 +374,6 @@ function spliceStringLiteralValue(source: string, valueStart: number, valueEnd: 
   return source.slice(0, valueStart) + escaped + source.slice(valueEnd)
 }
 
-function parseObserveJson(text: string): { observation: string; chips: string[] } | null {
-  if (!text) return null
-  let t = text.trim()
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fence) t = fence[1].trim()
-  const start = t.indexOf('{')
-  const end = t.lastIndexOf('}')
-  if (start === -1 || end === -1 || end < start) return null
-  try {
-    const obj = JSON.parse(t.slice(start, end + 1)) as { observation?: unknown; chips?: unknown }
-    const observation = typeof obj.observation === 'string' ? obj.observation.trim() : ''
-    const chips = Array.isArray(obj.chips)
-      ? obj.chips
-          .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
-          .map((c) => c.trim())
-          .filter((c, i, a) => a.indexOf(c) === i)
-          .slice(0, 3)
-      : []
-    if (!observation || chips.length === 0) return null
-    return { observation, chips }
-  } catch {
-    return null
-  }
-}
-
 function loadDesignBrief(root: string, override: string): string | null {
   const tryRead = (p: string): string | null => {
     try {
@@ -449,9 +401,6 @@ function loadDesignBrief(root: string, override: string): string | null {
   return null
 }
 
-const designBriefBlock = (brief: string) =>
-  `# The app's design system (DESIGN.md)\nFollow this. The tokens are normative — prefer them over inventing values, and apply colors through their CSS variables (never hardcode hex).\n\n${brief}`
-
 function resolveDesignPath(root: string, override: string): { path: string; exists: boolean } {
   const isFile = (p: string) => { try { return fs.statSync(p).isFile() } catch { return false } }
   if (override) {
@@ -465,152 +414,7 @@ function resolveDesignPath(root: string, override: string): { path: string; exis
   return { path: path.resolve(root, DESIGN_MD_CANDIDATES[0]), exists: false }
 }
 
-// ---- System prompts -----------------------------------------------------------
-
-export const MUSE_SYSTEM_PROMPT = `You are Muse — a design partner embedded in a live web app. The person using you is a product designer or design engineer: they point at an element in their running app and tell you how they want it to change. They have taste, design vocabulary, and usually read code — talk to them as a peer, not a layperson. They own the direction; you own the craft of executing it in real source, and you bring a point of view of your own.
-
-# Context you receive
-
-The FULL source of every React + TypeScript file the selected elements live in, plus a list of which elements were selected and which file each lives in. The app is styled with Tailwind utility classes inline in className. When multiple elements are selected (a batch), apply the change consistently across all of them.
-
-# Tools
-
-You must use exactly one tool per turn.
-
-- propose_options — your DEFAULT. Offer 1–3 distinct design DIRECTIONS for the request, each a complete applyable edit. Give a different option ONLY when there's a genuinely different good take (e.g. "Editorial" vs "Punchy") — don't pad to three with near-duplicates; one confident option is the right answer when there's one clear move. Each option carries the COMPLETE updated contents of every file it changes (one entry per file, exact relative path from context), changing only what's needed and keeping all other code byte-for-byte identical. Style with Tailwind utility classes inline in className only — never add CSS files, style objects, or extracted class variables. IMPORTANT: scope each option's change to the SELECTED element (and its own subtree) so the user can preview it in place; if the request genuinely needs to touch siblings or parents, that's fine, but prefer the tightest change that satisfies it.
-
-- ask_clarifying_questions — the EXCEPTION. Use ONLY when the answer would materially change what you'd ship. If a thoughtful designer would just pick a direction and run with it, do that instead and let the user redirect after seeing it. When you do ask, ask ONE question with 2–3 concrete visual options, written as directions a designer would recognize.
-
-# Voice
-
-You're a design-engineer collaborator, not an AI assistant. That means:
-
-- **Talk to a peer.** They speak design and read code, so use real vocabulary — name the property, the token, the type scale, the spacing step. "Dropped the title to text-4xl and tightened tracking" beats "made the title smaller." Don't over-explain or soften for a layperson.
-- **No preambles.** Never start with "Certainly!", "I'll help you with that", "Here's what I changed:". Start with the move or the observation.
-- **Have a POV.** "Pushed the hierarchy — heavier title, tighter spacing, denser accent" beats "I've updated the styling." State the move, then the reason.
-- **Notice what wasn't asked.** If you spotted something else worth fixing *in the same files as the selected elements*, mention it briefly: "Also tightened the gap to 16px — 32px felt heavy for this density." Never touch files that aren't already in your context.
-- **Short and declarative.** A confident sentence beats a careful paragraph.
-- **Occasional dry humor is fine; corporate enthusiasm is not.**
-
-# Decisiveness rubric
-
-Before calling ask_clarifying_questions, check: would a senior designer ship a confident first pass without asking this? If yes, use propose_options and ship it. If two or three directions are each defensible, that's exactly when to return multiple options instead of asking. If the user wants something else, they'll tell you and you'll iterate. Almost always: don't ask.
-
-Examples of when NOT to ask (just propose):
-- "make this pop" on a CTA → pick a confident treatment (stronger color, denser type, clearer shadow) and propose. Note in the rationale how to dial it back if too loud.
-- "feel more premium" on a card → pick the move (more whitespace, refined type pairing, restrained color) and propose.
-- "simplify this" → pick the simplification and propose.
-- "match the rest of the app" on an element → look at the surrounding code, pick the consistent treatment, propose.
-
-When TO ask:
-- "redesign this hero" → scope is too big to ship blind. Ask one narrowing question with 2–3 concrete directions ("editorial-and-quiet", "punchy-and-loud", "playful-and-warm").
-- The selected element is doing two unrelated jobs and the request is ambiguous about which one to address.
-
-# Rationale rules (for propose_options)
-
-The top-level rationale is one or two short sentences for a fellow designer: lead with the move, then the reason, in real design language. Each option's label is 1–2 words ("Editorial", "Punchy") and its description is one crisp sentence on what that direction does. Skip the diff narration — they can see the result.
-
-You are a partner, not a tool. Make the call.`
-
-const OBSERVE_SYSTEM_PROMPT = `You are Muse — a design partner reading over a product designer's shoulder. They just selected an element in their live app. Give them the quick, knowledgeable read a design-engineer peer would offer glancing at the same element.
-
-Respond with a JSON object containing two fields:
-
-- observation: ONE short sentence (max ~20 words) reading the element from its className list and surrounding code — name what it's doing or the effect it's going for. This is a READ, not a verdict, and not always a critique: sometimes the honest read is that the craft is already working ("the tracking-tight + text-5xl is carrying real editorial weight"), sometimes it's a genuine opportunity ("the 32px gap is loosening what reads like one unit"). Call whichever you actually see; don't manufacture a flaw just to have something to fix. Specific over generic. Designer voice — real vocabulary, no preamble, no "I notice...".
-- chips: 3 starter prompts tailored to the element's tag and context, each 2–4 words, phrased as a design move the designer might say to you ("Tighten the rhythm", "Push the contrast", "Try a warmer accent"). Vary them — three distinct moves, not rephrasings of one idea.
-
-Ground everything in what's actually in the className list and code. Don't speculate about what you can't see.`
-
-// ---- Tool schemas -------------------------------------------------------------
-
-export const ASK_TOOL: Anthropic.Tool = {
-  name: 'ask_clarifying_questions',
-  description:
-    "Ask ONE short clarifying question with 2–3 concrete visual options. Use ONLY when the answer would materially change what you ship — if a thoughtful designer would just pick a direction and run with it, use propose_edit instead (that is the default). Almost always: don't ask.",
-  input_schema: {
-    type: 'object',
-    properties: {
-      questions: {
-        type: 'array',
-        description: 'Exactly ONE question, in almost every case. Two only if genuinely needed.',
-        items: {
-          type: 'object',
-          properties: {
-            question: { type: 'string', description: 'The question, in plain language.' },
-            options: {
-              type: 'array',
-              description: '2 or 3 options.',
-              items: {
-                type: 'object',
-                properties: {
-                  label: { type: 'string', description: 'Short choice label (1–4 words).' },
-                  description: {
-                    type: 'string',
-                    description: 'One plain-English sentence on what this option means.',
-                  },
-                },
-                required: ['label', 'description'],
-              },
-            },
-          },
-          required: ['question', 'options'],
-        },
-      },
-    },
-    required: ['questions'],
-  },
-}
-
-const EDITS_SCHEMA = {
-  type: 'array' as const,
-  description: 'One entry per changed file.',
-  items: {
-    type: 'object' as const,
-    properties: {
-      fileName: {
-        type: 'string' as const,
-        description: 'The exact relative path of the file (as shown in the context).',
-      },
-      newContent: { type: 'string' as const, description: 'The complete updated contents of the file.' },
-    },
-    required: ['fileName', 'newContent'],
-  },
-}
-
-export const PROPOSE_OPTIONS_TOOL: Anthropic.Tool = {
-  name: 'propose_options',
-  description:
-    'Propose 1–3 distinct design directions for the request. Give multiple options only when there are genuinely different good takes; one confident option is correct when there is one clear move. Each option is a complete, applyable edit. Scope each change to the selected element so it can be previewed in place.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      rationale: {
-        type: 'string',
-        description:
-          'One or two crisp sentences for a fellow designer: the overall move and why, in real design language. Covers the whole proposal.',
-      },
-      options: {
-        type: 'array',
-        description: '1 to 3 design directions.',
-        items: {
-          type: 'object',
-          properties: {
-            label: { type: 'string', description: 'Short name for this direction (1–2 words), e.g. "Editorial".' },
-            description: {
-              type: 'string',
-              description: 'One plain-English sentence on what this direction does.',
-            },
-            edits: EDITS_SCHEMA,
-          },
-          required: ['label', 'description', 'edits'],
-        },
-      },
-    },
-    required: ['rationale', 'options'],
-  },
-}
-
-// ---- CLI backend helpers -------------------------------------------------------
+// ---- Design-brief generator helpers -------------------------------------------
 
 // Resolve the `claude` CLI on PATH, or null if it isn't installed. `where`/`which`
 // exits non-zero when nothing matches, so a thrown error (or no hits) means absent.
@@ -633,11 +437,6 @@ function findClaudeBin(): string | null {
   return value
 }
 
-function resolveClaudeBin(): string {
-  // Fall back to the bare name so a spawn still attempts (and fails with a clear
-  // message) on the off chance `where`/`which` is itself unavailable.
-  return findClaudeBin() ?? 'claude'
-}
 
 // Path to the design-brief generator script, if it was vendored into the host.
 function designGeneratorScript(root: string): string {
@@ -663,430 +462,7 @@ function designGeneratorBlocker(root: string): string | null {
   return generatorBlockerFor(fs.existsSync(designGeneratorScript(root)), findClaudeBin() !== null)
 }
 
-const CLI_SYSTEM_PROMPT = `${MUSE_SYSTEM_PROMPT}
-
-# Output format (IMPORTANT — read this last, it overrides the "Tools" section above)
-
-You have NO callable tools here. Return your answer ONLY as the structured object defined by the schema:
-
-- To propose design directions (your DEFAULT, the old propose_options): set mode="options", write the one/two-sentence rationale, and give 1–3 options. Each option has a 1–2 word label, a one-sentence description, and an "edits" array. Each edit is { fileName: the exact relative path from the context, replacements: [ { search, replace } ] }. For each change, "search" is an EXACT, verbatim substring of that file's CURRENT contents — copy it character-for-character including indentation — chosen just long enough to appear EXACTLY ONCE in the file; "replace" is the text to put in its place. Make the smallest replacements that achieve the change (usually just the selected element's className string). Do NOT return whole files. Tailwind utility classes inline only. Leave "questions" empty.
-- To ask (the rare exception, the old ask_clarifying_questions): set mode="clarify" and give exactly ONE entry in "questions" with 2–3 concrete visual options. Leave "rationale" and "options" empty.
-
-Every voice, decisiveness, and rationale rule above still applies — only the delivery mechanism changed.`
-
-const CLI_EDITS_SCHEMA = {
-  type: 'array' as const,
-  description: 'One entry per changed file.',
-  items: {
-    type: 'object' as const,
-    properties: {
-      fileName: {
-        type: 'string' as const,
-        description: 'The exact relative path of the file (as shown in the context).',
-      },
-      replacements: {
-        type: 'array' as const,
-        description: 'One or more search/replace edits to apply within this file, in order.',
-        items: {
-          type: 'object' as const,
-          properties: {
-            search: {
-              type: 'string' as const,
-              description:
-                "An EXACT, verbatim substring of the file's CURRENT contents (copied character-for-character, including indentation), long enough to appear exactly once.",
-            },
-            replace: { type: 'string' as const, description: 'The text to put in its place.' },
-          },
-          required: ['search', 'replace'],
-        },
-      },
-    },
-    required: ['fileName', 'replacements'],
-  },
-}
-
-const CLI_OUTPUT_SCHEMA = {
-  type: 'object',
-  properties: {
-    mode: { type: 'string', enum: ['options', 'clarify'] },
-    rationale: { type: 'string', description: 'For mode="options": one or two crisp sentences for a fellow designer — the move and why, in real design language.' },
-    options: {
-      type: 'array',
-      description: 'For mode="options": 1–3 design directions.',
-      items: {
-        type: 'object',
-        properties: {
-          label: { type: 'string', description: 'Short name (1–2 words), e.g. "Editorial".' },
-          description: { type: 'string', description: 'One plain-English sentence on what this direction does.' },
-          edits: CLI_EDITS_SCHEMA,
-        },
-        required: ['label', 'description', 'edits'],
-      },
-    },
-    questions: {
-      type: 'array',
-      description: 'For mode="clarify": exactly one question.',
-      items: {
-        type: 'object',
-        properties: {
-          question: { type: 'string', description: 'The question, in plain language.' },
-          options: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                label: { type: 'string', description: 'Short choice label (1–4 words).' },
-                description: { type: 'string', description: 'One plain-English sentence on what this option means.' },
-              },
-              required: ['label', 'description'],
-            },
-          },
-        },
-        required: ['question', 'options'],
-      },
-    },
-  },
-  required: ['mode'],
-}
-
-function flattenTranscript(messages: Anthropic.MessageParam[]): string {
-  const lines: string[] = []
-  for (const m of messages) {
-    if (m.role === 'user') {
-      if (typeof m.content === 'string') {
-        lines.push(`USER: ${m.content}`)
-      } else if (Array.isArray(m.content)) {
-        for (const b of m.content as Array<{ type?: string; text?: string; content?: unknown }>) {
-          if (b.type === 'tool_result') {
-            const c = typeof b.content === 'string' ? b.content : JSON.stringify(b.content)
-            lines.push(`USER (answering your question): ${c}`)
-          } else if (b.type === 'text' && b.text) {
-            lines.push(`USER: ${b.text}`)
-          }
-        }
-      }
-    } else if (m.role === 'assistant' && Array.isArray(m.content)) {
-      for (const b of m.content as Array<{ type?: string; text?: string; name?: string; input?: Record<string, unknown> }>) {
-        if (b.type === 'text' && b.text) {
-          lines.push(`MUSE: ${b.text}`)
-        } else if (b.type === 'tool_use') {
-          if (b.name === 'ask_clarifying_questions') {
-            const q = (b.input?.questions as Array<{ question?: string }>)?.[0]?.question ?? '(a clarifying question)'
-            lines.push(`MUSE (asked): ${q}`)
-          } else {
-            const labels = ((b.input?.options as Array<{ label?: string }>) ?? [])
-              .map((o) => o?.label)
-              .filter(Boolean)
-              .join(', ')
-            lines.push(`MUSE (proposed${labels ? ` — ${labels}` : ''}): ${(b.input?.rationale as string) ?? ''}`)
-          }
-        }
-      }
-    }
-  }
-  return lines.join('\n')
-}
-
-function applyReplacements(
-  original: string,
-  replacements: Array<{ search?: unknown; replace?: unknown }>,
-): string {
-  if (!Array.isArray(replacements) || replacements.length === 0) throw new Error('no replacements')
-  let text = original
-  for (const r of replacements) {
-    const search = typeof r?.search === 'string' ? r.search : ''
-    const replace = typeof r?.replace === 'string' ? r.replace : ''
-    if (!search) throw new Error('empty search block')
-    const idx = text.indexOf(search)
-    if (idx !== -1) {
-      if (text.indexOf(search, idx + 1) !== -1) throw new Error('ambiguous search block (matches more than once)')
-      text = text.slice(0, idx) + replace + text.slice(idx + search.length)
-      continue
-    }
-    const trimmed = search.trim()
-    if (trimmed && trimmed !== search) {
-      const ti = text.indexOf(trimmed)
-      if (ti !== -1 && text.indexOf(trimmed, ti + 1) === -1) {
-        text = text.slice(0, ti) + replace + text.slice(ti + trimmed.length)
-        continue
-      }
-    }
-    const applied = applyNormalizedLines(text, search, replace)
-    if (applied == null) throw new Error('could not locate the snippet to change')
-    text = applied
-  }
-  return text
-}
-
-function applyNormalizedLines(text: string, search: string, replace: string): string | null {
-  const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
-  const textLines = text.split('\n')
-  const searchLines = search.split('\n').map(norm).filter((l) => l.length > 0)
-  if (searchLines.length === 0) return null
-  let matchAt = -1
-  for (let i = 0; i + searchLines.length <= textLines.length; i++) {
-    let ok = true
-    for (let j = 0; j < searchLines.length; j++) {
-      if (norm(textLines[i + j]) !== searchLines[j]) { ok = false; break }
-    }
-    if (ok) {
-      if (matchAt !== -1) return null
-      matchAt = i
-    }
-  }
-  if (matchAt === -1) return null
-  const before = textLines.slice(0, matchAt)
-  const after = textLines.slice(matchAt + searchLines.length)
-  return [...before, replace, ...after].join('\n')
-}
-
-function runChatViaCli(
-  bin: string,
-  model: string,
-  prompt: string,
-  originals: Record<string, string>,
-): Promise<Anthropic.ContentBlock[]> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      '-p',
-      '--output-format', 'json',
-      '--model', model,
-      '--tools', '',
-      '--disable-slash-commands',
-      '--strict-mcp-config',
-      '--setting-sources', '',
-      '--system-prompt', CLI_SYSTEM_PROMPT,
-      '--json-schema', JSON.stringify(CLI_OUTPUT_SCHEMA),
-    ]
-    const childEnv = { ...process.env }
-    delete childEnv.ANTHROPIC_API_KEY
-
-    const child = spawn(bin, args, { env: childEnv })
-    let out = ''
-    let err = ''
-    let settled = false
-    const done = (fn: () => void) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      fn()
-    }
-    const timer = setTimeout(() => {
-      child.kill()
-      done(() => reject(new Error(`claude CLI timed out after ${CLI_TIMEOUT_MS / 1000}s.`)))
-    }, CLI_TIMEOUT_MS)
-
-    child.stdout.on('data', (d) => (out += d))
-    child.stderr.on('data', (d) => (err += d))
-    child.stdin.on('error', () => {})
-    child.on('error', (e) =>
-      done(() =>
-        reject(new Error(`Could not run the \`claude\` CLI (${(e as Error).message}). Is Claude Code installed and on PATH, and are you logged in (\`claude auth status\`)?`)),
-      ),
-    )
-    child.on('close', (code) => {
-      done(() => {
-        if (code !== 0) {
-          return reject(new Error(`claude CLI exited with code ${code}: ${err.slice(0, 800) || '(no stderr)'}`))
-        }
-        let res: { structured_output?: unknown; session_id?: string; is_error?: boolean; result?: unknown }
-        try {
-          res = JSON.parse(out)
-        } catch {
-          return reject(new Error(`Could not parse claude CLI output: ${out.slice(0, 800)}`))
-        }
-        if (res.is_error) {
-          const msg = typeof res.result === 'string' ? res.result : 'unknown error'
-          return reject(new Error(`claude CLI reported an error: ${msg.slice(0, 800)}`))
-        }
-        const so = res.structured_output as
-          | { mode?: string; rationale?: string; options?: unknown; questions?: unknown }
-          | undefined
-        if (!so || typeof so !== 'object') {
-          return reject(new Error('claude CLI returned no structured output.'))
-        }
-        const id = `cli-${res.session_id ?? randomUUID()}`
-        let content: Array<Record<string, unknown>>
-        if (so.mode === 'clarify') {
-          const questions = Array.isArray(so.questions) ? so.questions : []
-          if (questions.length === 0) {
-            return reject(new Error('claude CLI returned no question. Try rephrasing.'))
-          }
-          content = [{ type: 'tool_use', id, name: 'ask_clarifying_questions', input: { questions } }]
-        } else {
-          const rawOptions = Array.isArray(so.options) ? so.options : []
-          const options: Array<Record<string, unknown>> = []
-          rawOptions.forEach((o, i) => {
-            const opt = o as { label?: unknown; description?: unknown; edits?: unknown }
-            const rawEdits = Array.isArray(opt.edits) ? opt.edits : []
-            try {
-              const edits = rawEdits.map((e) => {
-                const edit = e as { fileName?: unknown; replacements?: unknown }
-                const fileName = typeof edit.fileName === 'string' ? edit.fileName : ''
-                const key = fileName.replace(/\\/g, '/').replace(/^\.\//, '')
-                const orig = originals[key] ?? originals[fileName]
-                if (orig == null) throw new Error(`edit references unknown file "${fileName}"`)
-                const replacements = Array.isArray(edit.replacements) ? edit.replacements : []
-                return { fileName: key, newContent: applyReplacements(orig, replacements) }
-              })
-              if (edits.length > 0) {
-                options.push({ id: `opt-${i}`, label: opt.label ?? `Option ${i + 1}`, description: opt.description ?? '', edits })
-              }
-            } catch (e) {
-              console.warn(`[muse] dropped option "${(opt.label as string) ?? i}" — ${(e as Error).message}`)
-            }
-          })
-          if (options.length === 0) {
-            return reject(new Error("Couldn't apply the proposed changes to the selected element. Try rephrasing."))
-          }
-          content = [{ type: 'tool_use', id, name: 'propose_options', input: { rationale: so.rationale ?? '', options } }]
-        }
-        resolve(content as unknown as Anthropic.ContentBlock[])
-      })
-    })
-
-    try {
-      child.stdin.write(prompt)
-      child.stdin.end()
-    } catch {
-      // child already gone — 'error'/'close' will reject
-    }
-  })
-}
-
 // ---- Handlers -----------------------------------------------------------------
-
-async function handleChat(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
-  try {
-    if (ctx.backend !== 'claude-cli' && !ctx.apiKey) {
-      return sendJson(res, 500, {
-        error:
-          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the project root (ANTHROPIC_API_KEY=sk-ant-...) or export it in your shell, then restart the server.',
-      })
-    }
-
-    const { targets, messages } = JSON.parse(await readBody(req))
-    if (!Array.isArray(targets) || targets.length === 0) {
-      return sendJson(res, 400, { error: 'No target elements provided.' })
-    }
-
-    const files = new Map<string, string>()
-    const elementLines: string[] = []
-    for (let i = 0; i < targets.length; i++) {
-      const t = targets[i]
-      const abs = resolveInSrc(ctx.root, t?.fileName)
-      if (!abs) continue
-      const rel = relOf(ctx.root, abs)
-      if (!files.has(rel)) files.set(rel, fs.readFileSync(abs, 'utf8'))
-      elementLines.push(
-        `  ${i + 1}. <${t.tag ?? '?'}> in ${rel}` +
-          (t.text ? ` — "${t.text}"` : '') +
-          (t.classNames ? ` (classes: "${t.classNames}")` : ''),
-      )
-    }
-    if (files.size === 0) {
-      return sendJson(res, 400, {
-        error: 'None of the selected elements map to an editable file under src/.',
-      })
-    }
-
-    const filesBlock = [...files.entries()]
-      .map(([rel, content]) => `// ${rel}\n\`\`\`tsx\n${content}\n\`\`\``)
-      .join('\n\n')
-    const brief = loadDesignBrief(ctx.root, ctx.designMdOverride)
-    const context =
-      (brief ? `${designBriefBlock(brief)}\n\n` : '') +
-      `The user selected ${elementLines.length} element(s):\n${elementLines.join('\n')}\n\n` +
-      `Relevant files:\n\n${filesBlock}`
-
-    const originals = Object.fromEntries(files)
-
-    if (ctx.backend === 'claude-cli') {
-      const prompt =
-        `${context}\n\n## Conversation so far\n${flattenTranscript(messages as Anthropic.MessageParam[])}\n\n` +
-        `## Now\nRespond to the user's latest message using the structured output schema. Default to mode="options".`
-      const content = await runChatViaCli(ctx.claudeBin, ctx.cliModel, prompt, originals)
-      return sendJson(res, 200, { content, stop_reason: 'tool_use', originals })
-    }
-
-    const outMessages = (messages as Anthropic.MessageParam[]).map((m, i) => {
-      if (i === 0 && m.role === 'user' && typeof m.content === 'string') {
-        return { role: 'user' as const, content: `${context}\n\n## The user's request\n${m.content}` }
-      }
-      return m
-    })
-
-    const client = new Anthropic({ apiKey: ctx.apiKey })
-    const resp = await client.messages.create({
-      model: ctx.model,
-      max_tokens: 8192,
-      system: [{ type: 'text', text: MUSE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: [ASK_TOOL, PROPOSE_OPTIONS_TOOL],
-      tool_choice: { type: 'any' },
-      messages: outMessages,
-    })
-
-    return sendJson(res, 200, {
-      content: resp.content,
-      stop_reason: resp.stop_reason,
-      originals,
-    })
-  } catch (err) {
-    console.error('[muse] /chat error:', err)
-    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
-  }
-}
-
-async function handleObserve(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
-  try {
-    if (!ctx.apiKey) {
-      return sendJson(res, 500, {
-        error:
-          'ANTHROPIC_API_KEY is not set. Add it to a .env.local file at the project root (ANTHROPIC_API_KEY=sk-ant-...) or export it in your shell, then restart the server.',
-      })
-    }
-
-    const { target } = JSON.parse(await readBody(req))
-    if (!target || typeof target !== 'object') {
-      return sendJson(res, 400, { error: 'No target element provided.' })
-    }
-    const abs = resolveInSrc(ctx.root, target.fileName)
-    if (!abs) {
-      return sendJson(res, 400, {
-        error: 'The selected element does not map to an editable file under src/.',
-      })
-    }
-    const rel = relOf(ctx.root, abs)
-    const source = fs.readFileSync(abs, 'utf8')
-    const brief = loadDesignBrief(ctx.root, ctx.designMdOverride)
-
-    const context =
-      (brief ? `${designBriefBlock(brief)}\n\n` : '') +
-      `Selected element: <${target.tag ?? '?'}> in ${rel}` +
-      (target.text ? ` — "${target.text}"` : '') +
-      `\nIts className: "${target.classNames ?? ''}"\n\n` +
-      `Full source of ${rel} (for surrounding context):\n\`\`\`tsx\n${source}\n\`\`\`\n\n` +
-      `Give your read as the JSON object described in your instructions — nothing else.`
-
-    const client = new Anthropic({ apiKey: ctx.apiKey })
-    const resp = await client.messages.create({
-      model: ctx.observeModel,
-      max_tokens: 300,
-      system: [{ type: 'text', text: OBSERVE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: context }],
-    })
-
-    const textBlock = resp.content.find((b) => b.type === 'text') as { text?: string } | undefined
-    const parsed = parseObserveJson(textBlock?.text ?? '')
-    if (!parsed) {
-      return sendJson(res, 200, { error: "Couldn't read a usable observation." })
-    }
-    return sendJson(res, 200, parsed)
-  } catch (err) {
-    console.error('[muse] /observe error:', err)
-    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
-  }
-}
 
 async function handleWrite(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {

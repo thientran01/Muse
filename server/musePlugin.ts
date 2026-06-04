@@ -39,14 +39,6 @@ export function musePlugin(): Plugin {
         if (req.method !== 'GET') return next()
         handlers.design(req, res).catch(() => {})
       })
-      server.middlewares.use('/api/muse/chat', (req, res, next) => {
-        if (req.method !== 'POST') return next()
-        handlers.chat(req, res).catch(() => {})
-      })
-      server.middlewares.use('/api/muse/observe', (req, res, next) => {
-        if (req.method !== 'POST') return next()
-        handlers.observe(req, res).catch(() => {})
-      })
       server.middlewares.use('/api/muse/write', (req, res, next) => {
         if (req.method !== 'POST') return next()
         handlers.write(req, res).catch(() => {})
