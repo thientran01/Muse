@@ -17,10 +17,12 @@ export function Reference() {
 
       <H2 id="shortcuts">Gestures and shortcuts</H2>
       <P>
-        Open Muse from the button in the corner, then the gesture decides the surface: a plain click
-        shapes the element directly, and a Shift-click hands it to the chat partner.
+        Open Muse from the button in the corner — or press <Kbd>R</Kbd> to toggle it on and off — then the
+        gesture decides the surface: a plain click shapes the element directly, and a Shift-click hands it
+        to the chat partner.
       </P>
       <div className="mt-4 flex flex-col gap-2 text-[14px] text-stone-600 dark:text-stone-400">
+        <div className="flex items-center gap-3"><Kbd>R</Kbd> toggle Muse on and off</div>
         <div className="flex items-center gap-3"><Kbd>Click</Kbd> select and shape an element</div>
         <div className="flex items-center gap-3"><Kbd>⇧</Kbd> + click hand it to the chat partner</div>
         <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click step out to the parent</div>

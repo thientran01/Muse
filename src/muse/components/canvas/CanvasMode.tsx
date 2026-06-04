@@ -1102,7 +1102,7 @@ export function CanvasMode({
                 ? reorderable?.reorderable
                   ? 'Drag to reorder · double-click to edit · ⇧-click to ask Muse · Esc to deselect'
                   : 'Double-click to edit · ⇧-click to ask Muse · Esc to deselect'
-                : 'Click to edit · ⇧-click to ask Muse · Esc to exit'}
+                : <>Click to edit · ⇧-click to ask Muse · <BannerKbd>Esc</BannerKbd> or <BannerKbd>R</BannerKbd> to exit</>}
           </span>
           <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
@@ -1116,4 +1116,15 @@ export function CanvasMode({
 // node.style.setProperty needs kebab-case; our property model speaks camelCase.
 function camelToKebab(s: string): string {
   return s.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())
+}
+
+// A compact key chip for the banner — mirrors the docs <Kbd> look (bordered, mono,
+// semibold) in overlay tokens. text-[11px] + leading-none keep it inside the
+// banner's text line, so the bar holds its height and never wraps to a second row.
+function BannerKbd({ children }: { children: string }) {
+  return (
+    <kbd className="mx-px inline-block rounded border border-line/25 bg-line/10 px-1 py-px align-middle font-mono text-[11px] font-semibold leading-none text-fg-muted">
+      {children}
+    </kbd>
+  )
 }
