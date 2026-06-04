@@ -266,17 +266,21 @@ export function ReorderOverlay({
         // already exact during the drag, so their correction here is 0. What remains is the
         // MARGIN-COLLAPSE residual on the siblings AFTER the drop target — which no analytic
         // make-room can predict — and easing it reads as a post-drop settle of the surrounding
-        // content. Suppress the make-room transition for the set + one reflow so the residual
-        // lands instantly (invisible) instead of gliding. The dragged node still EASES its
-        // set-down (landToDestination) — that motion is intended. restoreMakeRoom restores the
-        // suppressed transition when it clears on the repaint.
+        // content. So suppress the transition, set the exact transforms, force ONE reflow on a
+        // connected node to commit them instantly, then RESTORE each node's transition: never
+        // leave `transition:none` on a host element, or a delayed clear (unmount / onReorder
+        // error → the 2.5s safety) would suppress the host app's own transitions until then.
+        // The transform is already committed, so restoring the transition can't re-animate it.
+        // The dragged node still EASES its set-down (landToDestination) — that motion is intended.
         if (measured && sibPrev) {
           for (const n of frozen.nodes) n.style.transition = 'none'
           for (let i = 0; i < frozen.nodes.length; i++) {
             const d = measured.others[i]
             frozen.nodes[i].style.transform = d === 0 ? '' : frozen.layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
           }
-          if (frozen.nodes[0]?.isConnected) void frozen.nodes[0].offsetWidth // commit the snap
+          const anchor = frozen.nodes.find((n) => n.isConnected)
+          if (anchor) void anchor.offsetWidth // single reflow commits the snap for the whole subtree
+          for (const n of frozen.nodes) n.style.transition = sibPrev.get(n)?.transition ?? '' // un-strand
         }
       }
 
@@ -533,9 +537,10 @@ type Layout = { vertical: boolean }
 //  • nodes/rects — the OTHER movable siblings (dragged node excluded), in source
 //    order, used for the drop search AND the make-room slide.
 //  • layout — the reading axis (which way the insertion bar / slide runs).
-//  • draggedRect — the dragged element's own rect, so the slide knows how far each
-//    sibling must move to open its gap (the gap == the dragged element's extent +
-//    the layout gap between siblings).
+//  • draggedRect — the dragged element's own rect; the make-room step = its extent + `gap`.
+//  • gap — the layout gap LOCAL to the dragged element (to its adjacent sibling), NOT a median
+//    over all siblings: the siblings all shuffle past the one dragged element, so they shift by
+//    ITS footprint. The median mis-fits non-uniform content (a tall embed skews it).
 //  • oneAxis — true only when every sibling shares the dragged element's row (for a
 //    horizontal axis) or column (vertical): the make-room slide is a single-axis
 //    shift, which is only correct in a true 1D line. Real 2D grids / wrapped rows
