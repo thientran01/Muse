@@ -261,14 +261,26 @@ export function ReorderOverlay({
         // parent's childList twice (and reverts), which would otherwise trip clearTransforms.
         const measured = measureReorderDisplacements(parent, node, frozen, members, target.toIndex)
         landToDestination(node, frozen, p.fromIndex, target.toIndex, prevStyle, measured?.dragged)
-        // Ease the made-room siblings from their approximate drag positions to the EXACT
-        // measured positions (they keep primeMakeRoom's transition), so the whole held
-        // arrangement equals the real layout.
+        // SNAP the made-room siblings to their EXACT measured positions (don't ease). With the
+        // local-gap make-room (freezeSiblings) the siblings the dragged element PASSES are
+        // already exact during the drag, so their correction here is 0. What remains is the
+        // MARGIN-COLLAPSE residual on the siblings AFTER the drop target — which no analytic
+        // make-room can predict — and easing it reads as a post-drop settle of the surrounding
+        // content. So suppress the transition, set the exact transforms, force ONE reflow on a
+        // connected node to commit them instantly, then RESTORE each node's transition: never
+        // leave `transition:none` on a host element, or a delayed clear (unmount / onReorder
+        // error → the 2.5s safety) would suppress the host app's own transitions until then.
+        // The transform is already committed, so restoring the transition can't re-animate it.
+        // The dragged node still EASES its set-down (landToDestination) — that motion is intended.
         if (measured && sibPrev) {
+          for (const n of frozen.nodes) n.style.transition = 'none'
           for (let i = 0; i < frozen.nodes.length; i++) {
             const d = measured.others[i]
             frozen.nodes[i].style.transform = d === 0 ? '' : frozen.layout.vertical ? `translateY(${d}px)` : `translateX(${d}px)`
           }
+          const anchor = frozen.nodes.find((n) => n.isConnected)
+          if (anchor) void anchor.offsetWidth // single reflow commits the snap for the whole subtree
+          for (const n of frozen.nodes) n.style.transition = sibPrev.get(n)?.transition ?? '' // un-strand
         }
       }
 
@@ -525,9 +537,10 @@ type Layout = { vertical: boolean }
 //  • nodes/rects — the OTHER movable siblings (dragged node excluded), in source
 //    order, used for the drop search AND the make-room slide.
 //  • layout — the reading axis (which way the insertion bar / slide runs).
-//  • draggedRect — the dragged element's own rect, so the slide knows how far each
-//    sibling must move to open its gap (the gap == the dragged element's extent +
-//    the layout gap between siblings).
+//  • draggedRect — the dragged element's own rect; the make-room step = its extent + `gap`.
+//  • gap — the layout gap LOCAL to the dragged element (to its adjacent sibling), NOT a median
+//    over all siblings: the siblings all shuffle past the one dragged element, so they shift by
+//    ITS footprint. The median mis-fits non-uniform content (a tall embed skews it).
 //  • oneAxis — true only when every sibling shares the dragged element's row (for a
 //    horizontal axis) or column (vertical): the make-room slide is a single-axis
 //    shift, which is only correct in a true 1D line. Real 2D grids / wrapped rows
@@ -629,17 +642,22 @@ function freezeSiblings(parent: HTMLElement, all: HTMLElement[], dragged: HTMLEl
       : r.top < draggedRect.bottom && r.bottom > draggedRect.top, // shares the row
   )
 
-  // The gap to leave between elements when sliding = the median center-to-center
-  // spacing minus element extent, floored at 0. Cheap + good enough for the slide.
+  // make-room slides every sibling by the DRAGGED element's FOOTPRINT (its extent + the gap
+  // adjacent to it) — they all shuffle PAST the one dragged element, so they shift by ITS
+  // footprint, not by some average sibling spacing. Earlier this used the MEDIAN inter-sibling
+  // gap, which is the wrong proxy on non-uniform content: a tall embed's large margins skew the
+  // median away from the dragged paragraph's own gap, so the slide overshoots — then #91's exact
+  // on-drop measure eases the difference, reading as a ~`median − localGap`px settle of the
+  // surrounding content. Use the dragged element's local gap (below it, or above if it's last)
+  // so the drag-time slide already matches the real reflow and there's nothing left to ease.
   let gap = 0
-  if (allRects.length >= 2) {
-    const sorted = [...allRects].sort((a, b) => (layout.vertical ? a.top - b.top : a.left - b.left))
-    const gaps: number[] = []
-    for (let i = 1; i < sorted.length; i++) {
-      gaps.push(layout.vertical ? sorted[i].top - sorted[i - 1].bottom : sorted[i].left - sorted[i - 1].right)
-    }
-    gaps.sort((a, b) => a - b)
-    gap = Math.max(0, gaps[gaps.length >> 1])
+  const di = all.indexOf(dragged) // index-aligned with allRects
+  if (di >= 0) {
+    const lead = (r: DOMRect) => (layout.vertical ? r.top : r.left)
+    const tail = (r: DOMRect) => (layout.vertical ? r.bottom : r.right)
+    if (di + 1 < allRects.length) gap = lead(allRects[di + 1]) - tail(allRects[di]) // gap below
+    else if (di - 1 >= 0) gap = lead(allRects[di]) - tail(allRects[di - 1]) // gap above (dragged is last)
+    gap = Math.max(0, gap)
   }
 
   return { nodes, rects, layout, draggedRect, gap, oneAxis }
