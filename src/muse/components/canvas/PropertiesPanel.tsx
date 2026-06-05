@@ -2,7 +2,6 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
-import { museDesignGet } from '../../api'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
 
@@ -48,7 +47,6 @@ function ColorRow({
   label,
   value,
   themed,
-  swatches,
   contrastAgainst,
   portalContainer,
   onPreview,
@@ -57,7 +55,6 @@ function ColorRow({
   label: string
   value: string
   themed: boolean
-  swatches: string[] // brand colors from DESIGN.md
   contrastAgainst?: string // paired color for the WCAG check (Fill behind Text, etc.)
   portalContainer?: React.RefObject<HTMLElement> // themed overlay root to portal the popover into
   onPreview: (v: string) => void
@@ -135,7 +132,7 @@ function ColorRow({
         className="pointer-events-auto fixed z-[1000000] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur"
         style={{ left: pos.left, top: pos.top }}
       >
-        <ColorPicker value={value} swatches={swatches} contrastAgainst={contrastAgainst} onPreview={onPreview} onCommit={onCommit} />
+        <ColorPicker value={value} contrastAgainst={contrastAgainst} onPreview={onPreview} onCommit={onCommit} />
       </div>
     ) : null
 
@@ -161,27 +158,6 @@ function ColorRow({
       {popover && portalContainer?.current ? createPortal(popover, portalContainer.current) : popover}
     </div>
   )
-}
-
-// Fetch the app's DESIGN.md brand colors once (module-cached) for the picker's
-// swatch row. Hex values pulled from the frontmatter, same loose scan as the
-// design card. Returns [] until loaded / when there's no brief.
-let brandCache: string[] | null = null
-function useBrandSwatches(): string[] {
-  const [colors, setColors] = useState<string[]>(brandCache ?? [])
-  useEffect(() => {
-    if (brandCache) return
-    let cancelled = false
-    void museDesignGet()
-      .then((d) => {
-        const fm = (d.content ?? '').slice(0, 8000).match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? ''
-        brandCache = [...new Set(fm.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [])].slice(0, 12)
-        if (!cancelled) setColors(brandCache)
-      })
-      .catch(() => { brandCache = [] })
-    return () => { cancelled = true }
-  }, [])
-  return colors
 }
 
 // A padding/margin group: one field when all sides match, four when they don't —
@@ -338,30 +314,29 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
 }
 
 // Text / fill / border color. Text row only where the element renders text. Each
-// row opens the custom ColorPicker (brand swatches + WCAG check). The contrast
-// pairing is Text↔Fill (the usual readability question); Border has no natural
-// pair, so it gets no contrast badge.
+// row opens the custom ColorPicker (with a WCAG check). The contrast pairing is
+// Text↔Fill (the usual readability question); Border has no natural pair, so it
+// gets no contrast badge.
 export function ColorFields({
   values,
   portalContainer,
   onPreview,
   onCommit,
 }: { values: CanvasValues; portalContainer?: React.RefObject<HTMLElement> } & EditProps) {
-  const swatches = useBrandSwatches()
   return (
     <div className="space-y-1.5">
       {values.rendersText && (
         <ColorRow label="Text" value={values.color.text} themed={values.colorThemed.text}
-          swatches={swatches} contrastAgainst={values.color.background} portalContainer={portalContainer}
+          contrastAgainst={values.color.background} portalContainer={portalContainer}
           onPreview={(v) => onPreview([{ property: 'color', value: v }])}
           onCommit={(v) => onCommit([{ property: 'color', value: v }])} />
       )}
       <ColorRow label="Fill" value={values.color.background} themed={values.colorThemed.background}
-        swatches={swatches} contrastAgainst={values.rendersText ? values.color.text : undefined} portalContainer={portalContainer}
+        contrastAgainst={values.rendersText ? values.color.text : undefined} portalContainer={portalContainer}
         onPreview={(v) => onPreview([{ property: 'backgroundColor', value: v }])}
         onCommit={(v) => onCommit([{ property: 'backgroundColor', value: v }])} />
       <ColorRow label="Border" value={values.color.border} themed={values.colorThemed.border}
-        swatches={swatches} portalContainer={portalContainer}
+        portalContainer={portalContainer}
         onPreview={(v) => onPreview([{ property: 'borderColor', value: v }])}
         onCommit={(v) => onCommit([{ property: 'borderColor', value: v }])} />
     </div>

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eyedropper } from '@phosphor-icons/react'
 import {
-  contrastInk,
   contrastRatio,
   hexToHsv,
   hsvToHex,
@@ -27,13 +26,11 @@ const getEyeDropper = (): EyeDropperCtor | null =>
 // so there's no alpha channel).
 export function ColorPicker({
   value,
-  swatches = [],
   contrastAgainst,
   onPreview,
   onCommit,
 }: {
   value: string // current #rrggbb
-  swatches?: string[] // brand colors (hex) from DESIGN.md
   contrastAgainst?: string // the color this sits on/under, for the WCAG check (e.g. the fill behind text)
   onPreview: (hex: string) => void
   onCommit: (hex: string) => void
@@ -140,30 +137,6 @@ export function ColorPicker({
           />
         ))}
       </div>
-
-      {/* Brand swatches from DESIGN.md — label tight under the divider, swatches
-          right under the label, so the row sits close to the separator. */}
-      {swatches.length > 0 && (
-        <div className="border-t border-line/10 pt-1.5">
-          <span className="mb-1 block text-[9px] uppercase tracking-wide text-fg-faint">Brand</span>
-          <div className="flex flex-wrap gap-1">
-            {swatches.map((sw) => {
-              const active = sw.toLowerCase() === hex.toLowerCase()
-              return (
-                <button
-                  key={sw}
-                  title={sw}
-                  onClick={() => { const hv = hexToHsv(sw); if (hv) emit(hv, true) }}
-                  className={`flex h-5 w-5 items-center justify-center rounded border transition ${active ? 'border-accent' : 'border-line/20 hover:border-line/40'}`}
-                  style={{ backgroundColor: sw }}
-                >
-                  {active && <span className="text-[10px] leading-none" style={{ color: contrastInk(sw) }}>✓</span>}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

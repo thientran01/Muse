@@ -30,8 +30,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createMuseHandlers, type MuseContext, type Handler } from './museCore'
 
 // Method+path → handler. Mirrors standaloneServer's ROUTES so the two adapters
-// expose an identical surface. Exact-match lookup (no Connect-style prefixing),
-// so the longer "/design/generate" key is distinct from "/design".
+// expose an identical surface. Exact-match lookup (no Connect-style prefixing).
 function buildRoutes(ctx: MuseContext): Map<string, Handler> {
   const h = createMuseHandlers(ctx)
   return new Map<string, Handler>([
@@ -42,8 +41,6 @@ function buildRoutes(ctx: MuseContext): Map<string, Handler> {
     ['POST /api/muse/text-editable', h.textEditable],
     ['POST /api/muse/reorder', h.reorder],
     ['POST /api/muse/reorderable', h.reorderable],
-    ['POST /api/muse/design/generate', h.designGenerate],
-    ['GET /api/muse/design', h.design],
     ['GET /api/muse/tokens', h.tokens],
     ['POST /api/muse/token-edit', h.tokenEdit],
   ])
@@ -101,9 +98,9 @@ export async function runHandlerWeb(handler: Handler, req: Request): Promise<Res
   const nodeReq = await toNodeRequest(req)
   const sink = new ResponseSink()
   const res = sink as unknown as ServerResponse
-  // Wait on sink.done (res.end), NOT the handler's returned promise: handlers
-  // like /design/generate resolve their work in a child-process callback that
-  // fires AFTER the async function returns.
+  // Wait on sink.done (res.end), NOT the handler's returned promise — a handler
+  // can finish writing its response from a callback that fires after the async
+  // function returns, so res.end is the reliable completion signal.
   handler(nodeReq, res).catch((err) => {
     if (!sink.headersSent) {
       sink.statusCode = 500

@@ -1,14 +1,5 @@
 import { Code, H1, H2, Kbd, Lead, P } from '../ui'
 
-function Row({ k, d }: { k: string; d: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[10rem_1fr] gap-4 border-b border-stone-200 py-3 last:border-0 dark:border-stone-800">
-      <div className="font-mono text-[13px] text-stone-800 dark:text-stone-200">{k}</div>
-      <div className="text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">{d}</div>
-    </div>
-  )
-}
-
 export function Reference() {
   return (
     <article>
@@ -31,16 +22,12 @@ export function Reference() {
         <div className="flex items-center gap-3"><Kbd>Esc</Kbd> deselect, then close Muse</div>
       </div>
 
-      <H2 id="env">Environment</H2>
+      <H2 id="config">Configuration</H2>
       <P>
-        Canvas needs no configuration and no API key. The variables below are optional and only touch the{' '}
-        <a className="underline" href="#/overview">DESIGN.md</a> brief that powers the color picker's brand
-        swatches.
+        There is none. Canvas needs no API key and no environment variables — every edit is a
+        deterministic source rewrite. The toolbar's <strong>Design tokens</strong> popover lists your
+        host's CSS custom properties (<Code>--c-*</Code>) so you can retune any of them in place.
       </P>
-      <div className="mt-4">
-        <Row k="MUSE_DESIGN_MD" d={<>Path to a <a className="underline" href="#/overview">DESIGN.md</a> brief, if it isn't at a standard location (<Code>DESIGN.md</Code> or <Code>src/DESIGN.md</Code>).</>} />
-        <Row k="MUSE_DESIGN_EXCLUDE" d="Comma-separated terms to drop from the evidence when generating a brief." />
-      </div>
 
       <H2 id="limits">Limitations</H2>
       <P>
