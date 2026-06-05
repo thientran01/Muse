@@ -79,10 +79,18 @@ export default {
       // this file (the single source of truth, per Emil's "encode the rules").
       keyframes: {
         // Panel entrance: scales up from ~0.96 (never from 0) and rises a touch.
-        // Paired with `origin-bottom-right` so it grows out of the FAB corner.
+        // Origin-aware callers add `origin-bottom-right` to grow out of the FAB
+        // corner; a centered modal (RevertConfirmDialog) leaves the default center.
         'muse-panel-in': {
           '0%': { opacity: '0', transform: 'translateY(8px) scale(0.96)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        // Top-anchored surface (the Canvas banner) — drops in FROM the top edge, so
+        // the motion's direction matches where it arrives from (Emil: origin/arrival
+        // direction). Just a short translate + fade, no blur (it's not a content swap).
+        'muse-drop-in': {
+          '0%': { opacity: '0', transform: 'translateY(-6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         // Content swap within the panel (view switch, or step-to-step in a
         // thread). Pure opacity + clearing blur, NO transform: the panel
@@ -114,6 +122,12 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.96)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        // Pure opacity fade — for surfaces where a scale/blur would read wrong
+        // (a modal's backdrop scrim). Just resolves the jarring instant appear.
+        'muse-fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
       },
       // NOTE: the panel's open AND close are CSS *transitions* (muse.css
       // `.muse-panel-surface` + `@starting-style` + `[data-closing]`), NOT
@@ -125,11 +139,14 @@ export default {
         'muse-panel': `muse-panel-in ${DUR.slow} ${EASE.out}`,
         'muse-step': `muse-step-in ${DUR.base} ${EASE.out}`,
         'muse-rise': `muse-rise-in ${DUR.mid} ${EASE.out}`,
+        'muse-drop': `muse-drop-in ${DUR.base} ${EASE.out}`,
         // FAB "catch" on collapse — 40ms delay so it emerges as the panel falls
         // in. (The panel collapse itself is a transition; see muse.css.)
         'muse-fab-catch': `muse-fab-catch ${DUR.mid} ${EASE.out} 40ms backwards`,
         // Docs-site motion (strong ease-out, sub-300ms).
         'site-pop': 'site-pop 180ms cubic-bezier(0.23, 1, 0.32, 1)',
+        // Backdrop scrim fade (modal). Fast — the dialog itself is the focus.
+        'muse-fade': `muse-fade-in ${DUR.fast} ${EASE.out}`,
       },
     },
   },

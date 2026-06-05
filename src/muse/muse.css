@@ -23,7 +23,8 @@
   /* Motion — the CSS-side mirror of the EASE/DUR tokens in tailwind.config.js
    * (Tailwind owns keyframe animations; CSS transitions can't read JS tokens, so
    * the curve/durations live here as vars to avoid repeating the magic string).
-   * KEEP IN SYNC with tailwind.config.js EASE.out / DUR.{mid,fast}. */
+   * KEEP IN SYNC with tailwind.config.js EASE.out / DUR.{mid,fast}. (--muse-dur-pop
+   * is CSS-only — the .muse-pop popover transition has no Tailwind-keyframe twin.) */
   --muse-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* In-out for ON-SCREEN MORPHS (the dock FAB<->toolbar width stretch). easeOut's
    * fast start lurches a morph ("shoved open"); a symmetric in-out eases both ends
@@ -32,6 +33,7 @@
   --muse-dur-mid: 200ms;
   --muse-dur-fast: 90ms;
   --muse-dur-morph: 140ms; /* the dock stretch — snappy (Emil: small popovers 125-200ms) */
+  --muse-dur-pop: 150ms;   /* popover enter/exit — small surface, Emil's 125-200ms sweet spot */
   /* Allow transitioning to/from height:auto so the panel can smoothly reshape
    * between views of different heights (home ⇄ proposals). Progressive
    * enhancement: browsers without it (Safari/Firefox as of 2026-05) snap the
@@ -166,6 +168,41 @@
   .muse-panel-surface[data-closing='true'] {
     transform: none;
     filter: none;
+  }
+}
+
+/* ── Popover enter/exit (.muse-pop) ──────────────────────────────────────────
+ * A small floating surface (the color picker, the design-tokens popover) that
+ * scales + fades from its trigger. Driven by a `data-state` attribute that
+ * usePresence(open) toggles while keeping the element mounted through the exit, so
+ * BOTH directions are CSS transitions — interruptible and retargetable mid-flight
+ * (Emil: transitions over keyframes for anything that can be re-triggered). The
+ * caller sets `--muse-pop-origin` so it scales from where it came from (Emil tip
+ * #5), and never from scale(0) (tip #2 — rests at 0.96). Resting = open. */
+.muse-pop {
+  transform-origin: var(--muse-pop-origin, center);
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--muse-dur-pop) var(--muse-ease-out),
+    transform var(--muse-dur-pop) var(--muse-ease-out);
+}
+.muse-pop[data-state='closed'] {
+  opacity: 0;
+  transform: scale(0.96);
+  /* During the exit the element is still mounted but the trigger's outside-click /
+   * Esc listeners are gone — make it inert so a stray click can't hit a control
+   * (e.g. fire a color commit) on a popover that's already closing. */
+  pointer-events: none;
+}
+/* Reduced motion: keep the opacity crossfade (it explains the appear/disappear),
+ * drop the scale movement (Emil: "fewer and gentler, not zero"). */
+@media (prefers-reduced-motion: reduce) {
+  .muse-pop {
+    transition: opacity var(--muse-dur-fast) var(--muse-ease-out);
+  }
+  .muse-pop[data-state='closed'] {
+    transform: none;
   }
 }
 

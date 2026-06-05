@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
+import { usePresence } from '../../hooks/usePresence'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
 
@@ -68,7 +69,10 @@ export function ColorRow({
   const [open, setOpen] = useState(false)
   const rowRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const [pos, setPos] = useState<{ left: number; top: number; side: 'right' | 'left' } | null>(null)
+  // Keep the picker mounted through its exit transition so it scales/fades out
+  // instead of vanishing (paired with the .muse-pop class + data-state below).
+  const { mounted, state } = usePresence(open && !themed)
 
   // Tell the parent when the picker closes (open → false), so a token row can drop
   // its live CSS-var preview and let the committed source value govern again.
@@ -100,7 +104,7 @@ export function ColorRow({
       const left = fitsRight ? panel.right + gap : Math.max(gap, panel.left - W - gap)
       // Vertically align to the clicked row, clamped so the whole picker stays on-screen.
       const top = Math.max(gap, Math.min(r.top, window.innerHeight - h - gap))
-      setPos({ left, top })
+      setPos({ left, top, side: fitsRight ? 'right' : 'left' })
     }
     place()
     // A second pass after the popover has measured (height affects the top clamp).
@@ -141,11 +145,14 @@ export function ColorRow({
   }, [open])
 
   const popover =
-    open && !themed && pos ? (
+    mounted && pos ? (
       <div
         ref={popRef}
-        className="pointer-events-auto fixed z-[1000000] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur"
-        style={{ left: pos.left, top: pos.top }}
+        data-state={state}
+        className="muse-pop pointer-events-auto fixed z-[1000000] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur"
+        // Scale from the panel-facing edge (Emil tip #5): when the picker sits to the
+        // right of the panel it grows from its left edge, and vice-versa.
+        style={{ left: pos.left, top: pos.top, '--muse-pop-origin': pos.side === 'right' ? 'left center' : 'right center' } as React.CSSProperties}
       >
         <ColorPicker value={value} contrastAgainst={contrastAgainst} onPreview={onPreview} onCommit={onCommit} />
       </div>

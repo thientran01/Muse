@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Palette, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
+import { usePresence } from '../hooks/usePresence'
 import { UfoIcon } from './UfoIcon'
 import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
@@ -61,6 +62,8 @@ export function MuseToolbar({
   const [pop, setPop] = useState<Pop>('none')
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
+  // Keep the popover mounted through its exit so it scales/fades back into the bar.
+  const { mounted: popMounted, state: popState } = usePresence(expanded && pop === 'tokens')
 
   return (
     <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
@@ -77,11 +80,12 @@ export function MuseToolbar({
         />
       )}
 
-      {/* Popover — only when expanded; scales up from the bar/FAB corner below it.
-          Same surface as the canvas properties panel (rounded-xl / blur / ring) and
-          marked data-muse-panel so the token color-picker anchors beside it. */}
-      {expanded && pop !== 'none' && (
-        <div data-muse-panel className="w-64 origin-bottom-right animate-muse-panel overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+      {/* Popover — scales up from the bar/FAB corner below it (grows from the bar on
+          open, shrinks back on close via usePresence + .muse-pop). Same surface as
+          the canvas properties panel (rounded-xl / blur / ring) and marked
+          data-muse-panel so the token color-picker anchors beside it. */}
+      {popMounted && (
+        <div data-muse-panel data-state={popState} className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur" style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}>
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
             <span className="text-[12px] font-semibold tracking-tight text-fg">Design tokens</span>
             <button
