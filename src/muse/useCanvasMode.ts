@@ -101,6 +101,9 @@ export function useCanvasMode(opts?: {
   const [hoverInfo, setHoverInfo] = useState<ElementInfo | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [selected, setSelected] = useState<CanvasElement | null>(null)
+  // True while Shift is held — surfaces the "shift-click to flag" affordance (the
+  // gesture is otherwise undiscoverable). Reset on keyup / blur / leaving canvas.
+  const [shiftHeld, setShiftHeld] = useState(false)
   // A click that couldn't be mapped to source (no _debugSource — a non-React node,
   // an SVG, etc.). Surfaced so the UI can show a quiet "can't edit this" hint
   // instead of silently doing nothing. `id` makes each miss distinct so a repeat
@@ -133,6 +136,7 @@ export function useCanvasMode(opts?: {
       setHoverRect(null)
       setHoverInfo(null)
       setCursor(null)
+      setShiftHeld(false)
       return
     }
 
@@ -190,6 +194,7 @@ export function useCanvasMode(opts?: {
     }
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(true)
       if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
@@ -197,6 +202,10 @@ export function useCanvasMode(opts?: {
         else setActive(false)
       }
     }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftHeld(false)
+    }
+    const onBlur = () => setShiftHeld(false)
 
     // Double-click an element → enter text edit on it (CanvasMode gates on whether
     // it actually renders editable text, so a double-click on a non-text element is
@@ -227,15 +236,19 @@ export function useCanvasMode(opts?: {
     document.addEventListener('click', onClick, true)
     document.addEventListener('dblclick', onDblClick, true)
     document.addEventListener('keydown', onKey, true)
+    document.addEventListener('keyup', onKeyUp, true)
+    window.addEventListener('blur', onBlur)
     document.addEventListener('dragstart', onDragStart, true)
     return () => {
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('dblclick', onDblClick, true)
       document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('keyup', onKeyUp, true)
+      window.removeEventListener('blur', onBlur)
       document.removeEventListener('dragstart', onDragStart, true)
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss }
+  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss, shiftHeld }
 }

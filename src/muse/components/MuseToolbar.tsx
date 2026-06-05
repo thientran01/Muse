@@ -110,7 +110,7 @@ export function MuseToolbar({
               <X size={13} />
             </button>
           </header>
-          <div className="max-h-[50vh] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+          <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
             {shownPop === 'flags' ? <FlagsPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>

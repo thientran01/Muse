@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
@@ -249,7 +250,7 @@ export function CanvasMode({
   const onFlag = useCallback((el: CanvasElement, at: { x: number; y: number }) => {
     setFlagDraft({ draft: draftFromElement(el), x: at.x, y: at.y })
   }, [])
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } =
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss, shiftHeld } =
     useCanvasMode({ suspended: reordering, onFlag })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
@@ -1100,6 +1101,17 @@ export function CanvasMode({
       {/* Hover affordance while no edit is in flight — lets you retarget. */}
       {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
 
+      {/* Shift-held discoverability cue: tells the user the hover target will be flagged
+          (the gesture is otherwise invisible). Follows the cursor like the hover tooltip. */}
+      {shiftHeld && cursor && hoverRect && !editing && !flagDraft && (
+        <div
+          className="pointer-events-none absolute z-30 flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium text-white shadow-lg ring-1 ring-fg/10"
+          style={{ top: cursor.y + 16, left: cursor.x + 16 }}
+        >
+          <Flag size={12} weight="fill" /> Flag for your agent
+        </div>
+      )}
+
       {/* Quiet hint — unmappable click, or text that isn't statically editable.
           z-20 keeps it above the properties panel (same overlay container). */}
       {hint && (
@@ -1130,7 +1142,7 @@ export function CanvasMode({
           onSaved={() => {
             const at = flagDraft
             setFlagDraft(null)
-            flashHint(at.x, at.y, 'Flagged — resolve it from your Claude Code')
+            flashHint(at.x, at.y, 'Flagged — resolve it with your agent')
           }}
         />
       )}
@@ -1217,7 +1229,7 @@ export function CanvasMode({
                 ? reorderable?.reorderable
                   ? 'Drag to reorder · double-click to edit · Esc to deselect'
                   : 'Double-click to edit · Esc to deselect'
-                : <>Click to edit · <BannerKbd>Esc</BannerKbd> or <BannerKbd>R</BannerKbd> to exit</>}
+                : <>Click to edit · <BannerKbd>⇧</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
           </span>
           <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
