@@ -130,7 +130,7 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
-          <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))}>
+          <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} active={pop === 'tokens'}>
             <Palette size={17} />
           </IconBtn>
           <IconBtn

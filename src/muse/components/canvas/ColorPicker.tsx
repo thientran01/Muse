@@ -19,7 +19,7 @@ const getEyeDropper = (): EyeDropperCtor | null =>
 
 // A self-contained color picker in Muse styling (no dependency): a
 // saturation/brightness square + hue slider + hex & R/G/B inputs + an eyedropper +
-// an optional WCAG contrast check + a row of the app's brand swatches (DESIGN.md).
+// an optional WCAG contrast check.
 // Drives `onPreview` live while dragging, `onCommit` on release / typed entry —
 // same contract as the native input it replaces. HSV-driven internally (so the SV
 // square stays stable while you slide hue), emits #rrggbb (the engine drops alpha,

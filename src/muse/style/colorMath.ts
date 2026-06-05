@@ -67,15 +67,6 @@ export function normalizeHexInput(raw: string): string | null {
   return rgb ? rgbToHex(rgb) : null
 }
 
-// Readable label color (black/white) for text sitting ON a given color — picks the
-// higher-contrast one via relative luminance. Used for the swatch checkmark.
-export function contrastInk(hex: string): '#000000' | '#ffffff' {
-  const rgb = hexToRgb(hex)
-  if (!rgb) return '#000000'
-  const lum = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255
-  return lum > 0.6 ? '#000000' : '#ffffff'
-}
-
 // WCAG relative luminance (0–1) of an sRGB color, with the standard gamma decode.
 function relLuminance({ r, g, b }: Rgb): number {
   const lin = (c: number) => {

@@ -37,7 +37,7 @@ npx skills add thientran01/Muse
 
 It detects your bundler (Vite, Next.js, or webpack), copies the engine in, and wires the three pieces Muse needs. To wire it by hand, [`docs/HOSTING.md`](docs/HOSTING.md) covers every host step by step.
 
-**Canvas needs no API key and no configuration** — every edit is a deterministic AST rewrite. The toolbar also has a **Design tokens** popover that lists your host's CSS custom properties (`--c-*`) and lets you retune any of them in place, written straight back to the defining stylesheet.
+**Canvas needs no API key and no configuration** — every edit is a deterministic AST rewrite. The toolbar also has a **Design tokens** popover that lists your host's CSS custom properties (`--c-energy`, `--radius-lg`, and the rest) and lets you retune any of them in place, written straight back to the defining stylesheet.
 
 ---
 
