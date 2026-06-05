@@ -52,7 +52,7 @@ export function FlagPins() {
           aria-label={`Flag ${p.n}: ${p.flag.comment || 'no note'}`}
           onClick={() => revealFlag(p.flag)}
           style={{ top: p.top, left: p.left }}
-          className="pointer-events-auto absolute z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white shadow ring-1 ring-black/10 transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
+          className="pointer-events-auto absolute z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white shadow ring-1 ring-surface-soft/40 transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
         >
           {p.n}
         </button>

@@ -151,7 +151,12 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
-          <IconBtn label="Flags" onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))} active={pop === 'flags'} badge={openFlagCount}>
+          <IconBtn
+            label={openFlagCount > 0 ? `Flags, ${openFlagCount} open` : 'Flags'}
+            onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))}
+            active={pop === 'flags'}
+            badge={openFlagCount}
+          >
             <Flag size={17} />
           </IconBtn>
           <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} active={pop === 'tokens'}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { dismissFlag, refreshFlags, resolveFlag } from '../flagsActions'
 import { revealFlag } from '../flagLocate'
 import { useMuseStore } from '../store'
@@ -12,9 +12,13 @@ export function FlagsPanel() {
   const { flags } = useMuseStore()
   const [busy, setBusy] = useState<string | null>(null)
   const [missId, setMissId] = useState<string | null>(null)
+  const missTimer = useRef<number | null>(null)
 
   useEffect(() => {
     void refreshFlags()
+    return () => {
+      if (missTimer.current) clearTimeout(missTimer.current)
+    }
   }, [])
 
   if (flags.length === 0) {
@@ -44,8 +48,9 @@ export function FlagsPanel() {
 
   const jump = (f: Flag) => {
     if (revealFlag(f)) return
+    if (missTimer.current) clearTimeout(missTimer.current)
     setMissId(f.id)
-    window.setTimeout(() => setMissId((c) => (c === f.id ? null : c)), 2400)
+    missTimer.current = window.setTimeout(() => setMissId((c) => (c === f.id ? null : c)), 2400)
   }
 
   return (
@@ -116,8 +121,10 @@ function RowBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded px-1.5 py-0.5 text-[11px] transition hover:bg-line/10 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-        danger ? 'text-fg-faint hover:text-rose-300' : 'text-fg-muted hover:text-fg'
+      className={`rounded px-1.5 py-0.5 text-[11px] transition disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+        danger
+          ? 'text-fg-faint hover:bg-rose-500/10 hover:text-rose-300' // tinted bg lifts the rose text to a readable ratio on the light theme too
+          : 'text-fg-muted hover:bg-line/10 hover:text-fg'
       }`}
     >
       {children}

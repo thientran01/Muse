@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
-import { refreshFlags } from '../../flagsActions'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
@@ -334,12 +333,6 @@ export function CanvasMode({
     if (active) startedRef.current = true
     else if (startedRef.current) onExit()
   }, [active, onExit])
-
-  // Load existing flags into the reactive store when Canvas opens, so the count badge
-  // (toolbar) and pins/panel (slice 4) reflect anything already captured this session.
-  useEffect(() => {
-    void refreshFlags()
-  }, [])
 
   // A refusal hint is anchored to the element the user just acted on — drop it when the
   // selection changes (or clears) so a stale "Flag it" affordance can't linger over a
