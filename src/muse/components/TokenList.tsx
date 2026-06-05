@@ -3,21 +3,17 @@ import { museTokenEdit, museTokens, museWrite, type DesignToken } from '../api'
 import { EPHEMERAL, MOCK } from '../config'
 import { museStore } from '../store'
 import type { HistoryEntry } from '../types'
+import { ColorRow, SectionLabel } from './canvas/PropertiesPanel'
 
-// One token row: a swatch (color tokens) + the name + an editable value field. Commits
-// on blur / Enter. A spacer keeps non-color rows aligned with color ones.
-function TokenRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean; onCommit: (v: string) => void }) {
+// A non-color token: name + an editable value field, in the same row shape as the
+// canvas color rows (label left, control right). Commits on blur / Enter.
+function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean; onCommit: (v: string) => void }) {
   const [val, setVal] = useState(token.value)
   // Re-sync if the parent updates the value (optimistic apply, or undo).
   useEffect(() => setVal(token.value), [token.value])
   return (
-    <div className="flex items-center gap-2">
-      <span
-        aria-hidden="true"
-        className={token.isColor ? 'h-4 w-4 shrink-0 rounded ring-1 ring-line/20' : 'h-4 w-4 shrink-0'}
-        style={token.isColor ? { background: token.value } : undefined}
-      />
-      <code className="w-[84px] shrink-0 truncate font-mono text-[10px] text-fg-muted" title={token.name}>
+    <div className="flex items-center justify-between gap-2 text-[11px]">
+      <code className="min-w-0 truncate font-mono text-fg-faint" title={token.name}>
         {token.name}
       </code>
       <input
@@ -30,17 +26,17 @@ function TokenRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
         }}
         disabled={busy}
         aria-label={`Value for ${token.name}`}
-        className="min-w-0 flex-1 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-1 font-mono text-[11px] text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
+        className="w-[88px] shrink-0 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-0.5 text-right font-mono tabular-nums text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
       />
     </div>
   )
 }
 
-// The host's design tokens, editable in place. Self-contained: reads tokens on mount and
-// commits each edit through the same write + shared-history path as canvas edits (no props
-// to thread from the overlay). Editing a token rewrites its base value in the defining
-// stylesheet, and HMR repaints everything that uses it.
-export function TokenList() {
+// The host's design tokens, editable in place — color tokens open the same Canvas
+// color picker (live-previewing the CSS var on the page), other tokens get a value
+// field. Self-contained: reads tokens on mount and commits each edit through the
+// same write + shared-history path as canvas edits.
+export function TokenList({ portalContainer }: { portalContainer?: React.RefObject<HTMLElement> }) {
   const [tokens, setTokens] = useState<DesignToken[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -55,15 +51,21 @@ export function TokenList() {
     return () => { cancelled = true }
   }, [])
 
+  // Live-preview a value by overriding the CSS var on the host root, so dragging the
+  // color picker repaints the page in real time — the same feel as a canvas color
+  // scrub. The override lands on the committed value (a real write then HMRs the
+  // source to match), and re-edits overwrite it.
+  const applyLive = (name: string, value: string) => {
+    document.documentElement.style.setProperty(name, value)
+  }
+
   const commit = async (name: string, next: string, prev: string) => {
     const value = next.trim()
     if (!value || value === prev.trim()) return
-    // MOCK / EPHEMERAL: no backend write — apply optimistically so the demo's panel works
-    // (a swatch/value updates) instead of erroring on every edit.
-    if (MOCK || EPHEMERAL) {
-      setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
-      return
-    }
+    applyLive(name, value)
+    setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
+    // MOCK / EPHEMERAL: no backend write — the live override IS the applied state.
+    if (MOCK || EPHEMERAL) return
     setBusy(name)
     try {
       const { edits, originals, warnings } = await museTokenEdit(name, value)
@@ -79,9 +81,11 @@ export function TokenList() {
         label: `token ${name}`,
       }
       museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
-      setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
       setError(null)
     } catch (e) {
+      // Write failed — back out the optimistic value + the live override.
+      applyLive(name, prev)
+      setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value: prev } : t)) ?? null)
       setError((e as Error).message)
     } finally {
       setBusy(null)
@@ -93,15 +97,38 @@ export function TokenList() {
   )
 
   if (error && !tokens) return errorChip("Couldn't read your tokens.")
-  if (!tokens) return <p className="text-[11px] text-fg-faint">Reading tokens…</p>
-  if (tokens.length === 0) return <p className="text-[11px] text-fg-faint">No CSS custom properties found.</p>
+  if (!tokens) return <p className="py-1 text-[11px] text-fg-faint">Reading tokens…</p>
+  if (tokens.length === 0) return <p className="py-1 text-[11px] text-fg-faint">No CSS custom properties found.</p>
+
+  const colorTokens = tokens.filter((t) => t.isColor)
+  const valueTokens = tokens.filter((t) => !t.isColor)
 
   return (
-    // Cap height + scroll so a token-heavy host doesn't let this list swallow the panel.
-    <div className="max-h-44 space-y-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
-      {tokens.map((t) => (
-        <TokenRow key={t.name} token={t} busy={busy === t.name} onCommit={(v) => commit(t.name, v, t.value)} />
-      ))}
+    <div className="space-y-2.5">
+      {colorTokens.length > 0 && (
+        <div className="space-y-1.5">
+          <SectionLabel>Colors</SectionLabel>
+          {colorTokens.map((t) => (
+            <ColorRow
+              key={t.name}
+              label={t.name}
+              value={t.value}
+              themed={false}
+              portalContainer={portalContainer}
+              onPreview={(v) => applyLive(t.name, v)}
+              onCommit={(v) => commit(t.name, v, t.value)}
+            />
+          ))}
+        </div>
+      )}
+      {valueTokens.length > 0 && (
+        <div className="space-y-1.5">
+          <SectionLabel>Values</SectionLabel>
+          {valueTokens.map((t) => (
+            <ValueRow key={t.name} token={t} busy={busy === t.name} onCommit={(v) => commit(t.name, v, t.value)} />
+          ))}
+        </div>
+      )}
       {error && errorChip(error)}
     </div>
   )

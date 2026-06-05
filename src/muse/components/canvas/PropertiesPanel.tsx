@@ -43,7 +43,8 @@ const divider = <div className="h-px bg-line/10" />
 // One color channel: a swatch + hex readout that opens the custom ColorPicker in a
 // popover, or a read-only "themed" note when the source paints this channel through
 // a CSS variable (Muse leaves those). The popover closes on outside-click or Esc.
-function ColorRow({
+// Reused by the design-token editor (a token name as the label), so `label` is a node.
+export function ColorRow({
   label,
   value,
   themed,
@@ -52,7 +53,7 @@ function ColorRow({
   onPreview,
   onCommit,
 }: {
-  label: string
+  label: React.ReactNode
   value: string
   themed: boolean
   contrastAgainst?: string // paired color for the WCAG check (Fill behind Text, etc.)
@@ -138,7 +139,7 @@ function ColorRow({
 
   return (
     <div className="flex items-center justify-between gap-2 text-[11px]">
-      <span className="select-none text-fg-faint">{label}</span>
+      <span className="min-w-0 select-none truncate text-fg-faint">{label}</span>
       {themed ? (
         <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable; edit the design token instead">
           themed
