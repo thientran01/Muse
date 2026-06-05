@@ -137,7 +137,15 @@ function writeFileAtomic(abs: string, content: string): void {
   const dir = path.dirname(abs)
   const tmp = path.join(dir, `.${path.basename(abs)}.${process.pid}.tmp`)
   fs.writeFileSync(tmp, content, 'utf8')
-  fs.renameSync(tmp, abs)
+  try {
+    fs.renameSync(tmp, abs)
+  } catch (err) {
+    // Rename failed (disk full / permissions / a Windows lock on the target). Don't
+    // leak the temp file — for a source write it lands beside the file in src/ where
+    // Vite/tsc/git would pick up a stray `.Foo.tsx.<pid>.tmp`.
+    try { fs.unlinkSync(tmp) } catch { /* best-effort cleanup */ }
+    throw err
+  }
 }
 
 // ---- Flags persistence (.muse/flags.json) -------------------------------------
@@ -148,15 +156,29 @@ function writeFileAtomic(abs: string, content: string): void {
 const flagsPath = (root: string) => path.join(root, '.muse', 'flags.json')
 
 function readFlagsFile(root: string): FlagsFile {
+  let raw: string
   try {
-    const parsed = JSON.parse(fs.readFileSync(flagsPath(root), 'utf8')) as Partial<FlagsFile>
+    raw = fs.readFileSync(flagsPath(root), 'utf8')
+  } catch (err) {
+    // ENOENT is the normal first-run case (no flags yet) — start empty. Any OTHER
+    // read error (EBUSY/EACCES — e.g. a transient lock while muse-mcp reads the file)
+    // must NOT collapse to empty, or the caller's write would clobber every flag.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { version: 1, nextId: 1, flags: [] }
+    }
+    throw err
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<FlagsFile>
     return {
       version: 1,
       nextId: typeof parsed.nextId === 'number' && parsed.nextId > 0 ? parsed.nextId : 1,
       flags: Array.isArray(parsed.flags) ? (parsed.flags as Flag[]) : [],
     }
   } catch {
-    return { version: 1, nextId: 1, flags: [] } // missing/corrupt → empty
+    // Corrupt JSON: surface it rather than silently resetting — a clear error beats
+    // nuking the user's captured flags over one bad byte.
+    throw new Error('.muse/flags.json is corrupt — fix or delete it to continue.')
   }
 }
 
