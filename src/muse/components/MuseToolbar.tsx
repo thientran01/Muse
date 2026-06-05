@@ -83,7 +83,7 @@ export function MuseToolbar({
       {expanded && pop !== 'none' && (
         <div data-muse-panel className="w-64 origin-bottom-right animate-muse-panel overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="text-[11px] font-medium text-fg-muted">Design tokens</span>
+            <span className="text-[12px] font-semibold tracking-tight text-fg">Design tokens</span>
             <button
               onClick={() => setPop('none')}
               aria-label="Close design tokens"

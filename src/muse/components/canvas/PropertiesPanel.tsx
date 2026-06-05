@@ -46,25 +46,39 @@ const divider = <div className="h-px bg-line/10" />
 // Reused by the design-token editor (a token name as the label), so `label` is a node.
 export function ColorRow({
   label,
+  ariaLabel,
   value,
   themed,
   contrastAgainst,
   portalContainer,
   onPreview,
   onCommit,
+  onClose,
 }: {
   label: React.ReactNode
+  ariaLabel?: string // overrides the button's accessible name (label may be a node)
   value: string
   themed: boolean
   contrastAgainst?: string // paired color for the WCAG check (Fill behind Text, etc.)
   portalContainer?: React.RefObject<HTMLElement> // themed overlay root to portal the popover into
   onPreview: (v: string) => void
   onCommit: (v: string) => void
+  onClose?: () => void // fires when the picker popover closes (token editor uses it to drop a live preview)
 }) {
   const [open, setOpen] = useState(false)
   const rowRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+
+  // Tell the parent when the picker closes (open → false), so a token row can drop
+  // its live CSS-var preview and let the committed source value govern again.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    if (wasOpen.current && !open) onCloseRef.current?.()
+    wasOpen.current = open
+  }, [open])
 
   // The popover renders in a PORTAL into the overlay root, NOT inline — the panel
   // is an overflow-y-auto/overflow-x-hidden scroll box, which would clip an inline
@@ -150,6 +164,7 @@ export function ColorRow({
           onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-1.5 rounded px-1 py-0.5 transition hover:bg-line/10"
           aria-expanded={open}
+          aria-label={ariaLabel ?? (typeof label === 'string' ? `Edit ${label} color` : 'Edit color')}
           title="Edit color"
         >
           <span className="font-mono tabular-nums text-fg-muted">{value}</span>

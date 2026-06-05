@@ -5,8 +5,14 @@ import { museStore } from '../store'
 import type { HistoryEntry } from '../types'
 import { ColorRow, SectionLabel } from './canvas/PropertiesPanel'
 
-// A non-color token: name + an editable value field, in the same row shape as the
-// canvas color rows (label left, control right). Commits on blur / Enter.
+// A hex literal the ColorPicker can round-trip losslessly. Color tokens authored
+// as rgb()/hsl()/oklch() keep their format via a text field instead, so editing
+// one doesn't silently rewrite the author's color space to hex.
+const isHexColor = (v: string) => /^#[0-9a-fA-F]{3,8}$/.test(v.trim())
+
+// A value token: name + an editable field, in the same row shape as the canvas
+// color rows (label left, control right) — with a leading swatch for color tokens.
+// Commits on blur / Enter.
 function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean; onCommit: (v: string) => void }) {
   const [val, setVal] = useState(token.value)
   // Re-sync if the parent updates the value (optimistic apply, or undo).
@@ -16,18 +22,23 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
       <code className="min-w-0 truncate font-mono text-fg-faint" title={token.name}>
         {token.name}
       </code>
-      <input
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onBlur={() => onCommit(val)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          else if (e.key === 'Escape') setVal(token.value)
-        }}
-        disabled={busy}
-        aria-label={`Value for ${token.name}`}
-        className="w-[88px] shrink-0 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-0.5 text-right font-mono tabular-nums text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
-      />
+      <div className="flex shrink-0 items-center gap-1.5">
+        {token.isColor && (
+          <span className="h-5 w-5 shrink-0 rounded border border-line/20" style={{ backgroundColor: val }} />
+        )}
+        <input
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={() => onCommit(val)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            else if (e.key === 'Escape') setVal(token.value)
+          }}
+          disabled={busy}
+          aria-label={`Value for ${token.name}`}
+          className="w-[84px] shrink-0 rounded-md border border-line/10 bg-line/[0.04] px-1.5 py-0.5 text-right font-mono tabular-nums text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/25 disabled:opacity-50"
+        />
+      </div>
     </div>
   )
 }
@@ -53,10 +64,17 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
 
   // Live-preview a value by overriding the CSS var on the host root, so dragging the
   // color picker repaints the page in real time — the same feel as a canvas color
-  // scrub. The override lands on the committed value (a real write then HMRs the
-  // source to match), and re-edits overwrite it.
+  // scrub. The override is TRANSIENT: when the picker closes (onClose) we drop it so
+  // the source value (HMR'd in by a real write) governs again — otherwise the inline
+  // override would beat the stylesheet and silently mask later edits / undo. In MOCK
+  // / EPHEMERAL there's no source to fall back to, so the override is kept as the
+  // applied state.
   const applyLive = (name: string, value: string) => {
     document.documentElement.style.setProperty(name, value)
+  }
+  const clearLive = (name: string) => {
+    if (MOCK || EPHEMERAL) return // the override IS the persistence in the demo
+    document.documentElement.style.removeProperty(name)
   }
 
   const commit = async (name: string, next: string, prev: string) => {
@@ -100,6 +118,8 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
   if (!tokens) return <p className="py-1 text-[11px] text-fg-faint">Reading tokens…</p>
   if (tokens.length === 0) return <p className="py-1 text-[11px] text-fg-faint">No CSS custom properties found.</p>
 
+  // Hex color tokens get the visual picker; everything else (non-hex colors, sizes,
+  // radii, …) gets a value field. Colors group together regardless.
   const colorTokens = tokens.filter((t) => t.isColor)
   const valueTokens = tokens.filter((t) => !t.isColor)
 
@@ -108,17 +128,23 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       {colorTokens.length > 0 && (
         <div className="space-y-1.5">
           <SectionLabel>Colors</SectionLabel>
-          {colorTokens.map((t) => (
-            <ColorRow
-              key={t.name}
-              label={t.name}
-              value={t.value}
-              themed={false}
-              portalContainer={portalContainer}
-              onPreview={(v) => applyLive(t.name, v)}
-              onCommit={(v) => commit(t.name, v, t.value)}
-            />
-          ))}
+          {colorTokens.map((t) =>
+            isHexColor(t.value) ? (
+              <ColorRow
+                key={t.name}
+                label={t.name}
+                ariaLabel={`Edit ${t.name}`}
+                value={t.value}
+                themed={false}
+                portalContainer={portalContainer}
+                onPreview={(v) => applyLive(t.name, v)}
+                onCommit={(v) => commit(t.name, v, t.value)}
+                onClose={() => clearLive(t.name)}
+              />
+            ) : (
+              <ValueRow key={t.name} token={t} busy={busy === t.name} onCommit={(v) => commit(t.name, v, t.value)} />
+            ),
+          )}
         </div>
       )}
       {valueTokens.length > 0 && (
