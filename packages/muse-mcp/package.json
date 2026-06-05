@@ -1,0 +1,34 @@
+{
+  "name": "muse-mcp",
+  "version": "0.1.0",
+  "description": "Hand Muse flags (in-app annotations) to your own Claude Code. A thin stdio MCP server over .muse/flags.json — Muse routes zero inference.",
+  "type": "module",
+  "bin": {
+    "muse-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "muse",
+    "claude",
+    "design"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "tsx": "^4.22.4",
+    "typescript": "^5.5.3"
+  }
+}
