@@ -16,7 +16,10 @@ import { readFlags, resolveRoot, writeFlags } from './flagsStore.js'
 // --root <dir> overrides discovery; MUSE_ROOT env does too (matches the dev server).
 const argv = process.argv.slice(2)
 const rootFlagIdx = argv.indexOf('--root')
-const rootOverride = process.env.MUSE_ROOT ?? (rootFlagIdx >= 0 ? argv[rootFlagIdx + 1] : undefined)
+const rootArg = rootFlagIdx >= 0 ? argv[rootFlagIdx + 1] : undefined
+// Guard "--root --other-flag" (and a trailing "--root") from treating the next flag as a
+// path. `||` (not `??`) also lets an empty MUSE_ROOT fall through to discovery.
+const rootOverride = process.env.MUSE_ROOT || (rootArg && !rootArg.startsWith('--') ? rootArg : undefined)
 const ROOT = resolveRoot(process.cwd(), rootOverride)
 
 const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] })
@@ -34,12 +37,18 @@ server.registerTool(
       '`comment` describing the change they want (and, for flags born from a Canvas refusal, the ' +
       '`property` they reached for and the `reason` Canvas could not do it). Default returns only ' +
       'OPEN flags. Read each flag, make the edit at its file:line, then call resolve_flag.',
-    inputSchema: { status: z.enum(['open', 'resolved']).optional().describe('Filter by status. Default: open only.') },
+    inputSchema: {
+      status: z
+        .enum(['open', 'resolved', 'all'])
+        .optional()
+        .describe('Filter by status. Default: open only. "all" returns open + resolved.'),
+    },
   },
   async ({ status }) => {
     try {
       const wanted = status ?? 'open'
-      const flags = readFlags(ROOT).flags.filter((f) => f.status === wanted)
+      const all = readFlags(ROOT).flags
+      const flags = wanted === 'all' ? all : all.filter((f) => f.status === wanted)
       return ok({ root: ROOT, count: flags.length, flags })
     } catch (e) {
       return fail(`Could not read flags: ${(e as Error).message}`)
@@ -104,6 +113,9 @@ server.registerTool(
       const data = readFlags(ROOT)
       const before = data.flags.length
       data.flags = data.flags.filter((f) => f.status !== 'resolved')
+      // Nothing resolved → don't write (a pure-housekeeping call shouldn't create .muse/
+      // on a project that never had a flag).
+      if (data.flags.length === before) return ok({ removed: 0, remaining: before })
       writeFlags(ROOT, data)
       return ok({ removed: before - data.flags.length, remaining: data.flags.length })
     } catch (e) {

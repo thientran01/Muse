@@ -10,17 +10,24 @@ import type { Flag, FlagsFile } from './types.js'
 export function resolveRoot(start: string, override?: string): string {
   if (override) return path.resolve(override)
 
-  const findUp = (name: string): string | null => {
+  const findUp = (name: string, mustBeDir: boolean): string | null => {
     let dir = path.resolve(start)
     for (;;) {
-      if (fs.existsSync(path.join(dir, name))) return dir
+      try {
+        const st = fs.statSync(path.join(dir, name))
+        // `.muse` must be a DIRECTORY — a stray `.muse` FILE up the tree would otherwise
+        // be picked as the root, then writeFlags's mkdir would crash on it.
+        if (!mustBeDir || st.isDirectory()) return dir
+      } catch {
+        /* not at this level */
+      }
       const parent = path.dirname(dir)
       if (parent === dir) return null
       dir = parent
     }
   }
 
-  return findUp('.muse') ?? findUp('package.json') ?? path.resolve(start)
+  return findUp('.muse', true) ?? findUp('package.json', false) ?? path.resolve(start)
 }
 
 const flagsPath = (root: string): string => path.join(root, '.muse', 'flags.json')
@@ -35,7 +42,13 @@ export function readFlags(root: string): FlagsFile {
     }
     throw err
   }
-  const parsed = JSON.parse(raw) as Partial<FlagsFile>
+  let parsed: Partial<FlagsFile>
+  try {
+    parsed = JSON.parse(raw) as Partial<FlagsFile>
+  } catch {
+    // Match the backend's message rather than surfacing a raw V8 SyntaxError.
+    throw new Error('.muse/flags.json is corrupt — fix or delete it to continue.')
+  }
   return {
     version: 1,
     nextId: typeof parsed.nextId === 'number' && parsed.nextId > 0 ? parsed.nextId : 1,
