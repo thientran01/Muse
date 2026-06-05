@@ -149,9 +149,12 @@ function writeFileAtomic(abs: string, content: string): void {
 }
 
 // ---- Flags persistence (.muse/flags.json) -------------------------------------
-// The dev-server backend is the SINGLE WRITER of this file (the muse-mcp server reads
-// it, and routes resolves back through here) — so plain read-modify-write is safe; the
-// only torn-read risk is handled by writeFileAtomic above.
+// TWO processes write this file: this dev-server backend (flag drops + resolves) and the
+// standalone muse-mcp server (resolve_flag/clear_resolved write DIRECTLY, so you can
+// resolve with the app closed). writeFileAtomic prevents torn reads; concurrent writes are
+// v1 last-write-wins on a small file (a watch + lock is the v1.1 hardening). The one
+// dangerous consequence — a regressed nextId minting a duplicate id — is defused in
+// handleFlag, which derives the id from max(nextId, highest existing id + 1).
 
 const flagsPath = (root: string) => path.join(root, '.muse', 'flags.json')
 
@@ -1047,8 +1050,16 @@ async function handleFlag(req: IncomingMessage, res: ServerResponse, ctx: MuseCo
       return sendJson(res, 400, { error: 'A flag needs a line and column.' })
     }
     const data = readFlagsFile(ctx.root)
+    // Allocate the id from BOTH the stored counter AND the highest existing flag id, so a
+    // concurrent muse-mcp write that regressed nextId (the cross-process last-write-wins
+    // window) can never make us mint a DUPLICATE id.
+    const maxId = data.flags.reduce((m, f) => {
+      const n = Number.parseInt(f.id.replace(/^f_/, ''), 10)
+      return Number.isFinite(n) && n > m ? n : m
+    }, 0)
+    const num = Math.max(data.nextId, maxId + 1)
     const flag: Flag = {
-      id: `f_${data.nextId}`,
+      id: `f_${num}`,
       comment: typeof d?.comment === 'string' ? d.comment.trim() : '',
       status: 'open',
       file: relOf(ctx.root, abs),
@@ -1064,7 +1075,7 @@ async function handleFlag(req: IncomingMessage, res: ServerResponse, ctx: MuseCo
       resolution: null,
     }
     data.flags.push(flag)
-    data.nextId += 1
+    data.nextId = num + 1
     writeFlagsFile(ctx.root, data)
     return sendJson(res, 200, { ok: true, flag })
   } catch (err) {
@@ -1085,9 +1096,9 @@ async function handleFlagsList(_req: IncomingMessage, res: ServerResponse, ctx: 
   }
 }
 
-// POST /api/muse/flag-resolve { id, note? } — mark a flag resolved. This is the SINGLE
-// writer for resolutions: muse-mcp's resolve_flag routes through here so two processes
-// never write the file concurrently.
+// POST /api/muse/flag-resolve { id, note? } — mark a flag resolved. Used by the in-overlay
+// panel. (muse-mcp's resolve_flag does NOT route through here — it writes the file directly
+// so you can resolve with the app closed; the two writers are v1 last-write-wins.)
 async function handleFlagResolve(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const b = JSON.parse(await readBody(req)) as { id?: unknown; note?: unknown }

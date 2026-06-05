@@ -40,7 +40,7 @@ The server finds your project by walking up from the launch directory for a `.mu
 | `resolve_flag` | `id`, `note?` | Mark resolved (after you've made the edit) |
 | `clear_resolved` | — | Remove resolved flags (housekeeping) |
 
-Reads are direct from `.muse/flags.json`; writes are atomic (temp + rename). Single-process safe; if both Muse's dev server and this server write at the same instant the last write wins (a small file, a rare overlap) — a file watch + lock lands in a later version.
+Reads are direct from `.muse/flags.json`; writes are atomic (temp + rename), so a reader never sees a torn file. **Two** processes write this file — Muse's dev server (flag drops) and this server (resolves). If a flag is dropped in the running app at the same instant Claude Code resolves one, the two writes are last-write-wins, so one update can be lost (a small file, a narrow window). Muse mints flag ids from the highest existing id, so a lost update can't cause a duplicate id. A file watch + lock is the planned hardening.
 
 ## License
 
