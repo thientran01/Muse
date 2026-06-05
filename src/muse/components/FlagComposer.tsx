@@ -105,7 +105,7 @@ export function FlagComposer({
         aria-label="Describe the change you want for your agent"
         placeholder="Describe the change you want…"
         rows={3}
-        className="w-full resize-none rounded-md border border-line/20 bg-line/5 px-2 py-1.5 text-[12px] leading-snug text-fg placeholder:text-fg-faint focus:border-fg/25 focus:outline-none focus:ring-1 focus:ring-fg/15"
+        className="w-full resize-none rounded-md border border-line/20 bg-line/5 px-2 py-1.5 text-[12px] leading-snug text-fg placeholder:text-fg-faint focus:border-fg/40 focus:outline-none focus:ring-1 focus:ring-fg/20"
       />
       {error && <p className="mt-1 text-[11px] text-rose-300">{error}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">

@@ -77,7 +77,7 @@ export function FlagsPanel() {
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-medium leading-snug text-fg">
+                <p className="text-[13px] font-medium leading-snug text-fg">
                   {f.comment || <span className="font-normal text-fg-faint">(no note)</span>}
                 </p>
                 <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-fg-faint">
