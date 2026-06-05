@@ -22,7 +22,11 @@ export function FlagsPanel() {
     }
   }, [])
 
-  if (flags.length === 0) {
+  // Show OPEN flags only — a resolved flag's work is done, so it leaves the list (the
+  // resolution still lives in .muse/flags.json for the agent's record + clear_resolved).
+  const open = flags.filter((f) => f.status === 'open')
+
+  if (open.length === 0) {
     return (
       <p className="px-1 py-6 text-center text-[12px] leading-relaxed text-fg-faint">
         No flags yet.
@@ -32,9 +36,7 @@ export function FlagsPanel() {
     )
   }
 
-  const open = flags.filter((f) => f.status === 'open')
-  const resolved = flags.filter((f) => f.status === 'resolved')
-  const ordered = [...open].reverse().concat([...resolved].reverse())
+  const ordered = [...open].reverse() // newest on top
 
   const act = async (id: string, fn: () => Promise<void>) => {
     setBusy(id)
@@ -56,29 +58,23 @@ export function FlagsPanel() {
 
   return (
     <ul className="flex flex-col gap-1.5">
-      {ordered.map((f) => {
+      {ordered.map((f, i) => {
         const basename = f.file.split('/').pop() ?? f.file
-        const isResolved = f.status === 'resolved'
-        const ordinal = open.indexOf(f) + 1 // matches the on-page pin number
+        const ordinal = open.length - i // newest-first display, so the oldest open flag stays #1 (matches the pins)
         const isBusy = busy === f.id
         return (
-          <li
-            key={f.id}
-            className={`rounded-lg border border-line/10 bg-line/5 px-2.5 py-2 ${isResolved ? 'opacity-55' : ''}`}
-          >
+          <li key={f.id} className="rounded-lg border border-line/10 bg-line/5 px-2.5 py-2">
             <div className="flex items-start gap-2">
-              {isResolved ? (
-                <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-fg-faint/15 text-fg-faint">
-                  <Check size={10} weight="bold" />
-                </span>
-              ) : (
-                <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-white">
-                  {ordinal}
-                </span>
-              )}
+              <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white">
+                {ordinal}
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium leading-snug text-fg">
-                  {f.comment || <span className="font-normal text-fg-faint">(no note)</span>}
+                <p className="break-words text-[13px] font-medium leading-snug text-fg [overflow-wrap:anywhere]" title={f.comment || undefined}>
+                  {f.comment ? (
+                    <span className="line-clamp-4">{f.comment}</span>
+                  ) : (
+                    <span className="font-normal text-fg-faint">(no note)</span>
+                  )}
                 </p>
                 <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-fg-faint">
                   <span className="truncate" title={`${f.file}:${f.line}`}>
@@ -87,16 +83,11 @@ export function FlagsPanel() {
                   <span aria-hidden>·</span>
                   <span>{f.tag}</span>
                 </p>
-                {isResolved && f.resolution && (
-                  <p className="mt-1 text-[11px] leading-snug text-fg-muted">→ {f.resolution}</p>
-                )}
                 {missId === f.id && (
                   <p className="mt-1 text-[10px] text-fg-faint">Couldn’t find it on the page — the code may have moved.</p>
                 )}
                 <div className="mt-2 flex items-center gap-1">
-                  {!isResolved && (
-                    <ActionBtn icon={<Check size={12} weight="bold" />} label="Resolve" primary disabled={isBusy} onClick={() => void act(f.id, () => resolveFlag(f.id))} />
-                  )}
+                  <ActionBtn icon={<Check size={12} weight="bold" />} label="Resolve" primary disabled={isBusy} onClick={() => void act(f.id, () => resolveFlag(f.id))} />
                   <ActionBtn icon={<Crosshair size={12} />} label="Jump" disabled={isBusy} onClick={() => jump(f)} />
                   <span className="flex-1" />
                   <button

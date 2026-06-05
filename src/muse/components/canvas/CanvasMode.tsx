@@ -1098,8 +1098,9 @@ export function CanvasMode({
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
-      {/* Hover affordance while no edit is in flight — lets you retarget. */}
-      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
+      {/* Hover affordance while no edit is in flight — lets you retarget. While Shift is
+          held the flag chip replaces the element tooltip (don't stack both over the target). */}
+      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={shiftHeld ? null : hoverInfo} />}
 
       {/* Shift-held discoverability cue: tells the user the hover target will be flagged
           (the gesture is otherwise invisible). Follows the cursor like the hover tooltip. */}

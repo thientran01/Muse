@@ -36,7 +36,7 @@ function IconBtn({ label, onClick, children, active, badge }: { label: string; o
     >
       {children}
       {badge != null && badge > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white ring-1 ring-surface-soft">
+        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white ring-1 ring-surface-soft">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
