@@ -37,18 +37,7 @@ npx skills add thientran01/Muse
 
 It detects your bundler (Vite, Next.js, or webpack), copies the engine in, and wires the three pieces Muse needs. To wire it by hand, [`docs/HOSTING.md`](docs/HOSTING.md) covers every host step by step.
 
-**Canvas needs no API key** — every edit is a deterministic AST rewrite, so there's nothing to configure to start editing.
-
-### Configuration
-
-All optional environment variables, read at dev-server start. They only touch the `DESIGN.md` brief behind the Design system popover (which powers the color picker's brand swatches):
-
-| Var | Default | What it controls |
-|---|---|---|
-| `MUSE_DESIGN_MD` | — | Path to a `DESIGN.md` brief, if it isn't at a standard location (`DESIGN.md` or `src/DESIGN.md`). |
-| `MUSE_DESIGN_EXCLUDE` | — | Comma-separated terms to drop from the evidence when generating a brief. |
-
-The optional **Generate design system** button (in the toolbar's Design system popover) shells out to the `claude` CLI on your logged-in subscription — so generating a brief needs Claude Code installed and on PATH, but **no `ANTHROPIC_API_KEY`**. You can also run it from the terminal with `npm run design:gen`.
+**Canvas needs no API key and no configuration** — every edit is a deterministic AST rewrite. The toolbar also has a **Design tokens** popover that lists your host's CSS custom properties (`--c-energy`, `--radius-lg`, and the rest) and lets you retune any of them in place, written straight back to the defining stylesheet.
 
 ---
 
@@ -68,7 +57,7 @@ The engine needs to read source from disk and write edited files back. All endpo
 - **Next.js** — [`server/webAdapter.ts`](server/webAdapter.ts) bridges the handlers to a same-origin App Router dev route.
 - **Anything else** — [`server/standaloneServer.ts`](server/standaloneServer.ts), a tiny Node http server bound to localhost.
 
-**Canvas endpoints** (deterministic, no model call): `/style-edit`, `/text-edit`, `/reorder`, plus the probes `/style-scope`, `/text-editable`, `/reorderable`, the token endpoints `/tokens`, `/token-edit`, and `/write` to commit. The optional `/design` (read the brief) and `/design/generate` (write one via the `claude` CLI) back the Design system popover.
+**Canvas endpoints** (deterministic, no model call): `/style-edit`, `/text-edit`, `/reorder`, plus the probes `/style-scope`, `/text-editable`, `/reorderable`, the token endpoints `/tokens`, `/token-edit`, and `/write` to commit.
 
 ### AST-based Canvas edits
 
@@ -100,7 +89,6 @@ The write path touches disk, so:
 | Styling Muse edits | Tailwind (v3 & v4), inline styles, CSS variables, CSS Modules, styled-components / emotion |
 | Muse's own UI | Tailwind, isolated in a Shadow DOM root |
 | Backend | Dev-only middleware (Vite plugin / Next route / standalone server) |
-| DESIGN.md generator (optional) | Claude via the `claude` CLI (subscription) — powers the brand swatches |
 | Icons | Phosphor |
 
 ---

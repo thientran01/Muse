@@ -1,4 +1,4 @@
-import { Callout, Code, CodeBlock } from '../ui'
+import { Callout, Code } from '../ui'
 
 // Content is written inline (literal classes + literal text) on purpose: it makes
 // every heading, paragraph, button, and card here selectable AND editable by Canvas
@@ -134,28 +134,13 @@ export function Overview() {
       </p>
 
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        Keep edits on brand
+        Retune your tokens
       </h2>
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Drop a <Code>DESIGN.md</Code> in your project to capture your tokens and brand in one place. Muse
-        reads its colors for the picker's brand swatches, so the palette you reach for is your real tokens
-        rather than a guessed hex. It follows Google's{' '}
-        <a className="underline" href="https://github.com/google-labs-code/design.md">DESIGN.md format</a>.
-      </p>
-      <CodeBlock label="DESIGN.md">{`---
-colors:
-  brand: "#7f2f2f"
-  paper: "#f7f4ee"
-typography:
-  body: { fontFamily: "Inter" }
----
-
-## Brand & Style
-Warm and tool-like. One brick accent, used sparingly.`}</CodeBlock>
-      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
-        Muse can draft one from your code: run <Code>npm run design:gen</Code>, or open the{' '}
-        <strong>Design system</strong> popover from the toolbar, which shows the brief in use and can
-        generate a fresh one. Either way you refine it by hand afterward.
+        Open the <strong>Design tokens</strong> popover from the toolbar to see every CSS custom property
+        your app defines (<Code>--c-energy</Code>, <Code>--radius-lg</Code>, and the rest) with a live
+        swatch. Edit a value and Muse writes it straight back to the stylesheet that defines it, so a
+        single change repaints everywhere the token is used. No model call, no key.
       </p>
     </article>
   )

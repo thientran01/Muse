@@ -11,7 +11,6 @@
 // ============================================================
 import path from 'node:path'
 import fs from 'node:fs'
-import { spawn, execFileSync } from 'node:child_process'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   computeStyleEdit,
@@ -39,36 +38,24 @@ import { setTemplateProperty } from '../src/muse/style/styledEdit'
 // ---- Constants ----------------------------------------------------------------
 
 const MAX_WRITE_BYTES = 200_000
-const MAX_DESIGN_BYTES = 40_000
-const DESIGN_MD_CANDIDATES = ['DESIGN.md', 'src/DESIGN.md', 'src/demo/DESIGN.md']
 
 // ---- MuseContext ---------------------------------------------------------------
 
 export type MuseContext = {
   root: string
-  designMdOverride: string
-  designExclude: string[]
   // Mutable session state
   lineOffsetHint: OffsetHint
   detectedStrategy: StyleStrategy | null
-  designGenerating: boolean
 }
 
 export function createMuseContext(
-  env: Record<string, string | undefined>,
+  _env: Record<string, string | undefined>,
   root: string,
 ): MuseContext {
-  const get = (key: string) => env[key] ?? ''
   return {
     root,
-    designMdOverride: get('MUSE_DESIGN_MD'),
-    designExclude: get('MUSE_DESIGN_EXCLUDE')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
     lineOffsetHint: { value: null },
     detectedStrategy: null,
-    designGenerating: false,
   }
 }
 
@@ -84,8 +71,6 @@ export type MuseHandlers = {
   textEditable: Handler
   reorder: Handler
   reorderable: Handler
-  designGenerate: Handler
-  design: Handler
   tokens: Handler
   tokenEdit: Handler
 }
@@ -99,8 +84,6 @@ export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
     textEditable:   (req, res) => handleTextEditable(req, res, ctx),
     reorder:        (req, res) => handleReorder(req, res, ctx),
     reorderable:    (req, res) => handleReorderable(req, res, ctx),
-    designGenerate: (req, res) => handleDesignGenerate(req, res, ctx),
-    design:         (req, res) => handleDesign(req, res, ctx),
     tokens:         (req, res) => handleTokens(req, res, ctx),
     tokenEdit:      (req, res) => handleTokenEdit(req, res, ctx),
   }
@@ -371,93 +354,6 @@ function spliceStringLiteralValue(source: string, valueStart: number, valueEnd: 
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
   return source.slice(0, valueStart) + escaped + source.slice(valueEnd)
-}
-
-function loadDesignBrief(root: string, override: string): string | null {
-  const tryRead = (p: string): string | null => {
-    try {
-      const st = fs.statSync(p)
-      if (!st.isFile()) return null
-      const len = Math.min(st.size, MAX_DESIGN_BYTES)
-      const fd = fs.openSync(p, 'r')
-      try {
-        const buf = Buffer.alloc(len)
-        fs.readSync(fd, buf, 0, len, 0)
-        const text = buf.toString('utf8').trim()
-        return text || null
-      } finally {
-        fs.closeSync(fd)
-      }
-    } catch {
-      return null
-    }
-  }
-  if (override) return tryRead(path.isAbsolute(override) ? override : path.resolve(root, override))
-  for (const rel of DESIGN_MD_CANDIDATES) {
-    const hit = tryRead(path.resolve(root, rel))
-    if (hit) return hit
-  }
-  return null
-}
-
-function resolveDesignPath(root: string, override: string): { path: string; exists: boolean } {
-  const isFile = (p: string) => { try { return fs.statSync(p).isFile() } catch { return false } }
-  if (override) {
-    const p = path.isAbsolute(override) ? override : path.resolve(root, override)
-    return { path: p, exists: isFile(p) }
-  }
-  for (const rel of DESIGN_MD_CANDIDATES) {
-    const p = path.resolve(root, rel)
-    if (isFile(p)) return { path: p, exists: true }
-  }
-  return { path: path.resolve(root, DESIGN_MD_CANDIDATES[0]), exists: false }
-}
-
-// ---- Design-brief generator helpers -------------------------------------------
-
-// Resolve the `claude` CLI on PATH, or null if it isn't installed. `where`/`which`
-// exits non-zero when nothing matches, so a thrown error (or no hits) means absent.
-// Memoized: this spawns a child process, and GET /api/muse/design calls it on every
-// design-card open — caching keeps that off the event loop after the first probe.
-// (A dev's PATH doesn't change mid-session; a server restart re-probes.)
-let claudeBinCache: { value: string | null } | null = null
-function findClaudeBin(): string | null {
-  if (claudeBinCache) return claudeBinCache.value
-  const finder = process.platform === 'win32' ? 'where' : 'which'
-  let value: string | null
-  try {
-    const out = execFileSync(finder, ['claude'], { encoding: 'utf8' })
-    const hits = out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-    value = hits.find((h) => /\.exe$/i.test(h)) || hits[0] || null
-  } catch {
-    value = null
-  }
-  claudeBinCache = { value }
-  return value
-}
-
-// Path to the design-brief generator script, if it was vendored into the host.
-function designGeneratorScript(root: string): string {
-  return path.resolve(root, 'scripts/gen-design-md.mjs')
-}
-
-// Pure decision: why the generator can't run given its two prerequisites, or null
-// if it can. Split out from the filesystem/PATH probes so it's unit-testable (see
-// scripts/check-design-generator.ts). The generator needs BOTH its script vendored
-// AND the `claude` CLI on PATH (it shells out to your logged-in subscription).
-export function generatorBlockerFor(scriptExists: boolean, claudeOnPath: boolean): string | null {
-  if (!scriptExists) {
-    return 'The generator script (scripts/gen-design-md.mjs) isn’t vendored in this project. Re-run the Muse install skill to add it.'
-  }
-  if (!claudeOnPath) {
-    return 'The `claude` CLI isn’t on PATH. Install Claude Code and log in (`claude auth status`) so Muse can generate a brief on your subscription.'
-  }
-  return null
-}
-
-// Why the "Generate design system" button can't run on this host, or null if it can.
-function designGeneratorBlocker(root: string): string | null {
-  return generatorBlockerFor(fs.existsSync(designGeneratorScript(root)), findClaudeBin() !== null)
 }
 
 // ---- Handlers -----------------------------------------------------------------
@@ -989,61 +885,6 @@ async function handleReorderable(req: IncomingMessage, res: ServerResponse, ctx:
   } catch (err) {
     console.error('[muse] /reorderable error:', err)
     return sendJson(res, 200, { reorderable: false, reason: 'check failed' })
-  }
-}
-
-async function handleDesignGenerate(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
-  if (ctx.designGenerating) {
-    return sendJson(res, 409, { error: 'A design brief is already being generated — hang on.' })
-  }
-  try {
-    const blocker = designGeneratorBlocker(ctx.root)
-    if (blocker) {
-      return sendJson(res, 500, { error: blocker })
-    }
-    const scriptPath = designGeneratorScript(ctx.root)
-    const outPath = resolveDesignPath(ctx.root, ctx.designMdOverride).path
-    const args = [
-      scriptPath, ctx.root, '--concise', '--force', '--out', outPath,
-      ...ctx.designExclude.flatMap((x) => ['--exclude', x]),
-    ]
-    ctx.designGenerating = true
-    const child = spawn(process.execPath, args, { env: process.env })
-    let err = ''
-    let sent = false
-    const reply = (status: number, body: unknown) => {
-      if (sent) return
-      sent = true
-      ctx.designGenerating = false
-      sendJson(res, status, body)
-    }
-    child.stderr.on('data', (d) => (err += d))
-    child.on('error', (e) => reply(500, { error: `Could not run the generator: ${(e as Error).message}` }))
-    child.on('close', (code) => {
-      if (code !== 0) return reply(500, { error: `Generator failed: ${err.slice(-600).trim() || '(no output)'}` })
-      const content = loadDesignBrief(ctx.root, ctx.designMdOverride)
-      if (!content) return reply(500, { error: `Generator finished but no readable brief at ${relOf(ctx.root, outPath)}.` })
-      reply(200, { content, path: relOf(ctx.root, outPath) })
-    })
-  } catch (err) {
-    ctx.designGenerating = false
-    console.error('[muse] /design/generate error:', err)
-    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
-  }
-}
-
-async function handleDesign(_req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
-  try {
-    const { path: p, exists } = resolveDesignPath(ctx.root, ctx.designMdOverride)
-    const content = exists ? loadDesignBrief(ctx.root, ctx.designMdOverride) : null
-    // Tell the client whether "Generate design system" can actually run, so it
-    // can show a setup hint up front instead of a button that errors on click.
-    const blocker = designGeneratorBlocker(ctx.root)
-    const generator = blocker ? { available: false, reason: blocker } : { available: true }
-    return sendJson(res, 200, { exists: !!content, content: content ?? undefined, path: relOf(ctx.root, p), generator })
-  } catch (err) {
-    console.error('[muse] /design error:', err)
-    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
   }
 }
 

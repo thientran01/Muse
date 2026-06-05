@@ -6,7 +6,7 @@ export const NAV: { id: PageId; label: string; blurb: string }[] = [
   { id: 'overview', label: 'Overview', blurb: 'What Muse is' },
   { id: 'install', label: 'Install', blurb: 'Add it to your app' },
   { id: 'how', label: 'How it works', blurb: 'The engine' },
-  { id: 'reference', label: 'Reference', blurb: 'Config & limits' },
+  { id: 'reference', label: 'Reference', blurb: 'Gestures & limits' },
 ]
 
 export function pageFromHash(): PageId {

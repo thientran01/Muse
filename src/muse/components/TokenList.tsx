@@ -78,7 +78,7 @@ export function TokenList() {
         elements: [],
         label: `token ${name}`,
       }
-      museStore.setState((cur) => ({ past: [...cur.past, entry], future: [], applied: true }))
+      museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
       setError(null)
     } catch (e) {

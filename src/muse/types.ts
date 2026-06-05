@@ -121,8 +121,3 @@ export type HistoryEntry = {
   elements: SelectedElement[]
   label: string
 }
-
-// Whether the design-brief generator can run on this host. `available: false`
-// carries a human reason (script not vendored, or the `claude` CLI isn't on PATH)
-// so the UI shows a setup hint instead of a button that errors after the click.
-export type DesignGeneratorStatus = { available: boolean; reason?: string }

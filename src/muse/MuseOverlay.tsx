@@ -166,8 +166,8 @@ export function MuseOverlay() {
       {open && !closing && <CanvasMode onExit={requestClose} />}
 
       {/* The dock — one pill that morphs between the FAB (closed) and the idle
-          toolbar (manta · design system · pause · X). Opening expands the FAB in
-          place into the toolbar; the design brief opens as a popover above the bar.
+          toolbar (manta · design tokens · pause · X). Opening expands the FAB in
+          place into the toolbar; the design tokens open as a popover above the bar.
           Rendered always: it's the FAB when closed and the toolbar when open, and it
           catches the collapsing toolbar during a close. */}
       <MuseToolbar

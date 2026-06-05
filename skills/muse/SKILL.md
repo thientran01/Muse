@@ -74,16 +74,7 @@ cp -r "$TMP/muse/src/muse"  ./src/muse           # overlay + deterministic engin
 cp -r "$TMP/muse/server"    ./muse-server         # museCore, musePlugin, webAdapter, standaloneServer, styleEdit
 cp -r "$TMP/muse/babel"     ./muse-babel          # muse-loc.cjs — the universal locator plugin
 cp "$TMP/muse/docs/HOSTING.md" ./muse-server/HOSTING.md   # the canonical wiring reference
-mkdir -p ./scripts && cp "$TMP/muse/scripts/gen-design-md.mjs" ./scripts/   # the "Generate design system" generator (always copy it)
 ```
-
-> **Always copy `scripts/gen-design-md.mjs`** (it's part of the block above, not
-> optional) — museCore looks for it at `<root>/scripts/gen-design-md.mjs`, and a
-> **re-vendor must re-copy it too**. The generator (the **Generate design system**
-> button) also shells out to the `claude` CLI, so it needs Claude Code installed +
-> logged in on the host. If the script is missing OR the CLI isn't on PATH, the
-> button is *replaced by a "Needs setup: …" hint* (it no longer errors after the
-> click) and everything else still works.
 
 `src/muse/` is the client (overlay, components, hooks, store, `style/`, `muse.css`).
 `muse-server/` is dev-only and never ships to a production build. Adjust the
@@ -232,13 +223,8 @@ One React instance only — mount from the host's own React, never a second copy
    element, scrub its padding — it updates live and the change is written to the
    real source file (`git diff`). Undo with Cmd/Ctrl+Z. (To see the rest: double-
    click prop text to trace it to its usage site, select an element styled via a
-   shared `style={const}` for the scope toggle, or open the design-system popover →
-   **Edit tokens**.)
-4. (Optional) Design-system generator: confirm `scripts/gen-design-md.mjs` exists
-   (`ls scripts/gen-design-md.mjs`) and the `claude` CLI is on PATH (`claude --version`).
-   Open the design-system popover (toolbar FileText icon) — it resolves to
-   **Generate** when both are present, or a **"Needs setup: …"** hint naming what's
-   missing. Either is fine; the rest of Muse works regardless.
+   shared `style={const}` for the scope toggle, or open the **Design tokens**
+   popover from the toolbar to retune a CSS custom property.)
 
 ## Notes
 

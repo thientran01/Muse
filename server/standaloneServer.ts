@@ -16,8 +16,6 @@
 //    MUSE_PORT          Port to listen on (default: 4747)
 //    MUSE_HOST          Interface to bind (default: 127.0.0.1 — localhost only)
 //    MUSE_CORS_ORIGIN   Allowed origin (default: localhost-only; set to "*" to allow any)
-//    MUSE_DESIGN_MD     Path to DESIGN.md override
-//    MUSE_DESIGN_EXCLUDE Comma-separated terms to drop from design brief evidence
 // ============================================================
 import http from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -57,8 +55,7 @@ function addCors(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
 
-// Map "METHOD /path" → handler. /design/generate must come before /design so the
-// longer prefix wins (unlike Connect middleware, we do an exact key lookup).
+// Map "METHOD /path" → handler (exact key lookup).
 const ROUTES = new Map<string, Handler>([
   ['POST /api/muse/write',           handlers.write],
   ['POST /api/muse/style-edit',      handlers.styleEdit],
@@ -67,8 +64,6 @@ const ROUTES = new Map<string, Handler>([
   ['POST /api/muse/text-editable',   handlers.textEditable],
   ['POST /api/muse/reorder',         handlers.reorder],
   ['POST /api/muse/reorderable',     handlers.reorderable],
-  ['POST /api/muse/design/generate', handlers.designGenerate],
-  ['GET /api/muse/design',           handlers.design],
   ['GET /api/muse/tokens',           handlers.tokens],
   ['POST /api/muse/token-edit',      handlers.tokenEdit],
 ])

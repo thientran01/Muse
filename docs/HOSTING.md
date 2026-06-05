@@ -215,13 +215,9 @@ export function DevMuse() {
 |---|---|
 | `MUSE_ROOT` | project root for the standalone server (defaults to cwd). |
 | `MUSE_API_BASE` | client default for `apiBase` (or call `configureMuse`). |
-| `MUSE_DESIGN_MD` | path to a `DESIGN.md` brief, if it isn't at a standard location (`DESIGN.md` or `src/DESIGN.md`). |
-| `MUSE_DESIGN_EXCLUDE` | comma-separated terms to drop from the evidence when generating a brief. |
 
-Canvas Mode (direct manipulation: spacing/type/color/text/reorder) is deterministic and
-needs **no API key**. The only model-backed feature is the optional **Generate design
-system** button, which shells out to the `claude` CLI on your logged-in subscription — so
-it needs Claude Code on PATH, but no `ANTHROPIC_API_KEY`.
+Canvas Mode (direct manipulation: spacing/type/color/text/reorder) and the design-token
+editor are fully deterministic — Muse needs **no API key and no model-backed services**.
 
 ---
 

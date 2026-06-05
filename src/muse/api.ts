@@ -1,6 +1,5 @@
 import { EPHEMERAL, MOCK, getApiBase } from './config'
 import type {
-  DesignGeneratorStatus,
   FileEdit,
   Reorderable,
   ReorderChild,
@@ -212,50 +211,3 @@ const MOCK_TOKENS: DesignToken[] = [
   { name: '--c-paper', value: '#f7f4ee', isColor: true, file: 'src/index.css' },
   { name: '--radius-lg', value: '16px', isColor: false, file: 'src/index.css' },
 ]
-
-export type DesignGet = {
-  exists: boolean
-  content?: string
-  path?: string
-  // Whether "Generate design system" can run here. Omitted by mock mode / older
-  // servers — callers treat absent as available (the generate path still errors
-  // gracefully if it can't run).
-  generator?: DesignGeneratorStatus
-}
-
-// Does the app have a design brief (DESIGN.md)? Drives the target-strip icon.
-export async function museDesignGet(): Promise<DesignGet> {
-  if (MOCK) return { exists: true, content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
-  const res = await fetch(apiUrl('/api/muse/design'))
-  const data = (await res.json()) as DesignGet & { error?: string }
-  if (data.error) throw new Error(data.error) // surface server errors, not a false "no brief"
-  return data
-}
-
-// Generate a DESIGN.md from the app's code (concise). ~45s — caller shows a
-// pending state. Returns the written brief.
-export async function museDesignGenerate(): Promise<{ content: string; path?: string }> {
-  if (MOCK) {
-    await delay(1200)
-    return { content: MOCK_DESIGN_MD, path: 'DESIGN.md' }
-  }
-  const res = await fetch(apiUrl('/api/muse/design/generate'), { method: 'POST' })
-  const data = (await res.json()) as { content?: string; path?: string; error?: string }
-  if (data.error || !data.content) throw new Error(data.error ?? 'Generation failed')
-  return { content: data.content, path: data.path }
-}
-
-// A small sample brief for mock mode so the card renders without a backend.
-const MOCK_DESIGN_MD = `---
-name: Muse Design System
-colors:
-  brand: "#7f2f2f"
-  paper: "#f7f4ee"
-  ink: "#1c1917"
-typography:
-  display: { fontFamily: "Inter" }
-  body: { fontFamily: "Inter" }
----
-
-## Brand & Style
-Warm and tool-like. One deep brick accent on a warm paper canvas, Inter throughout, fast easeOut motion.`

@@ -29,16 +29,6 @@ export function musePlugin(): Plugin {
       if (!ctx) return
       const handlers = createMuseHandlers(ctx)
 
-      // Register more-specific paths before less-specific ones so Connect's
-      // prefix matching doesn't swallow /design/generate into /design.
-      server.middlewares.use('/api/muse/design/generate', (req, res, next) => {
-        if (req.method !== 'POST') return next()
-        handlers.designGenerate(req, res).catch(() => {})
-      })
-      server.middlewares.use('/api/muse/design', (req, res, next) => {
-        if (req.method !== 'GET') return next()
-        handlers.design(req, res).catch(() => {})
-      })
       server.middlewares.use('/api/muse/write', (req, res, next) => {
         if (req.method !== 'POST') return next()
         handlers.write(req, res).catch(() => {})
