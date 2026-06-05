@@ -79,8 +79,16 @@ export function asSelected(el: CanvasElement): SelectedElement {
  * capture-phase listeners stay attached across selection (re-subscribing on every
  * selection would drop a frame and flicker); locking is a guard, not a re-sub.
  */
-export function useCanvasMode(opts?: { suspended?: boolean }) {
+export function useCanvasMode(opts?: {
+  suspended?: boolean
+  // Shift-click hands the clicked element off to a flag instead of selecting it (the
+  // overflow valve — annotate intent in place for the user's own agent). Read via a
+  // ref so the listener effect doesn't re-subscribe when the callback identity changes.
+  onFlag?: (el: CanvasElement, at: { x: number; y: number }) => void
+}) {
   const [active, setActive] = useState(false)
+  const onFlagRef = useRef(opts?.onFlag)
+  onFlagRef.current = opts?.onFlag
   // While a reorder drag is in flight the parent sets `suspended` — Canvas stands
   // down (no hover, no select/drill, no dblclick) so dragging the cursor across other
   // elements can't re-hover or re-select them mid-drag. A mid-drag selection change
@@ -163,6 +171,12 @@ export function useCanvasMode(opts?: { suspended?: boolean }) {
         return
       }
       const leaf = chain[0]
+      // Shift-click → drop a flag on the clicked element (don't select/drill). Takes
+      // precedence over Alt so the gesture is unambiguous.
+      if (e.shiftKey && onFlagRef.current) {
+        onFlagRef.current(leaf, { x: e.clientX, y: e.clientY })
+        return
+      }
       let picked = leaf
       if (e.altKey) {
         // Step OUT to the parent of what's under the cursor (or of the current
