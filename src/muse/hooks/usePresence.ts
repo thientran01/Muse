@@ -10,7 +10,9 @@ import { useEffect, useState } from 'react'
  * `durationMs`. Using a data-state + CSS transition — rather than a keyframe — keeps
  * the motion interruptible: re-opening mid-exit smoothly retargets (Emil's rule).
  *
- * Pair with the `.muse-pop` class in muse.css.
+ * Pair with the `.muse-pop` class in muse.css. The default `durationMs` matches
+ * its `--muse-dur-pop: 150ms` exit so the element unmounts as the transition ends —
+ * keep the two in sync.
  */
 export function usePresence(open: boolean, durationMs = 150): { mounted: boolean; state: 'open' | 'closed' } {
   const [mounted, setMounted] = useState(open)

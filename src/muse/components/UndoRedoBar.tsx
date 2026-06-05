@@ -15,7 +15,11 @@ type Props = {
 // reads as part of the same dock rather than a separate heavy bar.
 export function UndoRedoBar({ canUndo, canRedo, loading, onUndo, onRedo, onRevert }: Props) {
   return (
-    <div className="pointer-events-auto flex animate-muse-step items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10 motion-reduce:animate-none">
+    // No mount animation on purpose: this bar mounts/unmounts whenever the history
+    // stack empties and refills (undo-all then edit, revert then edit), so a keyframe
+    // entrance would replay distractingly mid-work (Emil: don't animate frequent
+    // state). It just appears, quietly.
+    <div className="pointer-events-auto flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10">
       <HistoryBtn onClick={onUndo} disabled={!canUndo || loading} label="Undo" icon={<ArrowUUpLeft size={16} />} />
       <HistoryBtn onClick={onRedo} disabled={!canRedo || loading} label="Redo" icon={<ArrowUUpRight size={16} />} />
       <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
