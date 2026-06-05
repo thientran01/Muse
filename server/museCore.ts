@@ -34,6 +34,7 @@ import {
 import { editCssVar, listCssVars } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
+import type { Flag, FlagDraft, FlagsFile } from '../src/muse/types'
 
 // ---- Constants ----------------------------------------------------------------
 
@@ -73,6 +74,10 @@ export type MuseHandlers = {
   reorderable: Handler
   tokens: Handler
   tokenEdit: Handler
+  flag: Handler
+  flags: Handler
+  flagResolve: Handler
+  flagDelete: Handler
 }
 
 export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
@@ -86,6 +91,10 @@ export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
     reorderable:    (req, res) => handleReorderable(req, res, ctx),
     tokens:         (req, res) => handleTokens(req, res, ctx),
     tokenEdit:      (req, res) => handleTokenEdit(req, res, ctx),
+    flag:           (req, res) => handleFlag(req, res, ctx),
+    flags:          (req, res) => handleFlagsList(req, res, ctx),
+    flagResolve:    (req, res) => handleFlagResolve(req, res, ctx),
+    flagDelete:     (req, res) => handleFlagDelete(req, res, ctx),
   }
 }
 
@@ -118,6 +127,44 @@ function resolveInSrc(root: string, fileName: unknown): string | null {
 }
 
 const relOf = (root: string, abs: string) => path.relative(root, abs).replace(/\\/g, '/')
+
+// Write atomically: a temp file in the SAME directory (so rename stays on one volume
+// and is atomic) then rename over the target. A concurrent reader — e.g. the muse-mcp
+// server polling `.muse/flags.json` — therefore sees either the complete old file or
+// the complete new one, never a torn half-write. Also hardens source writes against a
+// crash mid-write corrupting a user's file.
+function writeFileAtomic(abs: string, content: string): void {
+  const dir = path.dirname(abs)
+  const tmp = path.join(dir, `.${path.basename(abs)}.${process.pid}.tmp`)
+  fs.writeFileSync(tmp, content, 'utf8')
+  fs.renameSync(tmp, abs)
+}
+
+// ---- Flags persistence (.muse/flags.json) -------------------------------------
+// The dev-server backend is the SINGLE WRITER of this file (the muse-mcp server reads
+// it, and routes resolves back through here) — so plain read-modify-write is safe; the
+// only torn-read risk is handled by writeFileAtomic above.
+
+const flagsPath = (root: string) => path.join(root, '.muse', 'flags.json')
+
+function readFlagsFile(root: string): FlagsFile {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(flagsPath(root), 'utf8')) as Partial<FlagsFile>
+    return {
+      version: 1,
+      nextId: typeof parsed.nextId === 'number' && parsed.nextId > 0 ? parsed.nextId : 1,
+      flags: Array.isArray(parsed.flags) ? (parsed.flags as Flag[]) : [],
+    }
+  } catch {
+    return { version: 1, nextId: 1, flags: [] } // missing/corrupt → empty
+  }
+}
+
+function writeFlagsFile(root: string, data: FlagsFile): void {
+  const dir = path.join(root, '.muse')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  writeFileAtomic(flagsPath(root), JSON.stringify(data, null, 2) + '\n')
+}
 
 function detectStrategy(root: string): StyleStrategy {
   const configs = [
@@ -381,7 +428,7 @@ async function handleWrite(req: IncomingMessage, res: ServerResponse, ctx: MuseC
       }
       resolved.push({ abs, content: f.newContent })
     }
-    for (const r of resolved) fs.writeFileSync(r.abs, r.content, 'utf8')
+    for (const r of resolved) writeFileAtomic(r.abs, r.content)
     return sendJson(res, 200, { ok: true })
   } catch (err) {
     console.error('[muse] /write error:', err)
@@ -953,6 +1000,111 @@ async function handleTokenEdit(req: IncomingMessage, res: ServerResponse, ctx: M
     return sendJson(res, 200, { edits: [{ fileName: rel, newContent: r.newContent }], originals: { [rel]: before }, warnings })
   } catch (err) {
     console.error('[muse] /token-edit error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// ---- Flags handlers -----------------------------------------------------------
+
+// POST /api/muse/flag { FlagDraft } — capture a flag (shift-click or a refusal "Flag it").
+// Validates the file is under src/ (same gate as /write), stores a REPO-RELATIVE path +
+// a monotonic id, and appends to `.muse/flags.json`. Muse routes ZERO inference — the
+// flag is a work-order the user's own Claude Code resolves via muse-mcp.
+async function handleFlag(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const d = JSON.parse(await readBody(req)) as Partial<FlagDraft>
+    const abs = resolveInSrc(ctx.root, d?.fileName)
+    if (!abs) {
+      return sendJson(res, 400, {
+        error: `Refusing to flag "${d?.fileName}" — must be an existing file under src/.`,
+      })
+    }
+    const line = Number(d?.line)
+    const column = Number(d?.column)
+    if (!Number.isFinite(line) || !Number.isFinite(column)) {
+      return sendJson(res, 400, { error: 'A flag needs a line and column.' })
+    }
+    const data = readFlagsFile(ctx.root)
+    const flag: Flag = {
+      id: `f_${data.nextId}`,
+      comment: typeof d?.comment === 'string' ? d.comment.trim() : '',
+      status: 'open',
+      file: relOf(ctx.root, abs),
+      line,
+      column,
+      tag: typeof d?.tag === 'string' ? d.tag : '',
+      className: typeof d?.className === 'string' ? d.className : '',
+      text: typeof d?.text === 'string' ? d.text : '',
+      property: typeof d?.property === 'string' ? d.property : undefined,
+      reason: typeof d?.reason === 'string' ? d.reason : undefined,
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolution: null,
+    }
+    data.flags.push(flag)
+    data.nextId += 1
+    writeFlagsFile(ctx.root, data)
+    return sendJson(res, 200, { ok: true, flag })
+  } catch (err) {
+    console.error('[muse] /flag error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// GET /api/muse/flags — return EVERY flag. Status filtering is done client-side and
+// MCP-side so this endpoint stays adapter-agnostic (no query-string parsing, which the
+// three adapters wrap differently).
+async function handleFlagsList(_req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    return sendJson(res, 200, { flags: readFlagsFile(ctx.root).flags })
+  } catch (err) {
+    console.error('[muse] /flags error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// POST /api/muse/flag-resolve { id, note? } — mark a flag resolved. This is the SINGLE
+// writer for resolutions: muse-mcp's resolve_flag routes through here so two processes
+// never write the file concurrently.
+async function handleFlagResolve(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as { id?: unknown; note?: unknown }
+    const id = typeof b?.id === 'string' ? b.id : ''
+    if (!id) return sendJson(res, 400, { error: 'A flag id is required.' })
+    const data = readFlagsFile(ctx.root)
+    const flag = data.flags.find((f) => f.id === id)
+    if (!flag) return sendJson(res, 404, { error: `No flag ${id}.` })
+    flag.status = 'resolved'
+    flag.resolvedAt = new Date().toISOString()
+    flag.resolution = typeof b?.note === 'string' ? b.note : null
+    writeFlagsFile(ctx.root, data)
+    return sendJson(res, 200, { ok: true, flag })
+  } catch (err) {
+    console.error('[muse] /flag-resolve error:', err)
+    return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// POST /api/muse/flag-delete { id } | { clearResolved: true } — remove one flag (panel
+// dismiss) or sweep all resolved ones (muse-mcp clear_resolved).
+async function handleFlagDelete(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as { id?: unknown; clearResolved?: unknown }
+    const data = readFlagsFile(ctx.root)
+    let next: Flag[]
+    if (b?.clearResolved === true) {
+      next = data.flags.filter((f) => f.status !== 'resolved')
+    } else {
+      const id = typeof b?.id === 'string' ? b.id : ''
+      if (!id) return sendJson(res, 400, { error: 'A flag id (or clearResolved) is required.' })
+      next = data.flags.filter((f) => f.id !== id)
+    }
+    const removed = data.flags.length - next.length
+    data.flags = next
+    writeFlagsFile(ctx.root, data)
+    return sendJson(res, 200, { ok: true, removed })
+  } catch (err) {
+    console.error('[muse] /flag-delete error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
   }
 }

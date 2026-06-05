@@ -1,6 +1,8 @@
 import { EPHEMERAL, MOCK, getApiBase } from './config'
 import type {
   FileEdit,
+  Flag,
+  FlagDraft,
   Reorderable,
   ReorderChild,
   ReorderRequest,
@@ -203,6 +205,88 @@ export async function museTokenEdit(name: string, value: string): Promise<StyleE
   const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
   if (data.error) throw new Error(data.error)
   return { edits: data.edits ?? [], originals: data.originals ?? {}, warnings: data.warnings ?? [] }
+}
+
+// --- Flags (shift-click / refusal → MCP handoff) ---------------------------------
+// The dev-server backend persists flags to .muse/flags.json (the single writer); the
+// user's own Claude Code reads them via muse-mcp. NO inference runs through Muse.
+//
+// EPHEMERAL / MOCK (the hosted demo) has no backend — flags live in this module-level
+// array so capture + the panel still demo. The MCP handoff is a local-dev-only payoff
+// (the hosted demo can't run Claude Code), documented as such.
+let ephemeralFlags: Flag[] = []
+let ephemeralNextId = 1
+
+export async function museListFlags(): Promise<Flag[]> {
+  if (EPHEMERAL || MOCK) return [...ephemeralFlags]
+  const res = await fetch(apiUrl('/api/muse/flags'))
+  const data = (await res.json()) as { flags?: Flag[]; error?: string }
+  if (data.error) throw new Error(data.error)
+  return Array.isArray(data.flags) ? data.flags : []
+}
+
+export async function museAddFlag(draft: FlagDraft): Promise<Flag> {
+  if (EPHEMERAL || MOCK) {
+    const flag: Flag = {
+      id: `f_${ephemeralNextId++}`,
+      comment: draft.comment.trim(),
+      status: 'open',
+      file: draft.fileName, // no root to make repo-relative in the browser-only demo
+      line: draft.line,
+      column: draft.column,
+      tag: draft.tag,
+      className: draft.className,
+      text: draft.text,
+      property: draft.property,
+      reason: draft.reason,
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolution: null,
+    }
+    ephemeralFlags.push(flag)
+    return flag
+  }
+  const res = await fetch(apiUrl('/api/muse/flag'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(draft),
+  })
+  const data = (await res.json()) as { ok?: boolean; flag?: Flag; error?: string }
+  if (data.error || !data.flag) throw new Error(data.error ?? 'Could not save the flag.')
+  return data.flag
+}
+
+export async function museResolveFlag(id: string, note?: string): Promise<void> {
+  if (EPHEMERAL || MOCK) {
+    const f = ephemeralFlags.find((x) => x.id === id)
+    if (f) {
+      f.status = 'resolved'
+      f.resolvedAt = new Date().toISOString()
+      f.resolution = note ?? null
+    }
+    return
+  }
+  const res = await fetch(apiUrl('/api/muse/flag-resolve'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, note }),
+  })
+  const data = (await res.json()) as { ok?: boolean; error?: string }
+  if (data.error) throw new Error(data.error)
+}
+
+export async function museDeleteFlag(id: string): Promise<void> {
+  if (EPHEMERAL || MOCK) {
+    ephemeralFlags = ephemeralFlags.filter((x) => x.id !== id)
+    return
+  }
+  const res = await fetch(apiUrl('/api/muse/flag-delete'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const data = (await res.json()) as { ok?: boolean; error?: string }
+  if (data.error) throw new Error(data.error)
 }
 
 const MOCK_TOKENS: DesignToken[] = [
