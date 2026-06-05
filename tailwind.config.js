@@ -114,6 +114,12 @@ export default {
           '0%': { opacity: '0', transform: 'scale(0.96)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
+        // Pure opacity fade — for surfaces where a scale/blur would read wrong
+        // (a modal's backdrop scrim). Just resolves the jarring instant appear.
+        'muse-fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
       },
       // NOTE: the panel's open AND close are CSS *transitions* (muse.css
       // `.muse-panel-surface` + `@starting-style` + `[data-closing]`), NOT
@@ -130,6 +136,8 @@ export default {
         'muse-fab-catch': `muse-fab-catch ${DUR.mid} ${EASE.out} 40ms backwards`,
         // Docs-site motion (strong ease-out, sub-300ms).
         'site-pop': 'site-pop 180ms cubic-bezier(0.23, 1, 0.32, 1)',
+        // Backdrop scrim fade (modal). Fast — the dialog itself is the focus.
+        'muse-fade': `muse-fade-in ${DUR.fast} ${EASE.out}`,
       },
     },
   },

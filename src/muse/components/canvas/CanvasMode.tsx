@@ -1096,9 +1096,10 @@ export function CanvasMode({
         </>
       )}
 
-      {/* Active-selection banner — teaches the direct-manipulation gestures. */}
+      {/* Active-selection banner — teaches the direct-manipulation gestures. Fades
+          in with the system's content-step entrance when Canvas opens. */}
       <div className="absolute left-1/2 top-4 -translate-x-1/2">
-        <div className="pointer-events-auto flex items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur">
+        <div className="pointer-events-auto flex animate-muse-step items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
           <span>
             {editing
               ? 'Editing text · Enter to save · Esc to cancel'

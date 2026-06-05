@@ -12,7 +12,7 @@ export function RevertConfirmDialog({
   return (
     <div className="pointer-events-auto absolute inset-0 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 animate-muse-fade bg-black/60 backdrop-blur-sm motion-reduce:animate-none"
         onClick={!loading ? onCancel : undefined}
       />
       <div className="relative w-80 animate-muse-panel rounded-2xl bg-surface-raised p-5 shadow-2xl ring-1 ring-line/10 motion-reduce:animate-none">
