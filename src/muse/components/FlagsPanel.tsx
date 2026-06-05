@@ -105,7 +105,7 @@ export function FlagsPanel() {
                     disabled={isBusy}
                     title="Dismiss"
                     aria-label="Dismiss flag"
-                    className="rounded p-1 text-fg-faint transition hover:bg-rose-500/10 hover:text-rose-400 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                    className="rounded p-1 text-fg-faint transition hover:bg-rose-500/10 hover:text-rose-400 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                   >
                     <X size={12} weight="bold" />
                   </button>
@@ -139,7 +139,7 @@ function ActionBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
         primary ? 'bg-accent/10 text-accent hover:bg-accent/15' : 'text-fg-muted hover:bg-line/10 hover:text-fg'
       }`}
     >

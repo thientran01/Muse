@@ -116,7 +116,7 @@ export function FlagComposer({
           <button
             type="button"
             onClick={onClose}
-            className={`rounded px-2 py-1 text-[11px] text-fg-muted transition hover:bg-line/10 hover:text-fg ${btnFocus}`}
+            className={`rounded px-2 py-1 text-[11px] text-fg-muted transition hover:bg-line/10 hover:text-fg active:scale-95 motion-reduce:active:scale-100 ${btnFocus}`}
           >
             Cancel
           </button>
@@ -124,7 +124,7 @@ export function FlagComposer({
             type="button"
             onClick={() => void submit()}
             disabled={busy}
-            className={`rounded bg-fg px-2.5 py-1 text-[11px] font-medium text-surface transition hover:opacity-90 disabled:opacity-50 ${btnFocus}`}
+            className={`rounded bg-fg px-2.5 py-1 text-[11px] font-medium text-surface transition hover:opacity-90 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-50 ${btnFocus}`}
           >
             {busy ? 'Flagging…' : 'Flag it'}
           </button>

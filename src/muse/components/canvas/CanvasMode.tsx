@@ -289,10 +289,10 @@ export function CanvasMode({
   const [hint, setHint] = useState<{ x: number; y: number; text: string; kind: 'calm' | 'refusal'; draft?: FlagDraft } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
-  const flashHint = (x: number, y: number, text: string) => {
+  const flashHint = (x: number, y: number, text: string, ms = 2200) => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
     setHint({ x, y, text, kind: 'calm' })
-    hintTimerRef.current = window.setTimeout(() => setHint(null), 2200)
+    hintTimerRef.current = window.setTimeout(() => setHint(null), ms)
   }
   // A REFUSAL hint: Canvas can't make this edit, but the user's agent can. Sticky so
   // the "Flag it" button is reachable (a generous fallback timer still clears a
@@ -1105,7 +1105,7 @@ export function CanvasMode({
           (the gesture is otherwise invisible). Follows the cursor like the hover tooltip. */}
       {shiftHeld && cursor && hoverRect && !editing && !flagDraft && (
         <div
-          className="pointer-events-none absolute z-30 flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium text-white shadow-lg ring-1 ring-fg/10"
+          className="pointer-events-none absolute z-30 flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium text-white shadow-lg ring-1 ring-fg/10 animate-muse-fade motion-reduce:animate-none"
           style={{ top: cursor.y + 16, left: cursor.x + 16 }}
         >
           <Flag size={12} weight="fill" /> Flag for your agent
@@ -1124,7 +1124,7 @@ export function CanvasMode({
             <button
               type="button"
               onClick={() => setFlagDraft({ draft: hint.draft!, x: hint.x, y: hint.y })}
-              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               Flag it for your agent
             </button>
@@ -1142,7 +1142,7 @@ export function CanvasMode({
           onSaved={() => {
             const at = flagDraft
             setFlagDraft(null)
-            flashHint(at.x, at.y, 'Flagged — resolve it with your agent')
+            flashHint(at.x, at.y, 'Flagged', 1100)
           }}
         />
       )}
