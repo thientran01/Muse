@@ -349,6 +349,15 @@ export function CanvasMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.key])
 
+  // Opening the composer (shift-click OR a refusal's "Flag it") supersedes any hint —
+  // clear it so a refusal bubble can't linger beside/behind the composer. Covers the
+  // shift-click path, which doesn't change `selected` and so skips the effect above.
+  useEffect(() => {
+    if (!flagDraft) return
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
+    setHint(null)
+  }, [flagDraft])
+
   // Remove a specific set of inline overrides from specific nodes.
   const stripInline = (nodes: HTMLElement[], keys: Iterable<string>) => {
     const cssKeys = [...keys].map(camelToKebab)
@@ -1108,14 +1117,9 @@ export function CanvasMode({
           <div>{hint.text}</div>
           {hint.kind === 'refusal' && hint.draft && (
             <button
-              onClick={() => {
-                const d = hint.draft!
-                const { x, y } = hint
-                if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
-                setHint(null)
-                setFlagDraft({ draft: d, x, y })
-              }}
-              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20"
+              type="button"
+              onClick={() => setFlagDraft({ draft: hint.draft!, x: hint.x, y: hint.y })}
+              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               Flag it for your agent
             </button>

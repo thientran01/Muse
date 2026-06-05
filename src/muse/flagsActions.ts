@@ -10,8 +10,10 @@ import type { Flag, FlagDraft } from './types'
 export async function refreshFlags(): Promise<void> {
   try {
     museStore.setState({ flags: await museListFlags() })
-  } catch {
-    /* keep the last-known list */
+  } catch (e) {
+    // Best-effort: keep the last-known list rather than blanking the panel. Warn so a
+    // store/badge desync after a successful add isn't completely silent.
+    console.warn('[muse] could not refresh flags:', e)
   }
 }
 
