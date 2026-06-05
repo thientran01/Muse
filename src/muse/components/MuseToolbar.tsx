@@ -44,6 +44,7 @@ export function MuseToolbar({
   historyControls,
   animationsPaused,
   onToggleAnimations,
+  portalContainer,
 }: {
   // True = toolbar form (Muse open, idle); false = FAB form (Muse closed/collapsing).
   expanded: boolean
@@ -53,6 +54,9 @@ export function MuseToolbar({
   historyControls: HistoryControls
   animationsPaused: boolean
   onToggleAnimations: () => void
+  // Themed overlay root the token color-picker popover portals into (escapes the
+  // popover's own overflow + backdrop-filter containing block).
+  portalContainer?: React.RefObject<HTMLElement>
 }) {
   const [pop, setPop] = useState<Pop>('none')
   // Any time the pill collapses back to the FAB, dismiss an open popover.
@@ -73,24 +77,23 @@ export function MuseToolbar({
         />
       )}
 
-      {/* Popover — only when expanded; scales up from the bar/FAB corner below it. */}
+      {/* Popover — only when expanded; scales up from the bar/FAB corner below it.
+          Same surface as the canvas properties panel (rounded-xl / blur / ring) and
+          marked data-muse-panel so the token color-picker anchors beside it. */}
       {expanded && pop !== 'none' && (
-        <div className="w-72 origin-bottom-right animate-muse-panel overflow-hidden rounded-2xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur-xl motion-reduce:animate-none">
-          <header className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-fg">
-              <UfoIcon size={16} className="text-accent" />
-              Design tokens
-            </div>
+        <div data-muse-panel className="w-64 origin-bottom-right animate-muse-panel overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+          <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+            <span className="text-[12px] font-semibold tracking-tight text-fg">Design tokens</span>
             <button
               onClick={() => setPop('none')}
               aria-label="Close design tokens"
-              className="rounded-md p-1.5 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
-              <X size={15} />
+              <X size={13} />
             </button>
           </header>
-          <div className="max-h-[50vh] overflow-y-auto px-3 pb-3">
-            <TokenList />
+          <div className="max-h-[50vh] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+            <TokenList portalContainer={portalContainer} />
           </div>
         </div>
       )}

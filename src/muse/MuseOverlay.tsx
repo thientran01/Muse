@@ -178,6 +178,7 @@ export function MuseOverlay() {
         historyControls={historyControls}
         animationsPaused={animationsPaused}
         onToggleAnimations={() => setAnimationsPaused((v) => !v)}
+        portalContainer={rootRef}
       />
 
       {showRevertConfirm && (
