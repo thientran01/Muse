@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens — the docs site is self-demonstrating, so its OWN colors run through
+   CSS custom properties. Open Muse's "Design tokens" popover and editing one repaints
+   the page live (the exact path a real host's tokens take through applyLive). Theme-
+   aware: the `dark` class on <html> flips the values; editing the base value previews
+   on top of either theme. */
+:root {
+  --c-paper: #f7f4ee; /* page surface */
+  --c-ink: #1c1917; /* body text */
+  --c-energy: #7f2f2f; /* brand accent */
+  --radius-lg: 16px;
+}
+html.dark {
+  --c-paper: #15130e;
+  --c-ink: #f5f5f4;
+  --c-energy: #e3a384; /* the accent lightens on dark, matching the site's prior design */
+}
+
 /* Reserve the scrollbar gutter so navigating between a tall page (scrollbar
    present) and a short one (no scrollbar) doesn't shift the centered layout
    sideways. This is what made page transitions feel like the nav "jumps". */
@@ -9,13 +26,9 @@ html {
   scrollbar-gutter: stable;
 }
 
-/* Base surface colors so the page background matches the theme everywhere
-   (incl. overscroll), flipped by the `dark` class on <html>. */
+/* Base surface colors, now token-driven so the Design-tokens editor can repaint
+   the whole page live. */
 body {
-  background-color: #f7f4ee;
-  color: #1c1917;
-}
-html.dark body {
-  background-color: #15130e;
-  color: #f5f5f4;
+  background-color: var(--c-paper);
+  color: var(--c-ink);
 }

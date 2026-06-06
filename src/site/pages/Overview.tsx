@@ -7,7 +7,7 @@ export function Overview() {
   return (
     <article>
       <span className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[12px] font-medium text-stone-500 dark:border-stone-800 dark:bg-[#201d16] dark:text-stone-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#7f2f2f] dark:bg-[#e3a384]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--c-energy)]" />
         Live demo, edit anything on this page
       </span>
 
@@ -52,14 +52,14 @@ export function Overview() {
       </p>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+        <div className="rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Spacing and layout</h3>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
             Drag padding, margin, and gap bands on the element itself, resize it from the corners, or
             drag it among its siblings to reorder.
           </p>
         </div>
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+        <div className="rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
           <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">Type, color, and text</h3>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
             Scrub size and weight, pick colors with a built-in picker, and double-click to rewrite the
@@ -74,9 +74,9 @@ export function Overview() {
       </Callout>
 
       {/* Editable playground card (replaces the old pricing card). */}
-      <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+      <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
         <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-[#7f2f2f] text-base font-semibold text-white">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-[var(--c-energy)] text-base font-semibold text-white">
             T
           </span>
           <div>
@@ -101,22 +101,22 @@ export function Overview() {
         Edit loop
       </h2>
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-          <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">1. Point</div>
+        <div className="rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+          <div className="text-[13px] font-semibold text-[var(--c-energy)]">1. Point</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
             Click any element in your running app and Muse traces it to the exact file and line it came
             from.
           </p>
         </div>
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-          <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">2. Edit</div>
+        <div className="rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+          <div className="text-[13px] font-semibold text-[var(--c-energy)]">2. Edit</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
             Shape it by hand: drag the spacing, scrub the type, pick a color, rewrite the copy, reorder
             siblings.
           </p>
         </div>
-        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-          <div className="text-[13px] font-semibold text-[#7f2f2f] dark:text-[#e3a384]">3. Real code</div>
+        <div className="rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
+          <div className="text-[13px] font-semibold text-[var(--c-energy)]">3. Real code</div>
           <p className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-400">
             Muse writes the change to source and the app hot-reloads. Undo, redo, and revert stay open
             the whole session.

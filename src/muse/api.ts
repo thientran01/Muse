@@ -291,7 +291,7 @@ export async function museDeleteFlag(id: string): Promise<void> {
 
 const MOCK_TOKENS: DesignToken[] = [
   { name: '--c-energy', value: '#7f2f2f', isColor: true, file: 'src/index.css' },
-  { name: '--c-pop', value: '#e07b4f', isColor: true, file: 'src/index.css' },
   { name: '--c-paper', value: '#f7f4ee', isColor: true, file: 'src/index.css' },
+  { name: '--c-ink', value: '#1c1917', isColor: true, file: 'src/index.css' },
   { name: '--radius-lg', value: '16px', isColor: false, file: 'src/index.css' },
 ]

@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Palette, Pause, Play, X } from '@phosphor-icons/react'
+import { Flag, Palette, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { usePresence } from '../hooks/usePresence'
+import { useMuseStore } from '../store'
 import { UfoIcon } from './UfoIcon'
 import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
+import { FlagsPanel } from './FlagsPanel'
 
 // Muse's idle dock — ONE persistent pill that morphs between the FAB and the
 // toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
@@ -14,9 +16,9 @@ import { TokenList } from './TokenList'
 // element scale-popping in over another. The dock is pure utility; the design
 // tokens open as a popover above it (the bar stays put).
 
-type Pop = 'none' | 'tokens'
+type Pop = 'none' | 'tokens' | 'flags'
 
-function IconBtn({ label, onClick, children, active }: { label: string; onClick: () => void; children: ReactNode; active?: boolean }) {
+function IconBtn({ label, onClick, children, active, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; badge?: number }) {
   return (
     <button
       onClick={onClick}
@@ -28,11 +30,16 @@ function IconBtn({ label, onClick, children, active }: { label: string; onClick:
       aria-pressed={active}
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
+      className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
         active ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
       }`}
     >
       {children}
+      {badge != null && badge > 0 && (
+        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white ring-1 ring-surface-soft">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </button>
   )
 }
@@ -60,10 +67,17 @@ export function MuseToolbar({
   portalContainer?: React.RefObject<HTMLElement>
 }) {
   const [pop, setPop] = useState<Pop>('none')
+  // The content kept rendered through the popover's EXIT (when `pop` is already 'none'),
+  // so it doesn't flash the other panel while it scales back into the bar.
+  const [shownPop, setShownPop] = useState<'tokens' | 'flags'>('tokens')
+  useEffect(() => { if (pop !== 'none') setShownPop(pop) }, [pop])
+  // Open flags drive the count badge on the Flags button.
+  const { flags } = useMuseStore()
+  const openFlagCount = flags.filter((f) => f.status === 'open').length
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
-  const { mounted: popMounted, state: popState } = usePresence(expanded && pop === 'tokens')
+  const { mounted: popMounted, state: popState } = usePresence(expanded && pop !== 'none')
 
   return (
     <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
@@ -87,17 +101,17 @@ export function MuseToolbar({
       {popMounted && (
         <div data-muse-panel data-state={popState} className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur" style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}>
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="text-[12px] font-semibold tracking-tight text-fg">Design tokens</span>
+            <span className="text-[12px] font-semibold tracking-tight text-fg">{shownPop === 'flags' ? 'Flags' : 'Design tokens'}</span>
             <button
               onClick={() => setPop('none')}
-              aria-label="Close design tokens"
+              aria-label={shownPop === 'flags' ? 'Close flags' : 'Close design tokens'}
               className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <X size={13} />
             </button>
           </header>
-          <div className="max-h-[50vh] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
-            <TokenList portalContainer={portalContainer} />
+          <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+            {shownPop === 'flags' ? <FlagsPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>
       )}
@@ -137,6 +151,14 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
+          <IconBtn
+            label={openFlagCount > 0 ? `Flags, ${openFlagCount} open` : 'Flags'}
+            onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))}
+            active={pop === 'flags'}
+            badge={openFlagCount}
+          >
+            <Flag size={17} />
+          </IconBtn>
           <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} active={pop === 'tokens'}>
             <Palette size={17} />
           </IconBtn>

@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShadowHost } from './hooks/useShadowHost'
 import { museWrite } from './api'
+import { refreshFlags } from './flagsActions'
 import { useHostTheme } from './hooks/useHostTheme'
 import { museStore, useMuseStore } from './store'
 import { CanvasMode } from './components/canvas/CanvasMode'
+import { FlagPins } from './components/FlagPins'
 import { MuseToolbar } from './components/MuseToolbar'
 import { RevertConfirmDialog } from './components/RevertConfirmDialog'
 
@@ -35,6 +37,12 @@ export function MuseOverlay() {
   // Pass shadowMount so the theme re-applies once the overlay is actually
   // portaled in — rootRef.current is null until that async mount lands.
   useHostTheme(rootRef, shadowMount)
+
+  // Load any captured flags into the store on mount, so the toolbar's count badge is
+  // accurate even before Canvas is opened.
+  useEffect(() => {
+    void refreshFlags()
+  }, [])
 
   function requestClose() {
     if (closing) return
@@ -164,6 +172,9 @@ export function MuseOverlay() {
           card. Plain-click edits directly. Unmounts at the start of the close so the
           chrome clears before the dock collapses. */}
       {open && !closing && <CanvasMode onExit={requestClose} />}
+
+      {/* Best-effort markers on flagged elements — visible while Muse is open. */}
+      {open && !closing && <FlagPins />}
 
       {/* The dock — one pill that morphs between the FAB (closed) and the idle
           toolbar (manta · design tokens · pause · X). Opening expands the FAB in

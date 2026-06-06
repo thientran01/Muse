@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
-import type { CanvasElement, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
+import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
+import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
 import { isVarColorToken } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
@@ -65,6 +67,27 @@ function directText(node: HTMLElement): string {
     .filter((n) => n.nodeType === Node.TEXT_NODE)
     .map((n) => n.textContent ?? '')
     .join('')
+}
+
+// Build a flag work-order from a Canvas element + optional refusal context. Captures
+// the live className + a text snippet so the agent gets file:line:col + tag + class +
+// text + intent — the precision edge over a bare component-name annotation. `extra`
+// seeds the intent (and property/reason) when the flag is born from a Canvas refusal.
+function draftFromElement(
+  el: CanvasElement,
+  extra?: { property?: string; reason?: string; comment?: string },
+): FlagDraft {
+  return {
+    fileName: el.fileName,
+    line: el.line,
+    column: el.column,
+    tag: el.tag,
+    className: el.node.getAttribute('class') ?? '',
+    text: (el.node.textContent ?? '').trim().slice(0, 80),
+    comment: extra?.comment ?? '',
+    property: extra?.property,
+    reason: extra?.reason,
+  }
 }
 
 // Parse an rgb()/rgba() string into channels + alpha (alpha defaults to 1).
@@ -221,8 +244,14 @@ export function CanvasMode({
   // over another element mid-drag re-hovers/re-selects it, which remounts the overlay
   // on a new node and kills the drag (and leaves the passed-over element wedged).
   const [reordering, setReordering] = useState(false)
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss } =
-    useCanvasMode({ suspended: reordering })
+  // An open flag composer: the draft being captured + where to float the card. Set by a
+  // shift-click (empty draft) or a refusal's "Flag it" button (draft pre-filled).
+  const [flagDraft, setFlagDraft] = useState<{ draft: FlagDraft; x: number; y: number } | null>(null)
+  const onFlag = useCallback((el: CanvasElement, at: { x: number; y: number }) => {
+    setFlagDraft({ draft: draftFromElement(el), x: at.x, y: at.y })
+  }, [])
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss, shiftHeld } =
+    useCanvasMode({ suspended: reordering, onFlag })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
@@ -253,13 +282,25 @@ export function CanvasMode({
   // selection so a global mode never silently persists across elements (mode-error guard).
   const [styleScope, setStyleScope] = useState<SharedConst | null>(null)
   const [scope, setScope] = useState<'element' | 'const'>('element')
-  const [hint, setHint] = useState<{ x: number; y: number; text: string } | null>(null)
+  // A hint over the page: `calm` = a brief auto-dismissing note (the old behavior);
+  // `refusal` = a sticky note carrying a flag draft, so a refused edit can become a
+  // "Flag it for your agent" hand-off (the de-cloning spine — flags are the overflow
+  // valve of direct manipulation).
+  const [hint, setHint] = useState<{ x: number; y: number; text: string; kind: 'calm' | 'refusal'; draft?: FlagDraft } | null>(null)
   const hintTimerRef = useRef<number | null>(null)
   // Flash a brief, calm hint at a point (e.g. "this text comes from data").
-  const flashHint = (x: number, y: number, text: string) => {
+  const flashHint = (x: number, y: number, text: string, ms = 2200) => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
-    setHint({ x, y, text })
-    hintTimerRef.current = window.setTimeout(() => setHint(null), 2200)
+    setHint({ x, y, text, kind: 'calm' })
+    hintTimerRef.current = window.setTimeout(() => setHint(null), ms)
+  }
+  // A REFUSAL hint: Canvas can't make this edit, but the user's agent can. Sticky so
+  // the "Flag it" button is reachable (a generous fallback timer still clears a
+  // forgotten one; selection changes clear it too). Carries the pre-filled flag draft.
+  const refuse = (x: number, y: number, text: string, draft: FlagDraft) => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
+    setHint({ x, y, text, kind: 'refusal', draft })
+    hintTimerRef.current = window.setTimeout(() => setHint(null), 7000)
   }
   // The live inline preview: the anchor node (used to detect a target change), all
   // peer nodes we've overridden (same-source instances), and which CSS keys. Held
@@ -293,6 +334,23 @@ export function CanvasMode({
     if (active) startedRef.current = true
     else if (startedRef.current) onExit()
   }, [active, onExit])
+
+  // A refusal hint is anchored to the element the user just acted on — drop it when the
+  // selection changes (or clears) so a stale "Flag it" affordance can't linger over a
+  // different element. Calm hints keep their own short timer.
+  useEffect(() => {
+    setHint((h) => (h?.kind === 'refusal' ? null : h))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.key])
+
+  // Opening the composer (shift-click OR a refusal's "Flag it") supersedes any hint —
+  // clear it so a refusal bubble can't linger beside/behind the composer. Covers the
+  // shift-click path, which doesn't change `selected` and so skips the effect above.
+  useEffect(() => {
+    if (!flagDraft) return
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current)
+    setHint(null)
+  }, [flagDraft])
 
   // Remove a specific set of inline overrides from specific nodes.
   const stripInline = (nodes: HTMLElement[], keys: Iterable<string>) => {
@@ -651,7 +709,17 @@ export function CanvasMode({
     const spaceBlocked = spaceControlledMargins(selected.node, mutations)
     if (spaceBlocked.size === mutations.length) {
       const r = selected.node.getBoundingClientRect()
-      flashHint(r.left, r.top, 'Spacing here is set by the parent’s space-y/x — adjust it on the parent')
+      const props = [...spaceBlocked].join(', ')
+      refuse(
+        r.left,
+        r.top,
+        'Spacing here is set by the parent’s space-y/x — adjust it on the parent',
+        draftFromElement(selected, {
+          property: props,
+          reason: 'spacing is controlled by the parent’s space-y/x utility',
+          comment: `Adjust the ${props} spacing on this ${selected.tag} — it’s set by the parent’s space-y/x, so it can’t change from here.`,
+        }),
+      )
       clearPreview()
       return
     }
@@ -771,7 +839,12 @@ export function CanvasMode({
       if (edits.length === 0) {
         restore() // refusal (e.g. dynamic text) — put it back, calm hint (no red error)
         const r = node.getBoundingClientRect()
-        flashHint(r.left, r.top, (warnings[0] ?? "this text can't be edited here").replace(/^[^:]*:\s*/, ''))
+        const msg = (warnings[0] ?? "this text can't be edited here").replace(/^[^:]*:\s*/, '')
+        refuse(r.left, r.top, msg, draftFromElement(el, {
+          property: 'text',
+          reason: msg,
+          comment: `Change this text to: “${raw}”`,
+        }))
         exitEditing()
         return
       }
@@ -851,7 +924,12 @@ export function CanvasMode({
       if (warnings.length) console.warn('[muse] reorder:', warnings.join(' · '))
       if (edits.length === 0) {
         const r = el.node.getBoundingClientRect()
-        flashHint(r.left, r.top, (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, ''))
+        const msg = (warnings[0] ?? "couldn't reorder these").replace(/^[^:]*:\s*/, '')
+        refuse(r.left, r.top, msg, draftFromElement(el, {
+          property: 'order',
+          reason: msg,
+          comment: `Reorder this ${el.tag} — Canvas can’t move it from here.`,
+        }))
         return // ReorderOverlay's no-op/cancel teardown already un-hid the chrome
       }
       // Start listening for the repaint BEFORE the write triggers it — the parent's order
@@ -912,7 +990,11 @@ export function CanvasMode({
     // with the same calm hint the probe would give.
     if (EPHEMERAL && [...node.childNodes].some((n) => n.nodeType === Node.ELEMENT_NODE)) {
       const r = node.getBoundingClientRect()
-      flashHint(r.left, r.top, "This text can't be edited here")
+      refuse(r.left, r.top, "This text can't be edited here", draftFromElement(el, {
+        property: 'text',
+        reason: 'this element mixes text with child elements',
+        comment: 'Edit this text — Canvas can’t edit it in place.',
+      }))
       exitEditing()
       return
     }
@@ -932,7 +1014,12 @@ export function CanvasMode({
       if (cancelled) return
       if (!editable || !node.isConnected) {
         const r = node.getBoundingClientRect()
-        flashHint(r.left, r.top, reason ?? "This text can't be edited here")
+        const msg = reason ?? "This text can't be edited here"
+        refuse(r.left, r.top, msg, draftFromElement(el, {
+          property: 'text',
+          reason: msg,
+          comment: 'Edit this text — Canvas can’t edit it here.',
+        }))
         exitEditing()
         return
       }
@@ -1011,18 +1098,54 @@ export function CanvasMode({
 
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
-      {/* Hover affordance while no edit is in flight — lets you retarget. */}
-      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={hoverInfo} />}
+      {/* Hover affordance while no edit is in flight — lets you retarget. While Shift is
+          held the flag chip replaces the element tooltip (don't stack both over the target). */}
+      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={shiftHeld ? null : hoverInfo} />}
+
+      {/* Shift-held discoverability cue: tells the user the hover target will be flagged
+          (the gesture is otherwise invisible). Follows the cursor like the hover tooltip. */}
+      {shiftHeld && cursor && hoverRect && !editing && !flagDraft && (
+        <div
+          className="pointer-events-none absolute z-30 flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[11px] font-medium text-white shadow-lg ring-1 ring-fg/10 animate-muse-fade motion-reduce:animate-none"
+          style={{ top: cursor.y + 16, left: cursor.x + 16 }}
+        >
+          <Flag size={12} weight="fill" /> Flag for your agent
+        </div>
+      )}
 
       {/* Quiet hint — unmappable click, or text that isn't statically editable.
           z-20 keeps it above the properties panel (same overlay container). */}
       {hint && (
         <div
-          className="pointer-events-none absolute z-20 max-w-[220px] rounded-md bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
+          className={`absolute z-20 max-w-[240px] rounded-md bg-surface/95 px-2.5 py-1.5 text-[11px] text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none ${hint.kind === 'refusal' ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{ top: hint.y + 14, left: hint.x + 14 }}
         >
-          {hint.text}
+          <div>{hint.text}</div>
+          {hint.kind === 'refusal' && hint.draft && (
+            <button
+              type="button"
+              onClick={() => setFlagDraft({ draft: hint.draft!, x: hint.x, y: hint.y })}
+              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            >
+              Flag it for your agent
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Flag composer — opened by a shift-click or a refusal's "Flag it" button. */}
+      {flagDraft && (
+        <FlagComposer
+          key={`${flagDraft.draft.fileName}:${flagDraft.draft.line}:${flagDraft.draft.column}:${flagDraft.x},${flagDraft.y}`}
+          draft={flagDraft.draft}
+          pos={{ x: flagDraft.x, y: flagDraft.y }}
+          onClose={() => setFlagDraft(null)}
+          onSaved={() => {
+            const at = flagDraft
+            setFlagDraft(null)
+            flashHint(at.x, at.y, 'Flagged', 1100)
+          }}
+        />
       )}
 
       {/* While editing text, the style overlays step aside (the outline lives on
@@ -1107,7 +1230,7 @@ export function CanvasMode({
                 ? reorderable?.reorderable
                   ? 'Drag to reorder · double-click to edit · Esc to deselect'
                   : 'Double-click to edit · Esc to deselect'
-                : <>Click to edit · <BannerKbd>Esc</BannerKbd> or <BannerKbd>R</BannerKbd> to exit</>}
+                : <>Click to edit · <BannerKbd>⇧</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
           </span>
           <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
             Done
