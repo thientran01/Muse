@@ -109,6 +109,52 @@ export type ReorderRequest = {
 }
 export type ReorderResponse = StyleEditResponse
 
+// --- Flags (shift-click / refusal annotation → MCP handoff) ---
+// What the client CAPTURES and POSTs to /api/muse/flag. No id/status/timestamps —
+// the server assigns those. `fileName` is absolute (from _debugSource / data-muse-loc);
+// the server validates it under src/ and converts to a repo-relative `file` before
+// persisting. `property`/`reason` are present only for flags born from a Canvas refusal.
+export type FlagDraft = {
+  fileName: string
+  line: number
+  column: number
+  tag: string
+  className: string
+  text: string
+  comment: string // the user's plain-English intent
+  property?: string // refusal flags: which property they reached for (e.g. 'marginTop')
+  reason?: string // refusal flags: why Canvas refused
+}
+
+export type FlagStatus = 'open' | 'resolved'
+
+// A PERSISTED flag — the `.muse/flags.json` contract, also what GET /api/muse/flags
+// returns and what muse-mcp exposes to the user's Claude Code. `file` is repo-relative
+// (portable: Claude Code works from the repo root). Location is captured at flag-time
+// and may DRIFT after later edits — `id` is the stable handle (a pin may orphan; the
+// panel + the work-order survive regardless).
+export type Flag = {
+  id: string // monotonic, e.g. 'f_3' (stable; location drifts, id doesn't)
+  comment: string
+  status: FlagStatus
+  file: string // repo-relative
+  line: number
+  column: number
+  tag: string
+  className: string
+  text: string
+  property?: string
+  reason?: string
+  createdAt: string
+  resolvedAt: string | null
+  resolution: string | null // the agent's note, written via resolve_flag
+}
+
+// The on-disk shape of `.muse/flags.json`. `nextId` is a monotonic counter so ids stay
+// stable even as flags are deleted. Shared by the dev-server backend (the single writer)
+// and the read-only muse-mcp server.
+export type FlagsFile = { version: 1; nextId: number; flags: Flag[] }
+
 // A computed file rewrite: the new full contents the server should write to disk.
 export type FileEdit = { fileName: string; newContent: string }
 

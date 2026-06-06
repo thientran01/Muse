@@ -43,6 +43,10 @@ function buildRoutes(ctx: MuseContext): Map<string, Handler> {
     ['POST /api/muse/reorderable', h.reorderable],
     ['GET /api/muse/tokens', h.tokens],
     ['POST /api/muse/token-edit', h.tokenEdit],
+    ['POST /api/muse/flag', h.flag],
+    ['GET /api/muse/flags', h.flags],
+    ['POST /api/muse/flag-resolve', h.flagResolve],
+    ['POST /api/muse/flag-delete', h.flagDelete],
   ])
 }
 

@@ -65,6 +65,22 @@ export function musePlugin(): Plugin {
         if (req.method !== 'GET') return next()
         handlers.tokens(req, res).catch(() => {})
       })
+      server.middlewares.use('/api/muse/flag', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.flag(req, res).catch(() => {})
+      })
+      server.middlewares.use('/api/muse/flags', (req, res, next) => {
+        if (req.method !== 'GET') return next()
+        handlers.flags(req, res).catch(() => {})
+      })
+      server.middlewares.use('/api/muse/flag-resolve', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.flagResolve(req, res).catch(() => {})
+      })
+      server.middlewares.use('/api/muse/flag-delete', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.flagDelete(req, res).catch(() => {})
+      })
     },
   }
 }

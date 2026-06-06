@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { HistoryEntry } from './types'
+import type { Flag, HistoryEntry } from './types'
 
 // In-memory only. State resets on full page refresh, or on HMR of THIS file.
 // HMR of other Muse files (components) does not reset state — the store
@@ -11,6 +11,10 @@ export type MuseState = {
   future: HistoryEntry[]
   historyLoading: boolean
   showRevertConfirm: boolean
+  // Open + resolved flags (shift-click / refusal annotations handed off via muse-mcp).
+  // REACTIVE — the Flags panel, the toolbar count badge, and the on-element pins all
+  // re-render on change (unlike the ephemeral undo stacks, whose effect is DOM mutation).
+  flags: Flag[]
 }
 
 const initialState: MuseState = {
@@ -18,6 +22,7 @@ const initialState: MuseState = {
   future: [],
   historyLoading: false,
   showRevertConfirm: false,
+  flags: [],
 }
 
 let state: MuseState = initialState
