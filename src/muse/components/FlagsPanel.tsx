@@ -6,9 +6,10 @@ import { useMuseStore } from '../store'
 import type { Flag } from '../types'
 
 // The flag list — the reliable surface for captured flags (pins are best-effort; the
-// panel always shows everything). Open flags first, newest on top; resolved below.
-// Each open flag carries the same 1..N ordinal as its on-page pin. Actions are visually
-// tiered: Resolve (primary, accent), Jump (ghost), Dismiss (faint icon, isolated right).
+// panel lists every OPEN flag, newest on top). Resolving a flag removes it from the list
+// (its job is done; the resolution still lives in .muse/flags.json). Each open flag carries
+// the same 1..N ordinal as its on-page pin. Actions are visually tiered: Resolve (primary,
+// accent), Jump (ghost), Dismiss (faint icon, isolated right).
 export function FlagsPanel() {
   const { flags } = useMuseStore()
   const [busy, setBusy] = useState<string | null>(null)

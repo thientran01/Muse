@@ -36,7 +36,7 @@ export default function SiteApp() {
   return (
     <div className="min-h-screen bg-[var(--c-paper)] text-[var(--c-ink)] antialiased">
       {/* Mobile top bar — the sidebar is desktop-only, so phones navigate here. */}
-      <header className="sticky top-0 z-30 border-b border-stone-200/80 bg-[#f7f4ee]/90 px-4 py-3 backdrop-blur dark:border-stone-800/80 dark:bg-[#15130e]/90 md:hidden">
+      <header className="sticky top-0 z-30 border-b border-stone-200/80 bg-[var(--c-paper)] px-4 py-3 dark:border-stone-800/80 md:hidden">
         <div className="flex items-center justify-between">
           <a href="#/overview" className="flex items-center gap-2">
             <MuseMark />
