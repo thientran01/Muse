@@ -19,6 +19,7 @@ import {
   createPr,
   createShareCommit,
   defaultRun,
+  isSafeShareBranch,
   parseRemote,
   performShare,
   probeShare,
@@ -143,6 +144,17 @@ describe('pure builders', () => {
     expect(multi.title).toBe('Muse: padding 8px and 2 more design edits')
     expect(multi.body).toContain('- src/App.tsx: padding 8px, color #fff')
     expect(multi.body).toContain('- src/Other.tsx: reorder')
+  })
+
+  it('isSafeShareBranch accepts only names we mint — traversal and ref tricks rejected', () => {
+    expect(isSafeShareBranch('muse/padding-8px-20260610-1430')).toBe(true)
+    expect(isSafeShareBranch('muse/design-edits-20260610-1430-2')).toBe(true)
+    expect(isSafeShareBranch('muse/../main')).toBe(false)
+    expect(isSafeShareBranch('muse/a/../../main')).toBe(false)
+    expect(isSafeShareBranch('muse/HEAD')).toBe(false) // uppercase outside the slug charset
+    expect(isSafeShareBranch('muse/-delete')).toBe(false) // option-shaped segment
+    expect(isSafeShareBranch('refs/heads/muse/x')).toBe(false)
+    expect(isSafeShareBranch('')).toBe(false)
   })
 
   it('parseRemote handles GitHub https/ssh forms and falls back to other', () => {
@@ -338,6 +350,33 @@ describe.skipIf(!hasGit)('performShare', () => {
     expect(appended.branch).toBe(first.branch)
     expect(sh(root, 'git', ['rev-list', '--count', first.branch]).trim()).toBe('3')
     expect(sh(root, 'git', ['show', `${first.branch}:src/App.tsx`])).toBe('changed more\n')
+  })
+
+  it('ignores a traversal-shaped continuation branch and mints a fresh muse/* name', async () => {
+    const root = makeGitProject(baseFiles)
+    fs.writeFileSync(path.join(root, 'src', 'App.tsx'), 'changed\n')
+    const mainBefore = sh(root, 'git', ['rev-parse', 'main']).trim()
+
+    const r = await performShare(
+      root,
+      { files: ['src/App.tsx'], changes: CHANGES, branch: 'muse/../main' },
+      { run: noGh, now: NOW },
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.branch).toBe(`muse/padding-8px-${STAMP}`) // fresh mint, not the sent name
+    expect(sh(root, 'git', ['rev-parse', 'main']).trim()).toBe(mainBefore) // main untouched
+  })
+
+  it('counts dirty-other files correctly when paths contain spaces (porcelain -z)', async () => {
+    const root = makeGitProject({ ...baseFiles, 'src/my page.tsx': 'page\n' })
+    fs.writeFileSync(path.join(root, 'src', 'my page.tsx'), 'session edit\n')
+    fs.writeFileSync(path.join(root, 'src', 'Other.tsx'), 'other dirty\n')
+
+    const probe = await probeShare(root, ['src/my page.tsx'], { run: noGh })
+    expect(probe).toMatchObject({ available: true })
+    // The spaced session file must NOT be miscounted as "other" — only Other.tsx is.
+    if (probe.available) expect(probe.dirtyOtherCount).toBe(1)
   })
 
   it('falls back to a Muse identity when user.email is unset', async () => {

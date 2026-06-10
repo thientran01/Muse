@@ -196,7 +196,7 @@ export type ShareResult =
       ok: true
       branch: string
       commit: string
-      pushed: boolean
+      pushed: boolean // pushed by THIS call (alreadyShared replies are pushed:false even if a prior share uploaded)
       prUrl?: string
       compareUrl?: string
       alreadyShared?: boolean

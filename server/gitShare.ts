@@ -74,10 +74,6 @@ function makeGit(root: string, run: Runner): Git {
 
 let ghCache: boolean | undefined
 
-export function resetGhCacheForTests(): void {
-  ghCache = undefined
-}
-
 async function detectGh(run: Runner): Promise<boolean> {
   // Only memoize for the real runner — injected test runners must not poison the cache.
   if (run === defaultRun && ghCache !== undefined) return ghCache
@@ -101,6 +97,15 @@ export function slugify(label: string | undefined): string {
   return slug || 'design-edits'
 }
 
+// A client-sent continuation branch must look exactly like a name we minted:
+// one `muse/` segment of slug charset (+ optional collision suffix). Anything
+// else — `muse/../main`, `muse/HEAD`, option-shaped names — is treated as "no
+// branch sent" rather than reaching rev-parse/update-ref, so a buggy or hostile
+// client can't steer the share ref outside muse/*.
+export function isSafeShareBranch(name: string): boolean {
+  return /^muse\/[a-z0-9][a-z0-9-]*$/.test(name)
+}
+
 export function buildBranchName(slugHint: string | undefined, now: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
@@ -110,12 +115,15 @@ export function buildBranchName(slugHint: string | undefined, now: Date): string
 // Deterministic commit message from the session's edit labels. Title = the first
 // label + a count; body = per-file bullets. No inference, no summarization.
 export function buildCommitMessage(changes: ShareChange[]): { title: string; body: string } {
-  const labels = changes.flatMap((c) => c.labels)
+  // Labels and file names are client text headed for a commit message / PR body —
+  // collapse whitespace so a stray newline can't break the bullet formatting.
+  const clean = (s: string) => s.replace(/\s+/g, ' ').trim()
+  const labels = changes.flatMap((c) => c.labels.map(clean)).filter(Boolean)
   const first = labels[0] ?? 'design edits'
   const rest = labels.length - 1
   const title =
     rest > 0 ? `Muse: ${first} and ${rest} more design edit${rest === 1 ? '' : 's'}` : `Muse: ${first}`
-  const bullets = changes.map((c) => `- ${c.fileName}: ${c.labels.join(', ') || 'edited'}`)
+  const bullets = changes.map((c) => `- ${clean(c.fileName)}: ${c.labels.map(clean).filter(Boolean).join(', ') || 'edited'}`)
   const body = `${bullets.join('\n')}\n\nDesign edits made with Muse.`
   return { title, body }
 }
@@ -213,7 +221,9 @@ export async function probeShare(
 // never touches them; the panel can mention them so a designer isn't surprised that
 // other in-flight work doesn't ride along). `.muse/` state is Muse's own — excluded.
 async function countDirtyOthers(git: Git, sessionFiles: string[]): Promise<number> {
-  const status = await git(['status', '--porcelain'])
+  // -z: NUL-separated, NO quoting or octal escaping — a path with spaces or
+  // non-ASCII arrives verbatim, so the session-set match can't false-negative.
+  const status = await git(['status', '--porcelain', '-z'])
   if (status.code !== 0) return 0
   // Porcelain paths are relative to the repo TOPLEVEL; session files are relative to
   // MUSE_ROOT, which may be a subdirectory (monorepo). --show-prefix bridges the two.
@@ -221,13 +231,14 @@ async function countDirtyOthers(git: Git, sessionFiles: string[]): Promise<numbe
   const prefix = prefixRes.code === 0 ? prefixRes.stdout.trim() : ''
   const session = new Set(sessionFiles.map((f) => prefix + f.replace(/\\/g, '/')))
   let count = 0
-  for (const line of status.stdout.split('\n')) {
-    if (!line.trim()) continue
-    // "XY path" or "XY old -> new"; quoted when the path has special chars.
-    let p = line.slice(3)
-    const arrow = p.indexOf(' -> ')
-    if (arrow !== -1) p = p.slice(arrow + 4)
-    if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1)
+  const entries = status.stdout.split('\0')
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+    if (!entry.trim()) continue
+    const xy = entry.slice(0, 2)
+    const p = entry.slice(3)
+    // Renames/copies carry the ORIGINAL path as the NEXT NUL field — skip it.
+    if (xy.includes('R') || xy.includes('C')) i++
     if (p.startsWith('.muse/') || session.has(p)) continue
     count++
   }
@@ -237,6 +248,9 @@ async function countDirtyOthers(git: Git, sessionFiles: string[]): Promise<numbe
 // ---- commit plumbing ---------------------------------------------------------------
 
 export type ShareCommit = { commit: string; tree: string; noChanges: boolean }
+
+// Per-process counter so two same-millisecond shares can't collide on a temp index name.
+let indexSeq = 0
 
 // Build a commit of `files` (paths relative to root, content read from DISK — what the
 // designer is looking at) on top of `parentRef`, without touching the user's index or
@@ -252,7 +266,7 @@ export async function createShareCommit(
   const git = makeGit(root, run)
   const indexFile =
     opts.indexFile ??
-    path.join(os.tmpdir(), `muse-share-index-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+    path.join(os.tmpdir(), `muse-share-index-${process.pid}-${++indexSeq}-${Math.random().toString(36).slice(2, 8)}`)
   const env = { GIT_INDEX_FILE: indexFile }
   try {
     const parentSha = (await must(git(['rev-parse', '--verify', `${opts.parentRef}^{commit}`]), 'resolve the base commit')).stdout.trim()
@@ -384,7 +398,7 @@ export async function performShare(
     let parentRef: string
     const requested = typeof req.branch === 'string' ? req.branch : ''
     const requestedExists =
-      /^muse\//.test(requested) &&
+      isSafeShareBranch(requested) &&
       (await git(['rev-parse', '--verify', '--quiet', `refs/heads/${requested}`])).code === 0
     if (requestedExists) {
       branch = requested
@@ -439,7 +453,8 @@ export async function performShare(
       if (pr.reason) warnings.push(pr.reason)
     }
 
-    const compareUrl = probe.remote ? compareUrlFor(probe.remote, probe.defaultBranch, branch) : null
+    // probe.remote is non-null here — the no-remote case returned above.
+    const compareUrl = compareUrlFor(probe.remote, probe.defaultBranch, branch)
     if (compareUrl) {
       return { ok: true, branch, commit: built.commit, pushed: true, compareUrl, warnings }
     }
