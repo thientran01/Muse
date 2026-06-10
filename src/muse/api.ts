@@ -211,15 +211,33 @@ const ROOT_RULE_RE = /(^|,)\s*(:root|html)\b/i
 function readCssomTokens(): DesignToken[] {
   const seen = new Set<string>()
   const tokens: DesignToken[] = []
-  for (const sheet of Array.from(document.styleSheets)) {
-    let rules: CSSRuleList
+  const visitedSheets = new Set<CSSStyleSheet>()
+
+  const walkSheet = (sheet: CSSStyleSheet) => {
+    if (visitedSheets.has(sheet)) return // @import cycles
+    visitedSheets.add(sheet)
     try {
-      rules = sheet.cssRules
+      // cssRules throws cross-origin; a weird href (blob:, constructed sheet)
+      // could trip the URL parse — either way, skip the sheet, never the panel.
+      const file = sheet.href ? (new URL(sheet.href).pathname.split('/').pop() ?? 'stylesheet') : 'page styles'
+      walkRules(sheet.cssRules, file)
     } catch {
-      continue // cross-origin sheet — not the host's source anyway
+      /* not the host's readable source — skip */
     }
-    const file = sheet.href ? (new URL(sheet.href).pathname.split('/').pop() ?? 'stylesheet') : 'page styles'
+  }
+
+  const walkRules = (rules: CSSRuleList, file: string) => {
     for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSImportRule) {
+        if (rule.styleSheet) walkSheet(rule.styleSheet)
+        continue
+      }
+      // Grouping rules (@media/@supports/@layer) can hold root-scoped tokens —
+      // the server's file scan sees those, so the CSSOM read does too.
+      if (rule instanceof CSSGroupingRule) {
+        walkRules(rule.cssRules, file)
+        continue
+      }
       if (!(rule instanceof CSSStyleRule) || !ROOT_RULE_RE.test(rule.selectorText)) continue
       for (const v of listCssVars(rule.cssText)) {
         if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
@@ -230,6 +248,8 @@ function readCssomTokens(): DesignToken[] {
       }
     }
   }
+
+  for (const sheet of Array.from(document.styleSheets)) walkSheet(sheet)
   return tokens
 }
 

@@ -107,9 +107,11 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       setError(null)
     } catch (e) {
-      // Write failed — back out the optimistic value + the live override.
+      // Write failed — back out the optimistic value + the live override, and
+      // drop any pre-write notice (it implied a write that didn't land).
       applyLive(name, prev)
       setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value: prev } : t)) ?? null)
+      setNotice(null)
       setError((e as Error).message)
     } finally {
       setBusy(null)
@@ -117,7 +119,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
   }
 
   const errorChip = (msg: string) => (
-    <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
+    <p role="status" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
   )
 
   if (error && !tokens) return errorChip("Couldn't read your tokens.")
@@ -163,7 +165,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       )}
       {error && errorChip(error)}
       {notice && (
-        <p className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/15">
+        <p role="status" className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/15">
           {notice}
         </p>
       )}
