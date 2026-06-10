@@ -1,4 +1,5 @@
 import { Warning } from '@phosphor-icons/react'
+import { EPHEMERAL } from '../config'
 
 export function RevertConfirmDialog({
   onConfirm,
@@ -21,8 +22,9 @@ export function RevertConfirmDialog({
           <h3 className="text-sm font-semibold text-fg">Revert to original?</h3>
         </div>
         <p className="mb-4 text-xs leading-relaxed text-fg-muted">
-          This will undo all Muse edits in this session and restore the file to its state before
-          you started. This cannot be undone.
+          {EPHEMERAL
+            ? 'This will undo all Muse edits in this session and restore the page to how it started. This cannot be undone.'
+            : 'This will undo all Muse edits in this session and restore the file to its state before you started. This cannot be undone.'}
         </p>
         <div className="flex gap-2">
           <button
