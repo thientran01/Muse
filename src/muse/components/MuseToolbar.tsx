@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Flag, Palette, PaperPlaneTilt, Pause, Play, Question, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import { usePresence } from '../hooks/usePresence'
 import { useMuseStore } from '../store'
 import { computeSessionChanges } from '../sessionChanges'
@@ -90,6 +91,11 @@ export function MuseToolbar({
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
   const { mounted: popMounted, state: popState } = usePresence(expanded && pop !== 'none')
+  // While a popover is open, Tab cycles inside it instead of escaping into the
+  // host page; Esc (with focus inside) closes it without reaching Canvas's
+  // deselect-then-exit handler.
+  const popRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(popRef, expanded && pop !== 'none')
 
   return (
     <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
@@ -111,7 +117,19 @@ export function MuseToolbar({
           the canvas properties panel (rounded-xl / blur / ring) and marked
           data-muse-panel so the token color-picker anchors beside it. */}
       {popMounted && (
-        <div data-muse-panel data-state={popState} className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur" style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}>
+        <div
+          ref={popRef}
+          data-muse-panel
+          data-state={popState}
+          className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur"
+          style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation()
+              setPop('none')
+            }
+          }}
+        >
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
             <span className="text-[12px] font-semibold tracking-tight text-fg">{POP_TITLES[shownPop]}</span>
             <button
