@@ -228,6 +228,11 @@ function detectStrategy(root: string): StyleStrategy {
     // Blank comments first so a commented-out directive (`/* @tailwind base */`)
     // can't claim a host that actually styles some other way.
     if (cssFiles.some((f) => sig.test(blankComments(fs.readFileSync(f, 'utf8'))))) return 'tailwind-first'
+    // Capped scan + no signature found: the directive may sit in a dropped file —
+    // say so (per the no-silent-caps rule) instead of silently detecting inline.
+    if (cssFiles.length >= CSS_SCAN_FILE_CAP) {
+      console.warn(`[muse] strategy detection scanned ${CSS_SCAN_FILE_CAP}+ stylesheets without a Tailwind signature — defaulting to inline; set the strategy explicitly if that's wrong`)
+    }
   } catch {
     // fall through
   }
@@ -258,6 +263,11 @@ function collectCssFiles(dir: string, acc: string[]): void {
 function findCssVarFiles(root: string, varName: string): string[] {
   const files: string[] = []
   collectCssFiles(path.join(root, 'src'), files)
+  // A capped scan can miss the defining stylesheet — surface it (per the
+  // no-silent-caps rule, like the prop-text scan) rather than no-op the edit.
+  if (files.length >= CSS_SCAN_FILE_CAP) {
+    console.warn(`[muse] CSS-variable scan hit the ${CSS_SCAN_FILE_CAP}-file cap; ${varName}'s defining stylesheet may have been missed`)
+  }
   files.sort()
   const re = new RegExp(`${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`)
   return files.filter((f) => {
