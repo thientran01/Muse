@@ -29,6 +29,22 @@ export function Reference() {
         host's CSS custom properties (<Code>--c-*</Code>) so you can retune any of them in place.
       </P>
 
+      <H2 id="share">Share changes</H2>
+      <P>
+        The paper-plane button on the toolbar lists what the session changed, file by file, with the
+        edit labels that landed there. Undoing an edit removes it from the list.{' '}
+        <strong>Share changes</strong> turns that list into a pull request: a commit of exactly those
+        files on a fresh <Code>muse/*</Code> branch, pushed and opened for an engineer to review. No
+        git knowledge needed.
+      </P>
+      <P>
+        It never switches your branch and never touches other edits in your working tree. Sharing
+        again after more edits adds to the same branch and the pull request updates in place. Needs{' '}
+        <Code>git</Code> on the machine; uses the <Code>gh</Code> CLI for the pull request when
+        present, and falls back to a GitHub compare link without it. When something is missing the
+        panel says so plainly instead of offering a button that would fail.
+      </P>
+
       <H2 id="limits">Limitations</H2>
       <P>
         <strong>Development only.</strong> Muse runs against <Code>npm run dev</Code> rather than a

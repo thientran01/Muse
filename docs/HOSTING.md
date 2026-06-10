@@ -160,6 +160,16 @@ export { handle as GET, handle as POST }
 This is same-origin, so the overlay's default `apiBase` (`''`) just works — no CORS, no
 extra process.
 
+All three adapters expose the same surface, including the **Share changes** endpoints
+(`POST /api/muse/share-probe`, `POST /api/muse/share`) and the **Flags** endpoints
+(`POST /api/muse/flag`, `GET /api/muse/flags`, `POST /api/muse/flag-resolve`,
+`POST /api/muse/flag-delete`). Share runs
+`git` (and uses the `gh` CLI for the pull request when present) **from the backend's
+process**, so whatever process hosts the adapter needs `git` on its PATH and a
+`MUSE_ROOT` inside the repository — automatic for the in-process Vite/Next adapters,
+worth checking for the standalone server. Without `gh`, Share still pushes the branch
+and falls back to a GitHub compare link.
+
 ### Universal — standalone `muse-server`
 
 For any host whose bundler can't serve the backend in-process,
