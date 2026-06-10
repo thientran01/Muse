@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { Warning } from '@phosphor-icons/react'
 import { EPHEMERAL } from '../config'
 import { useFocusTrap } from '../hooks/useFocusTrap'
@@ -17,7 +17,9 @@ export function RevertConfirmDialog({
   const dialogRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   useFocusTrap(dialogRef, true)
-  useEffect(() => {
+  // Layout effect: focus lands before paint, so AT announces the dialog with
+  // focus already inside it (an async effect could announce a focusless modal).
+  useLayoutEffect(() => {
     cancelRef.current?.focus()
   }, [])
   return (

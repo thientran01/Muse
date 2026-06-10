@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Flag, Palette, PaperPlaneTilt, Pause, Play, Question, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
-import { useFocusTrap } from '../hooks/useFocusTrap'
 import { usePresence } from '../hooks/usePresence'
 import { useMuseStore } from '../store'
 import { computeSessionChanges } from '../sessionChanges'
@@ -29,7 +28,7 @@ const SHARE_UI = !EPHEMERAL && !MOCK
 
 const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes', help: 'Shortcuts' } as const
 
-function IconBtn({ label, onClick, children, active, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; badge?: number }) {
+function IconBtn({ label, onClick, children, active, expanded, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; expanded?: boolean; badge?: number }) {
   return (
     <button
       onClick={onClick}
@@ -38,11 +37,14 @@ function IconBtn({ label, onClick, children, active, badge }: { label: string; o
       // `active` is only passed by toggle buttons (e.g. pause/resume animations), so
       // emit aria-pressed only when it's defined — a plain action button stays
       // undefined and renders no pressed semantic. Color is then not the lone signal.
-      aria-pressed={active}
+      // Popover TRIGGERS pass `expanded` instead: a disclosure announces
+      // expanded/collapsed, not pressed (the visual active tint is shared).
+      aria-pressed={expanded === undefined ? active : undefined}
+      aria-expanded={expanded}
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
       className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
-        active ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
+        active || expanded ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
       }`}
     >
       {children}
@@ -91,11 +93,11 @@ export function MuseToolbar({
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
   const { mounted: popMounted, state: popState } = usePresence(expanded && pop !== 'none')
-  // While a popover is open, Tab cycles inside it instead of escaping into the
-  // host page; Esc (with focus inside) closes it without reaching Canvas's
-  // deselect-then-exit handler.
+  // NO focus trap here, deliberately: the popover is a non-modal disclosure (the
+  // page and the rest of the toolbar stay interactive), and the APG pattern for
+  // those is free Tab order, never a trap — that's reserved for aria-modal
+  // dialogs (RevertConfirmDialog). Esc with focus inside closes just the popover.
   const popRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(popRef, expanded && pop !== 'none')
 
   return (
     <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
@@ -124,6 +126,9 @@ export function MuseToolbar({
           className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur"
           style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}
           onKeyDown={(e) => {
+            // An open color picker's own document-capture Esc handler runs first
+            // and stops propagation (closing only the picker) — this fires only
+            // when the popover itself owns the Esc.
             if (e.key === 'Escape') {
               e.stopPropagation()
               setPop('none')
@@ -186,7 +191,7 @@ export function MuseToolbar({
             <IconBtn
               label={changedFileCount > 0 ? `Changes, ${changedFileCount} file${changedFileCount === 1 ? '' : 's'}` : 'Changes'}
               onClick={() => setPop((p) => (p === 'changes' ? 'none' : 'changes'))}
-              active={pop === 'changes'}
+              expanded={pop === 'changes'}
               badge={changedFileCount}
             >
               <PaperPlaneTilt size={17} />
@@ -195,12 +200,12 @@ export function MuseToolbar({
           <IconBtn
             label={openFlagCount > 0 ? `Flags, ${openFlagCount} open` : 'Flags'}
             onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))}
-            active={pop === 'flags'}
+            expanded={pop === 'flags'}
             badge={openFlagCount}
           >
             <Flag size={17} />
           </IconBtn>
-          <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} active={pop === 'tokens'}>
+          <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} expanded={pop === 'tokens'}>
             <Palette size={17} />
           </IconBtn>
           <IconBtn
@@ -210,7 +215,7 @@ export function MuseToolbar({
           >
             {animationsPaused ? <Play size={17} weight="fill" /> : <Pause size={17} />}
           </IconBtn>
-          <IconBtn label="Shortcuts" onClick={() => setPop((p) => (p === 'help' ? 'none' : 'help'))} active={pop === 'help'}>
+          <IconBtn label="Shortcuts" onClick={() => setPop((p) => (p === 'help' ? 'none' : 'help'))} expanded={pop === 'help'}>
             <Question size={17} />
           </IconBtn>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
