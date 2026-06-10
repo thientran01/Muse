@@ -6,6 +6,8 @@ Muse is a floating overlay that loads alongside a **React** app in development. 
 
 The change lands in the source file and HMR reloads the app. Full undo / redo / revert history is kept for the session.
 
+When the edits are ready for an engineer, **Share changes** turns the session into a reviewable pull request — a real `muse/*` branch, committed and pushed, without touching your checked-out branch or anything else in the working tree. No git knowledge required.
+
 It's built for the loop a design engineer actually works in: you're looking at the rendered output, you know how you want it to feel, but acting on it means inspecting the element, hunting down the file, finding the className, and tabbing back to check. Muse collapses that — point at the thing in the running app and work from there, instead of from the file tree. v0 and Lovable generate a *new* app from a blank prompt; editor copilots work from the file tree and expect you to already know what to open. Muse works from the rendered output of the app you already have.
 
 ---
@@ -17,6 +19,12 @@ It's built for the loop a design engineer actually works in: you're looking at t
 1. **Open Muse** from the button in the corner (or press `R`), then click any element to select it.
 2. **Shape it directly.** Drag the padding / margin / gap bands on the element, resize it from the corners, scrub size and weight, pick colors, double-click to rewrite text, or drag the element among its siblings to reorder. Each is a deterministic AST rewrite of the one element you touched.
 3. **It's already written.** A Canvas edit is applied to the source the moment you make it — no key, no wait — and lands on the same undo stack as everything else.
+
+**Share changes — session → pull request, no git knowledge:**
+
+The paper-plane button on the toolbar lists every file the session touched, with the edit labels that landed there (undoing an edit removes it from the list). One click builds a commit of exactly those files, lands it on a fresh `muse/*` branch, pushes, and opens a pull request (`gh` CLI when available, a GitHub compare link otherwise).
+
+The pipeline is git plumbing against a temporary index — it **never checks out a branch and never touches your working tree, your staged files, or your other in-flight changes**. Repo hooks and commit signing don't run, so a host's husky/gpg setup can't wedge it. Sharing again after more edits appends to the same branch and the PR updates in place. If a piece of the environment is missing — no git, no remote, push auth — the panel says so in plain words and the local branch is kept as the floor.
 
 ---
 
@@ -57,7 +65,7 @@ The engine needs to read source from disk and write edited files back. All endpo
 - **Next.js** — [`server/webAdapter.ts`](server/webAdapter.ts) bridges the handlers to a same-origin App Router dev route.
 - **Anything else** — [`server/standaloneServer.ts`](server/standaloneServer.ts), a tiny Node http server bound to localhost.
 
-**Canvas endpoints** (deterministic, no model call): `/style-edit`, `/text-edit`, `/reorder`, plus the probes `/style-scope`, `/text-editable`, `/reorderable`, the token endpoints `/tokens`, `/token-edit`, and `/write` to commit.
+**Canvas endpoints** (deterministic, no model call): `/style-edit`, `/text-edit`, `/reorder`, plus the probes `/style-scope`, `/text-editable`, `/reorderable`, the token endpoints `/tokens`, `/token-edit`, and `/write` to commit. **Share endpoints**: `/share-probe` (capability check) and `/share` (branch + push + PR via [`server/gitShare.ts`](server/gitShare.ts)). **Flag endpoints**: `/flag`, `/flags`, `/flag-resolve`, `/flag-delete` (shift-click annotations, handed to your own agent via [`packages/muse-mcp`](packages/muse-mcp)).
 
 ### AST-based Canvas edits
 

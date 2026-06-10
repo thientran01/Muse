@@ -47,9 +47,13 @@ React 18 is pinned intentionally — React 19 removes `_debugSource`.
 
 `server/musePlugin.ts` is a thin adapter; all logic lives in `server/museCore.ts` (`createMuseHandlers`). Registered via `configureServer` hook (`apply: 'serve'`) — same origin as the dev server, no CORS, direct filesystem access, never enters a prod build. Every endpoint is deterministic (no model call):
 
-Canvas: `POST /api/muse/style-edit`, `/text-edit`, `/reorder`, `/write`, plus probes `/style-scope`, `/text-editable`, `/reorderable` and tokens `/tokens`, `/token-edit`.
+Canvas: `POST /api/muse/style-edit`, `/text-edit`, `/reorder`, `/write`, plus probes `/style-scope`, `/text-editable`, `/reorderable` and tokens `/tokens`, `/token-edit`. Flags: `/flag`, `/flags`, `/flag-resolve`, `/flag-delete`. Share: `/share-probe`, `/share`.
 
 For non-Vite hosts: `server/standaloneServer.ts` (Node http) and `server/webAdapter.ts` (Web Request/Response for Next App Router). See `docs/HOSTING.md`.
+
+### Share changes (session → branch/PR)
+
+`server/gitShare.ts` turns the session's touched files into a reviewable PR for a designer who doesn't know git. Core invariant: **never checkout, never touch the user's index/working tree** — the commit is built against a temporary index (`GIT_INDEX_FILE` plumbing: `read-tree` → `update-index` → `write-tree` → `commit-tree`) and lands on a fresh `muse/*` ref via `update-ref`; hooks/signing never run. Push + `gh pr create --head` (compare-URL fallback). All process spawns via `execFile` (no shell) with a prompt-proof env. Client: `src/muse/sessionChanges.ts` (undo-reconciled fold over store history) feeds `ChangesPanel` (the toolbar's paper-plane popover, hidden in EPHEMERAL/MOCK); the `share` store slice carries the lifecycle + session branch. Tests: `server/__tests__/gitShare.test.ts` (real tmp-dir git repos; gh always faked).
 
 ### Canvas Mode (direct manipulation)
 
@@ -100,5 +104,8 @@ Motion system in `tailwind.config.js` (Emil Kowalski rules): all animations use 
 | `server/webAdapter.ts` | Web Request/Response adapter (Next App Router) |
 | `src/site/SiteApp.tsx` | Docs site root (self-demonstrating — Muse runs on its own pages) |
 | `src/muse/components/TokenList.tsx` | The CSS design-token editor (the toolbar's Design tokens popover) |
+| `server/gitShare.ts` | Share-changes git plumbing (temp-index commit → muse/* branch → push/PR) |
+| `src/muse/components/ChangesPanel.tsx` | Session-changes list + the Share action (toolbar paper-plane popover) |
+| `src/muse/sessionChanges.ts` | Undo-reconciled per-file fold over the history (feeds panel + share request) |
 | `babel/muse-loc.cjs` | Host-consumable CJS twin of babelPluginMuseLoc (for Next/webpack) |
 | `docs/HOSTING.md` | Integration guide for non-Vite hosts |
