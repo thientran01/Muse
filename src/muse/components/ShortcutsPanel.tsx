@@ -16,9 +16,10 @@ const SHORTCUTS: Array<{ keys: string[]; what: string }> = [
   { keys: ['Click'], what: 'select and shape an element' },
   { keys: ['⇧', 'Click'], what: 'flag an element for your agent' },
   { keys: ['Alt', 'Click'], what: 'step out to the parent' },
-  { keys: ['2× Click'], what: 'edit text in place' },
-  { keys: ['Drag'], what: 'reorder among siblings' },
-  { keys: ['⌘/Ctrl', '↑↓'], what: 'reorder by keyboard' },
+  { keys: ['Dbl-click'], what: 'edit text in place' },
+  { keys: ['Drag'], what: 'reorder among siblings, scroll mid-drag to reach farther' },
+  // The handler accepts both axes so it works in rows AND columns.
+  { keys: ['⌘/Ctrl', '↑↓←→'], what: 'reorder by keyboard' },
   { keys: ['⌘/Ctrl', 'Z'], what: 'undo' },
   { keys: ['⌘/Ctrl', '⇧', 'Z'], what: 'redo' },
   { keys: ['Esc'], what: 'deselect, then close' },
