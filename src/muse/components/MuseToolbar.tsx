@@ -114,6 +114,7 @@ export function MuseToolbar({
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
             <span className="text-[12px] font-semibold tracking-tight text-fg">{POP_TITLES[shownPop]}</span>
             <button
+              type="button"
               onClick={() => setPop('none')}
               aria-label={`Close ${POP_TITLES[shownPop].toLowerCase()}`}
               className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
