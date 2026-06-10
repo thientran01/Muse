@@ -20,13 +20,21 @@ export type StyleProperty =
   | 'width' | 'height'
   | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing'
   | 'color' | 'backgroundColor' | 'borderColor'
+  | 'borderRadius'
+  | 'borderTopLeftRadius' | 'borderTopRightRadius' | 'borderBottomRightRadius' | 'borderBottomLeftRadius'
+  | 'borderWidth' | 'borderStyle'
+  | 'opacity'
 
 // `kind` selects how a raw value becomes a Tailwind token. 'length' (w/h) shares
 // the spacing scale as 'spacing'; typography + color kinds have their own token
 // builders + overload-safe family matchers (see buildToken/familyMatcher in
 // tailwindScales) — the text-/font- prefixes are overloaded, so kind disambiguates.
+// 'borderWidth'/'borderStyle' carry the same overload duty for the border- prefix
+// (width vs style vs color all share it).
 export type PropertySpec = {
-  kind: 'spacing' | 'length' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'color'
+  kind:
+    | 'spacing' | 'length' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'color'
+    | 'radius' | 'borderWidth' | 'borderStyle' | 'opacity'
   tw: string
   css: string[]
 }
@@ -58,6 +66,14 @@ export const PROPERTIES: Record<StyleProperty, PropertySpec> = {
   color: { kind: 'color', tw: 'text', css: ['color'] },
   backgroundColor: { kind: 'color', tw: 'bg', css: ['backgroundColor'] },
   borderColor: { kind: 'color', tw: 'border', css: ['borderColor'] },
+  borderRadius: { kind: 'radius', tw: 'rounded', css: ['borderRadius'] },
+  borderTopLeftRadius: { kind: 'radius', tw: 'rounded-tl', css: ['borderTopLeftRadius'] },
+  borderTopRightRadius: { kind: 'radius', tw: 'rounded-tr', css: ['borderTopRightRadius'] },
+  borderBottomRightRadius: { kind: 'radius', tw: 'rounded-br', css: ['borderBottomRightRadius'] },
+  borderBottomLeftRadius: { kind: 'radius', tw: 'rounded-bl', css: ['borderBottomLeftRadius'] },
+  borderWidth: { kind: 'borderWidth', tw: 'border', css: ['borderWidth'] },
+  borderStyle: { kind: 'borderStyle', tw: 'border', css: ['borderStyle'] },
+  opacity: { kind: 'opacity', tw: 'opacity', css: ['opacity'] },
 }
 
 export const isStyleProperty = (p: unknown): p is StyleProperty =>
