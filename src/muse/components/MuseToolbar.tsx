@@ -1,12 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Flag, Palette, Pause, Play, X } from '@phosphor-icons/react'
+import { Flag, Palette, PaperPlaneTilt, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
+import { EPHEMERAL, MOCK } from '../config'
 import { usePresence } from '../hooks/usePresence'
 import { useMuseStore } from '../store'
+import { computeSessionChanges } from '../sessionChanges'
 import { UfoIcon } from './UfoIcon'
 import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
 import { FlagsPanel } from './FlagsPanel'
+import { ChangesPanel } from './ChangesPanel'
 
 // Muse's idle dock — ONE persistent pill that morphs between the FAB and the
 // toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
@@ -16,7 +19,13 @@ import { FlagsPanel } from './FlagsPanel'
 // element scale-popping in over another. The dock is pure utility; the design
 // tokens open as a popover above it (the bar stays put).
 
-type Pop = 'none' | 'tokens' | 'flags'
+type Pop = 'none' | 'tokens' | 'flags' | 'changes'
+
+// The Changes/Share surface needs the real backend (session edits must be on disk
+// to become a branch) — in the in-browser demo modes the button is hidden entirely.
+const SHARE_UI = !EPHEMERAL && !MOCK
+
+const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes' } as const
 
 function IconBtn({ label, onClick, children, active, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; badge?: number }) {
   return (
@@ -69,11 +78,13 @@ export function MuseToolbar({
   const [pop, setPop] = useState<Pop>('none')
   // The content kept rendered through the popover's EXIT (when `pop` is already 'none'),
   // so it doesn't flash the other panel while it scales back into the bar.
-  const [shownPop, setShownPop] = useState<'tokens' | 'flags'>('tokens')
+  const [shownPop, setShownPop] = useState<Exclude<Pop, 'none'>>('tokens')
   useEffect(() => { if (pop !== 'none') setShownPop(pop) }, [pop])
-  // Open flags drive the count badge on the Flags button.
-  const { flags } = useMuseStore()
+  // Open flags drive the count badge on the Flags button; net-changed files drive
+  // the Changes badge (both reactive — undo shrinks the changes count live).
+  const { flags, past } = useMuseStore()
   const openFlagCount = flags.filter((f) => f.status === 'open').length
+  const changedFileCount = SHARE_UI ? computeSessionChanges(past).filter((c) => c.changed).length : 0
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
@@ -101,17 +112,18 @@ export function MuseToolbar({
       {popMounted && (
         <div data-muse-panel data-state={popState} className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur" style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}>
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="text-[12px] font-semibold tracking-tight text-fg">{shownPop === 'flags' ? 'Flags' : 'Design tokens'}</span>
+            <span className="text-[12px] font-semibold tracking-tight text-fg">{POP_TITLES[shownPop]}</span>
             <button
+              type="button"
               onClick={() => setPop('none')}
-              aria-label={shownPop === 'flags' ? 'Close flags' : 'Close design tokens'}
+              aria-label={`Close ${POP_TITLES[shownPop].toLowerCase()}`}
               className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               <X size={13} />
             </button>
           </header>
           <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
-            {shownPop === 'flags' ? <FlagsPanel /> : <TokenList portalContainer={portalContainer} />}
+            {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>
       )}
@@ -151,6 +163,16 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
+          {SHARE_UI && (
+            <IconBtn
+              label={changedFileCount > 0 ? `Changes, ${changedFileCount} file${changedFileCount === 1 ? '' : 's'}` : 'Changes'}
+              onClick={() => setPop((p) => (p === 'changes' ? 'none' : 'changes'))}
+              active={pop === 'changes'}
+              badge={changedFileCount}
+            >
+              <PaperPlaneTilt size={17} />
+            </IconBtn>
+          )}
           <IconBtn
             label={openFlagCount > 0 ? `Flags, ${openFlagCount} open` : 'Flags'}
             onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))}
