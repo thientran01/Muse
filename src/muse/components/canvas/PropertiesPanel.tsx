@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
+import { ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
 import { SHADOW } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
@@ -20,8 +20,9 @@ export type CanvasValues = {
   padding: Sides
   margin: Sides
   gap: { row: number; column: number } | null // null when not flex/grid
+  layout: { justify: string; align: string } | null // flex/grid container alignment (normalized keywords)
   size: { width: number; height: number }
-  type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number }
+  type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
   rendersText: boolean // the element directly shows text — gates the Type controls
   color: { text: string; background: string; border: string } // current values as #hex
   colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
@@ -337,10 +338,17 @@ export function SizeFields({ values, onPreview, onCommit }: { values: CanvasValu
   )
 }
 
-// Font size / weight / line-height / letter-spacing — only where text renders.
+const TEXT_ALIGN_OPTIONS = [
+  { name: 'left', label: <TextAlignLeft size={13} />, title: 'Align left' },
+  { name: 'center', label: <TextAlignCenter size={13} />, title: 'Align center' },
+  { name: 'right', label: <TextAlignRight size={13} />, title: 'Align right' },
+  { name: 'justify', label: <TextAlignJustify size={13} />, title: 'Justify' },
+]
+
+// Font size / weight / line-height / letter-spacing / align — only where text renders.
 export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   return (
-    <div>
+    <div className="space-y-2">
       <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
         <ScrubField label="Size" value={values.type.fontSize} min={1}
           onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
@@ -355,6 +363,12 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
           onPreview={(v) => onPreview([{ property: 'letterSpacing', value: `${v}px` }])}
           onCommit={(v) => onCommit([{ property: 'letterSpacing', value: `${v}px` }])} />
       </div>
+      <SegmentRow
+        label="Align"
+        options={TEXT_ALIGN_OPTIONS}
+        current={values.type.align}
+        onPick={(name) => onCommit([{ property: 'textAlign', value: name }])}
+      />
     </div>
   )
 }
@@ -444,40 +458,62 @@ function CornerGroup({ values, onPreview, onCommit }: { values: Corners } & Edit
   )
 }
 
-// The shadow presets the panel offers (Tailwind's steps; the base and 2xl steps
-// exist in the engine but stay off the row — five chips is the readable cap, and
-// a base/2xl/custom current value simply renders with no chip selected).
-const SHADOW_PRESETS = [
-  { name: 'none', label: 'None', value: 'none' },
-  { name: 'sm', label: 'S', value: SHADOW.sm },
-  { name: 'md', label: 'M', value: SHADOW.md },
-  { name: 'lg', label: 'L', value: SHADOW.lg },
-  { name: 'xl', label: 'XL', value: SHADOW.xl },
-]
-
-function ShadowRow({ current, onCommit }: { current: string; onCommit: (m: StyleMutation[]) => void }) {
+// One compact segmented chip row — a radio group of exclusive choices (shadow
+// presets, text align, justify/align). `current` matches an option's name to
+// check it; a current value off the option list renders with nothing selected.
+function SegmentRow({
+  label,
+  options,
+  current,
+  onPick,
+}: {
+  label: string
+  options: Array<{ name: string; label: React.ReactNode; title?: string }>
+  current: string
+  onPick: (name: string) => void
+}) {
   return (
     <div className="space-y-1">
-      <span className="text-[10px] uppercase tracking-wide text-fg-faint">Shadow</span>
-      <div role="radiogroup" aria-label="Shadow" className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
-        {SHADOW_PRESETS.map((p) => (
+      <span className="text-[10px] uppercase tracking-wide text-fg-faint">{label}</span>
+      <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
+        {options.map((o) => (
           <button
-            key={p.name}
+            key={o.name}
             type="button"
             role="radio"
-            aria-checked={current === p.name}
-            onClick={() => onCommit([{ property: 'boxShadow', value: p.value }])}
-            className={`flex-1 rounded-md px-1 py-1 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-              current === p.name ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
+            aria-checked={current === o.name}
+            aria-label={o.title}
+            title={o.title}
+            onClick={() => onPick(o.name)}
+            className={`flex flex-1 items-center justify-center rounded-md px-1 py-1 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+              current === o.name ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
             }`}
           >
-            {p.label}
+            {o.label}
           </button>
         ))}
       </div>
     </div>
   )
 }
+
+// The shadow presets the panel offers (Tailwind's steps; the base and 2xl steps
+// exist in the engine but stay off the row — five chips is the readable cap, and
+// a base/2xl/custom current value simply renders with no chip selected).
+const SHADOW_PRESETS: Record<string, string> = {
+  none: 'none',
+  sm: SHADOW.sm,
+  md: SHADOW.md,
+  lg: SHADOW.lg,
+  xl: SHADOW.xl,
+}
+const SHADOW_OPTIONS = [
+  { name: 'none', label: 'None' },
+  { name: 'sm', label: 'S' },
+  { name: 'md', label: 'M' },
+  { name: 'lg', label: 'L' },
+  { name: 'xl', label: 'XL' },
+]
 
 // Radius, border width, opacity, and shadow presets. A width scrub on an element
 // with no visible border also sets border-style (the computed style is `none`, so
@@ -500,7 +536,12 @@ export function AppearanceFields({ values, onPreview, onCommit }: { values: Canv
           onPreview={(v) => onPreview([{ property: 'opacity', value: `${v / 100}` }])}
           onCommit={(v) => onCommit([{ property: 'opacity', value: `${v / 100}` }])} />
       </div>
-      <ShadowRow current={a.shadow} onCommit={onCommit} />
+      <SegmentRow
+        label="Shadow"
+        options={SHADOW_OPTIONS}
+        current={a.shadow}
+        onPick={(name) => onCommit([{ property: 'boxShadow', value: SHADOW_PRESETS[name] }])}
+      />
     </div>
   )
 }
@@ -519,6 +560,50 @@ export function GapFields({ values, onPreview, onCommit }: { values: CanvasValue
       <ScrubField label="Col" value={values.gap.column} min={0}
         onPreview={(v) => onPreview([{ property: 'columnGap', value: `${v}px` }])}
         onCommit={(v) => onCommit([{ property: 'columnGap', value: `${v}px` }])} />
+    </div>
+  )
+}
+
+// The chip names are the normalized keywords readValues reports; the committed
+// values are real CSS so the inline and CSS-file writers use them verbatim.
+const JUSTIFY_OPTIONS = [
+  { name: 'start', label: 'Start', value: 'flex-start' },
+  { name: 'center', label: 'Center', value: 'center' },
+  { name: 'end', label: 'End', value: 'flex-end' },
+  { name: 'between', label: 'Btwn', value: 'space-between', title: 'Space between' },
+]
+const ALIGN_OPTIONS = [
+  { name: 'start', label: 'Start', value: 'flex-start' },
+  { name: 'center', label: 'Center', value: 'center' },
+  { name: 'end', label: 'End', value: 'flex-end' },
+  { name: 'stretch', label: 'Stretch', value: 'stretch' },
+]
+
+// Container alignment + gap (flex/grid only): how this element arranges ITS
+// children — distinct from Spacing, which is the element's own box.
+export function LayoutFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  if (!values.layout) return null
+  return (
+    <div className="space-y-2">
+      <SegmentRow
+        label="Justify"
+        options={JUSTIFY_OPTIONS}
+        current={values.layout.justify}
+        onPick={(name) => {
+          const v = JUSTIFY_OPTIONS.find((o) => o.name === name)
+          if (v) onCommit([{ property: 'justifyContent', value: v.value }])
+        }}
+      />
+      <SegmentRow
+        label="Align"
+        options={ALIGN_OPTIONS}
+        current={values.layout.align}
+        onPick={(name) => {
+          const v = ALIGN_OPTIONS.find((o) => o.name === name)
+          if (v) onCommit([{ property: 'alignItems', value: v.value }])
+        }}
+      />
+      <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
     </div>
   )
 }
@@ -562,7 +647,7 @@ function Section({ label, open, onToggle, children }: { label: string; open: boo
   )
 }
 
-type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'gap'
+type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'layout'
 
 // Which sections are open — PERSISTED at module scope so it survives the panel's
 // remount on every selection (the render site keys the panel by element). This is
@@ -707,11 +792,11 @@ export function PropertiesPanel({
         <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
       </Section>
 
-      {values.gap && (
+      {values.layout && (
         <>
           {divider}
-          <Section label="Gap" open={open.has('gap')} onToggle={() => toggle('gap')}>
-            <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          <Section label="Layout" open={open.has('layout')} onToggle={() => toggle('layout')}>
+            <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
           </Section>
         </>
       )}

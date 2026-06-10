@@ -386,6 +386,50 @@ export function isShadowSizeToken(tok: string): boolean {
   return m ? /^(?:inset[_ ])?-?\d/.test(m[1]) : false
 }
 
+// --- alignment (text-align / justify-content / align-items) ----------------------
+// text- is the third overload of the text prefix (size, color, ALIGN) — the align
+// family is a closed keyword set, so the matcher is a strict whitelist that can
+// never claim a size or color token (and vice versa: the size/color matchers'
+// named sets + content checks never include these keywords).
+const TEXT_ALIGNS = ['left', 'center', 'right', 'justify', 'start', 'end']
+export function textAlignToken(value: string): string | null {
+  const v = value.trim()
+  return TEXT_ALIGNS.includes(v) ? `text-${v}` : null
+}
+export const isTextAlignToken = (tok: string): boolean =>
+  new RegExp(`^text-(?:${TEXT_ALIGNS.join('|')})$`).test(tok)
+
+// CSS justify-content values ↔ Tailwind's shortened suffixes.
+const JUSTIFY_MAP: Record<string, string> = {
+  'flex-start': 'start', start: 'start',
+  'flex-end': 'end', end: 'end',
+  center: 'center',
+  'space-between': 'between',
+  'space-around': 'around',
+  'space-evenly': 'evenly',
+  normal: 'normal', stretch: 'stretch',
+}
+export function justifyToken(value: string): string | null {
+  const suffix = JUSTIFY_MAP[value.trim()]
+  return suffix ? `justify-${suffix}` : null
+}
+export const isJustifyToken = (tok: string): boolean =>
+  /^justify-(?:start|end|center|between|around|evenly|normal|stretch)$/.test(tok)
+
+const ALIGN_ITEMS_MAP: Record<string, string> = {
+  'flex-start': 'start', start: 'start',
+  'flex-end': 'end', end: 'end',
+  center: 'center',
+  baseline: 'baseline',
+  stretch: 'stretch',
+}
+export function alignItemsToken(value: string): string | null {
+  const suffix = ALIGN_ITEMS_MAP[value.trim()]
+  return suffix ? `items-${suffix}` : null
+}
+export const isAlignItemsToken = (tok: string): boolean =>
+  /^items-(?:start|end|center|baseline|stretch)$/.test(tok)
+
 // --- kind-aware facade the engine calls ---------------------------------------
 // buildToken: value → Tailwind class token (or null → route inline). familyMatcher:
 // a predicate that finds the element's existing token of the SAME family to replace
@@ -416,6 +460,12 @@ export function buildToken(spec: PropertySpec, value: string): string | null {
       return opacityToken(value)
     case 'shadow':
       return shadowToken(value)
+    case 'textAlign':
+      return textAlignToken(value)
+    case 'justify':
+      return justifyToken(value)
+    case 'alignItems':
+      return alignItemsToken(value)
     default:
       return null
   }
@@ -448,6 +498,12 @@ export function familyMatcher(spec: PropertySpec): (tok: string) => boolean {
       return isOpacityToken
     case 'shadow':
       return isShadowSizeToken
+    case 'textAlign':
+      return isTextAlignToken
+    case 'justify':
+      return isJustifyToken
+    case 'alignItems':
+      return isAlignItemsToken
     default:
       return () => false
   }
