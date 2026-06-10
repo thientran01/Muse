@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShadowHost } from './hooks/useShadowHost'
 import { museWrite } from './api'
+import { EPHEMERAL } from './config'
 import { refreshFlags } from './flagsActions'
 import { useHostTheme } from './hooks/useHostTheme'
 import { museStore, useMuseStore } from './store'
@@ -22,7 +23,7 @@ export type HistoryControls = {
 }
 
 export function MuseOverlay() {
-  const { past, future, historyLoading, showRevertConfirm } = useMuseStore()
+  const { past, future, historyLoading, showRevertConfirm, eUndoCount, eRedoCount } = useMuseStore()
 
   // Panel visibility. The FAB opens Canvas's selection surface; an explicit close
   // shuts it. EXIT_MS lets the dock morph back to the FAB before Canvas unmounts.
@@ -103,6 +104,12 @@ export function MuseOverlay() {
   }
 
   async function revertToOriginal() {
+    // Ephemeral session: the "files" are DOM snapshots — revert is undo-everything.
+    if (EPHEMERAL) {
+      museStore.ephemeralRevert()
+      museStore.setState({ showRevertConfirm: false })
+      return
+    }
     const s = museStore.getState()
     if (s.historyLoading || s.past.length === 0) return
     museStore.setState({ historyLoading: true })
@@ -136,15 +143,27 @@ export function MuseOverlay() {
     return () => style.remove()
   }, [animationsPaused])
 
-  const historyControls: HistoryControls = {
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
-    loading: historyLoading,
-    onUndo: undo,
-    onRedo: redo,
-    onRevert: () => museStore.setState({ showRevertConfirm: true }),
-  }
-  const hasHistory = past.length > 0 || future.length > 0
+  // EPHEMERAL (the hosted demo): the toolbar drives the in-browser DOM-snapshot
+  // stack via the reactive count mirrors — previously these buttons sat dead there
+  // (only the keyboard path worked) because ePast/eFuture are off-state.
+  const historyControls: HistoryControls = EPHEMERAL
+    ? {
+        canUndo: eUndoCount > 0,
+        canRedo: eRedoCount > 0,
+        loading: false,
+        onUndo: () => void museStore.ephemeralUndo(),
+        onRedo: () => void museStore.ephemeralRedo(),
+        onRevert: () => museStore.setState({ showRevertConfirm: true }),
+      }
+    : {
+        canUndo: past.length > 0,
+        canRedo: future.length > 0,
+        loading: historyLoading,
+        onUndo: undo,
+        onRedo: redo,
+        onRevert: () => museStore.setState({ showRevertConfirm: true }),
+      }
+  const hasHistory = EPHEMERAL ? eUndoCount > 0 || eRedoCount > 0 : past.length > 0 || future.length > 0
 
   // Global hotkey: R toggles Muse on/off from anywhere on the page. Guarded so it
   // never fires while typing — composedPath()[0] is the REAL focused node even

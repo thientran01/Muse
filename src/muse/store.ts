@@ -27,6 +27,12 @@ export type MuseState = {
   historyLoading: boolean
   showRevertConfirm: boolean
   share: ShareState
+  // REACTIVE mirrors of the ephemeral stacks' lengths (the stacks themselves stay
+  // off-state — see ePast/eFuture). The toolbar's undo/redo buttons read these, so
+  // they light up in the EPHEMERAL demo too instead of sitting dead while only the
+  // keyboard path works.
+  eUndoCount: number
+  eRedoCount: number
   // Open + resolved flags (shift-click / refusal annotations handed off via muse-mcp).
   // REACTIVE — the Flags panel, the toolbar count badge, and the on-element pins all
   // re-render on change (unlike the ephemeral undo stacks, whose effect is DOM mutation).
@@ -39,6 +45,8 @@ const initialState: MuseState = {
   historyLoading: false,
   showRevertConfirm: false,
   share: { status: 'idle' },
+  eUndoCount: 0,
+  eRedoCount: 0,
   flags: [],
 }
 
@@ -90,6 +98,7 @@ export const museStore = {
   pushEphemeral(entry: EphemeralEntry) {
     ePast.push(entry)
     eFuture = []
+    syncEphemeralCounts()
   },
   /** Undo the last ephemeral edit (run its `undo` thunk, move it to redo).
    * Returns false if nothing to undo. */
@@ -98,6 +107,7 @@ export const museStore = {
     if (!e) return false
     e.undo()
     eFuture.unshift(e)
+    syncEphemeralCounts()
     return true
   },
   /** Redo the last undone ephemeral edit. Returns false if nothing to redo. */
@@ -106,8 +116,22 @@ export const museStore = {
     if (!e) return false
     e.redo()
     ePast.push(e)
+    syncEphemeralCounts()
     return true
   },
+  /** Revert the whole ephemeral session: undo everything, then drop both stacks
+   * (mirrors the file-history revert, which clears past AND future). */
+  ephemeralRevert() {
+    for (let e = ePast.pop(); e; e = ePast.pop()) e.undo()
+    eFuture = []
+    syncEphemeralCounts()
+  },
+}
+
+// Mirror the off-state stacks' lengths into the reactive state so the toolbar's
+// undo/redo buttons re-render. setState's no-op skip keeps redundant syncs silent.
+function syncEphemeralCounts() {
+  museStore.setState({ eUndoCount: ePast.length, eRedoCount: eFuture.length })
 }
 
 /** Subscribe a component to the entire store. Re-renders on any state change. */
