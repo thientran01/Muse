@@ -1,6 +1,6 @@
 // The docs site's page model. Hash-routed (e.g. #/install) so links are shareable
 // and a static host needs no SPA rewrite rules.
-export type PageId = 'overview' | 'install' | 'how' | 'styling' | 'reference'
+export type PageId = 'overview' | 'install' | 'how' | 'styling' | 'reference' | 'troubleshooting'
 
 export const NAV: { id: PageId; label: string; blurb: string }[] = [
   { id: 'overview', label: 'Overview', blurb: 'What Muse is' },
@@ -8,6 +8,7 @@ export const NAV: { id: PageId; label: string; blurb: string }[] = [
   { id: 'how', label: 'How it works', blurb: 'The engine' },
   { id: 'styling', label: 'Styling', blurb: 'Every system, live' },
   { id: 'reference', label: 'Reference', blurb: 'Gestures & limits' },
+  { id: 'troubleshooting', label: 'Troubleshooting', blurb: 'When an edit refuses' },
 ]
 
 export function pageFromHash(): PageId {
