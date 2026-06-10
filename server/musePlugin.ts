@@ -81,6 +81,14 @@ export function musePlugin(): Plugin {
         if (req.method !== 'POST') return next()
         handlers.flagDelete(req, res).catch(() => {})
       })
+      server.middlewares.use('/api/muse/share-probe', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.shareProbe(req, res).catch(() => {})
+      })
+      server.middlewares.use('/api/muse/share', (req, res, next) => {
+        if (req.method !== 'POST') return next()
+        handlers.share(req, res).catch(() => {})
+      })
     },
   }
 }

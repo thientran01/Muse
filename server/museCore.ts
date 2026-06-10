@@ -34,7 +34,8 @@ import {
 import { blankComments, editCssVar, listCssVars, looksLikeColor } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
-import type { Flag, FlagDraft, FlagsFile } from '../src/muse/types'
+import { performShare, probeShare } from './gitShare'
+import type { Flag, FlagDraft, FlagsFile, ShareChange } from '../src/muse/types'
 
 // ---- Constants ----------------------------------------------------------------
 
@@ -78,6 +79,8 @@ export type MuseHandlers = {
   flags: Handler
   flagResolve: Handler
   flagDelete: Handler
+  shareProbe: Handler
+  share: Handler
 }
 
 export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
@@ -95,6 +98,8 @@ export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
     flags:          (req, res) => handleFlagsList(req, res, ctx),
     flagResolve:    (req, res) => handleFlagResolve(req, res, ctx),
     flagDelete:     (req, res) => handleFlagDelete(req, res, ctx),
+    shareProbe:     (req, res) => handleShareProbe(req, res, ctx),
+    share:          (req, res) => handleShare(req, res, ctx),
   }
 }
 
@@ -1121,6 +1126,65 @@ async function handleFlagResolve(req: IncomingMessage, res: ServerResponse, ctx:
   } catch (err) {
     console.error('[muse] /flag-resolve error:', err)
     return sendJson(res, 500, { error: (err as Error).message ?? String(err) })
+  }
+}
+
+// POST /api/muse/share-probe { files } — can this session be shared as a branch/PR?
+// Fail-closed like /style-scope: ANY error reports unavailable (status 200) with a
+// designer-readable reason, so the client only ever renders a Share button that works.
+// POST because the probe needs the session file list (for dirtyOtherCount), matching
+// the /text-editable & /reorderable probe idiom.
+async function handleShareProbe(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as { files?: unknown }
+    const files = Array.isArray(b?.files) ? b.files.filter((f): f is string => typeof f === 'string') : []
+    return sendJson(res, 200, await probeShare(ctx.root, files))
+  } catch (err) {
+    console.error('[muse] /share-probe error:', err)
+    return sendJson(res, 200, { available: false, reason: 'Couldn’t check the repository — try again, or ask an engineer to take a look.' })
+  }
+}
+
+// POST /api/muse/share — turn the session's touched files into a muse/* branch
+// (+ push + PR when the environment allows). Every path is gated through resolveInSrc,
+// the SAME boundary as /write: sharing can only ever commit files Muse could edit.
+// Validation failures are 400; pipeline outcomes ride the ShareResult discriminator
+// at 200 (ok:false covers benign cases like "nothing to share").
+async function handleShare(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
+  try {
+    const b = JSON.parse(await readBody(req)) as {
+      files?: unknown
+      changes?: unknown
+      slugHint?: unknown
+      branch?: unknown
+    }
+    const rawFiles = Array.isArray(b?.files) ? b.files : []
+    if (rawFiles.length === 0) return sendJson(res, 400, { ok: false, error: 'No files to share.' })
+    const files: string[] = []
+    for (const f of rawFiles) {
+      const abs = resolveInSrc(ctx.root, f)
+      if (!abs) {
+        return sendJson(res, 400, { ok: false, error: `Refusing to share "${String(f)}" — not an editable file under src/.` })
+      }
+      files.push(relOf(ctx.root, abs))
+    }
+    const changes: ShareChange[] = (Array.isArray(b?.changes) ? b.changes : [])
+      .filter((c): c is { fileName: string; labels: unknown[] } =>
+        !!c && typeof (c as { fileName?: unknown }).fileName === 'string' && Array.isArray((c as { labels?: unknown }).labels))
+      .map((c) => ({
+        fileName: c.fileName,
+        labels: c.labels.filter((l): l is string => typeof l === 'string').slice(0, 50),
+      }))
+    const result = await performShare(ctx.root, {
+      files,
+      changes,
+      slugHint: typeof b?.slugHint === 'string' ? b.slugHint : undefined,
+      branch: typeof b?.branch === 'string' ? b.branch : undefined,
+    })
+    return sendJson(res, 200, result)
+  } catch (err) {
+    console.error('[muse] /share error:', err)
+    return sendJson(res, 500, { ok: false, error: (err as Error).message ?? String(err) })
   }
 }
 
