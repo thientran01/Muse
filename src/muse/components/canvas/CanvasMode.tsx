@@ -81,6 +81,9 @@ function readValues(node: HTMLElement): CanvasValues {
 // putting the color first. Off-scale shadows report 'custom' (no chip selected).
 function matchShadowPreset(computed: string): string {
   if (!computed || computed === 'none') return 'none'
+  // An inset shadow is a different thing even when its offsets coincide with a
+  // preset's — highlighting S for it would invite a click that drops the inset.
+  if (/\binset\b/.test(computed)) return 'custom'
   const sig = shadowSignature(computed)
   // Only transparent placeholder layers (Tailwind's ring slots) → no real shadow.
   if (!sig) return 'none'

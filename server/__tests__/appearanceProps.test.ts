@@ -155,6 +155,8 @@ describe('shadow presets', () => {
     expect(shadowSignature(computedMd)).toBe(shadowSignature(SHADOW.md))
     // Placeholders alone signature to empty — "no real shadow".
     expect(shadowSignature('rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px')).toBe('')
+    // Modern color functions blank too — their channels never leak into the numbers.
+    expect(shadowSignature('0 1px 2px 0 oklch(0.5 0.2 120)')).toBe(shadowSignature(SHADOW.sm))
   })
 
   it('the size family never claims colored-shadow tokens', () => {

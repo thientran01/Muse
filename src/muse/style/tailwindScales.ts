@@ -352,7 +352,7 @@ export const SHADOW: Record<string, string> = {
 // placeholder layers ("0 0 #0000", computed as "rgba(0,0,0,0) 0px 0px 0px 0px"),
 // and a computed value must still match its authored preset through them.
 export function shadowSignature(value: string): string {
-  const noColors = value.replace(/(rgba?|hsla?|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
+  const noColors = value.replace(/(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
   return noColors
     .split(',')
     .map((layer) => (layer.match(/-?\d*\.?\d+(?:px)?/g) ?? []).map((n) => String(parseFloat(n))))
@@ -375,7 +375,10 @@ export function shadowToken(value: string): string | null {
 
 // shadow- is overloaded with COLORED shadows (shadow-red-500 sets --tw-shadow-color);
 // the size family is the named steps + bare `shadow` + an arbitrary whose content
-// starts like a length list, never a color.
+// starts like a length list. A full-value arbitrary that EMBEDS a color
+// (shadow-[0_2px_9px_#f00]) is deliberately still size-family: this matcher only
+// fires for boxShadow mutations, and clicking a preset chip means "replace my
+// shadow with this preset" — color included.
 const SHADOW_NAMES = Object.keys(SHADOW).filter(Boolean).concat('inner')
 export function isShadowSizeToken(tok: string): boolean {
   if (new RegExp(`^shadow(?:-(?:${SHADOW_NAMES.join('|')}))?$`).test(tok)) return true
