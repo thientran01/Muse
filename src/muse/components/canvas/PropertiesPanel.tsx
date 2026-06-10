@@ -239,6 +239,8 @@ export function SideGroup({
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
           title={expanded ? 'Link sides' : 'Edit each side'}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Link sides' : 'Edit each side'}
         >
           {expanded ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
         </button>
@@ -406,6 +408,8 @@ function CornerGroup({ values, onPreview, onCommit }: { values: Corners } & Edit
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
           title={expanded ? 'Link corners' : 'Edit each corner'}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Link corners' : 'Edit each corner'}
         >
           {expanded ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
         </button>
@@ -449,7 +453,10 @@ export function AppearanceFields({ values, onPreview, onCommit }: { values: Canv
     <div className="space-y-2">
       <CornerGroup values={a.radius} onPreview={onPreview} onCommit={onCommit} />
       <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
-        <ScrubField label="Border" ariaLabel="Border width" value={a.borderWidth} min={0}
+        {/* "Stroke", not "Border": the Color section already has a Border row (its
+            color), and two visible "Border" labels two sections apart read as the
+            same control. Stroke is the term this persona knows from Figma. */}
+        <ScrubField label="Stroke" ariaLabel="Border width" value={a.borderWidth} min={0}
           onPreview={(v) => onPreview(withStyle(v, [{ property: 'borderWidth', value: `${v}px` }]))}
           onCommit={(v) => onCommit(withStyle(v, [{ property: 'borderWidth', value: `${v}px` }]))} />
         <ScrubField label="Opacity" value={a.opacity} min={0} max={100} unit="%"

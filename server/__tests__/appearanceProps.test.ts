@@ -76,11 +76,14 @@ describe('border width / style tokens (the triple-overloaded border- prefix)', (
     expect(borderWidthToken('3px')).toBe('border-[3px]')
     expect(borderWidthToken('medium')).toBeNull()
   })
-  it('width matcher never claims color or style tokens', () => {
-    for (const tok of ['border', 'border-0', 'border-2', 'border-[3px]']) {
+  it('width matcher absorbs side widths but never color or style tokens', () => {
+    // Side width tokens belong to the family: the single width scrub means "the
+    // border's width", and a side longhand left in place would win the cascade
+    // over the new shorthand — the edit would silently not stick.
+    for (const tok of ['border', 'border-0', 'border-2', 'border-[3px]', 'border-t-2', 'border-x', 'border-b', 'border-l-[3px]']) {
       expect(isBorderWidthToken(tok)).toBe(true)
     }
-    for (const tok of ['border-red-500', 'border-[#fff]', 'border-[var(--x)]', 'border-solid', 'border-t-2', 'border-x']) {
+    for (const tok of ['border-red-500', 'border-teal-500', 'border-[#fff]', 'border-[var(--x)]', 'border-solid', 'border-x-teal-500']) {
       expect(isBorderWidthToken(tok)).toBe(false)
     }
   })
@@ -105,10 +108,13 @@ describe('opacityToken', () => {
     expect(opacityToken('1.2')).toBeNull()
     expect(opacityToken('-0.1')).toBeNull()
   })
-  it('matches only opacity utilities', () => {
+  it('matches only opacity utilities, capped at the real 0–100 scale', () => {
     expect(isOpacityToken('opacity-80')).toBe(true)
+    expect(isOpacityToken('opacity-100')).toBe(true)
+    expect(isOpacityToken('opacity-0')).toBe(true)
     expect(isOpacityToken('opacity-[0.83]')).toBe(true)
     expect(isOpacityToken('opacity')).toBe(false)
+    expect(isOpacityToken('opacity-200')).toBe(false) // custom scale / typo — not ours to strip
     expect(isOpacityToken('bg-black/80')).toBe(false)
   })
 })
@@ -202,6 +208,16 @@ describe('appearance edits through the engine', () => {
     expect(out).toContain('border-2')
     expect(out).toContain('border-solid')
     expect(out).toContain('border-red-500') // the color slice of the overload survives
+  })
+
+  it('a width scrub absorbs a per-side width token so the edit actually sticks', async () => {
+    const src = `export const Card = () => (\n  <div className="border-t-2 border-red-500 p-4">hi</div>\n)\n`
+    const p = makeProject({ 'src/Card.tsx': src })
+    const r = await call(p.handlers.styleEdit, styleEditBody(p, 'src/Card.tsx', src, '<div', 'div', [{ property: 'borderWidth', value: '3px' }], 'tailwind-first'))
+    const out = r.body.edits[0].newContent as string
+    expect(out).toContain('border-[3px]')
+    expect(out).not.toContain('border-t-2') // the side longhand would win the cascade
+    expect(out).toContain('border-red-500')
   })
 
   it('writes opacity as a named step and falls back to inline for an off-scale radius unit', async () => {

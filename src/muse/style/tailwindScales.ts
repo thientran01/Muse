@@ -251,8 +251,12 @@ export { isLengthArbitrary, isColorArbitrary }
 
 // Inverse of the forward ROUNDED map, derived so they can't drift. '' is the
 // bare-`rounded` 0.25rem step; the suffix joins with '-' only when non-empty.
+// Every ROUNDED value parses (px/rem literals), so the filter is a type guard,
+// not a reachable fallback.
 const ROUNDED_INVERSE = new Map<number, string>(
-  Object.entries(ROUNDED).map(([suffix, val]) => [lengthToPx(val) ?? 9999, suffix]),
+  Object.entries(ROUNDED)
+    .map(([suffix, val]) => [lengthToPx(val), suffix] as const)
+    .filter((e): e is [number, string] => e[0] !== null),
 )
 const roundedClass = (prefix: string, suffix: string) => (suffix === '' ? prefix : `${prefix}-${suffix}`)
 
@@ -286,10 +290,16 @@ export function borderWidthToken(value: string): string | null {
   return BORDER_WIDTH_NAMED.get(px) ?? `border-[${px}px]`
 }
 // Width tokens only — never border-color (named palette / #hex / var brackets, the
-// colorFamilyMatch territory), never border-style, never side widths (border-t-2).
+// colorFamilyMatch territory) and never border-style. SIDE width tokens (border-t-2,
+// border-x, …) ARE absorbed, same rationale as the radius family: the panel's single
+// width scrub means "the border's width", and leaving a side longhand in place would
+// silently win the cascade over the new shorthand — an edit that doesn't stick is
+// worse than one that flattens a per-side setup. The strict suffix group keeps
+// border-teal-500 (a color) out of the `t` alternation.
+const BORDER_SIDE = '(?:t|r|b|l|x|y|s|e)'
 export const isBorderWidthToken = (tok: string): boolean => {
-  if (/^border(?:-(?:0|2|4|8))?$/.test(tok)) return true
-  const m = tok.match(/^border-\[(.+)\]$/)
+  if (new RegExp(`^border(?:-${BORDER_SIDE})?(?:-(?:0|2|4|8))?$`).test(tok)) return true
+  const m = tok.match(new RegExp(`^border(?:-${BORDER_SIDE})?-\\[(.+)\\]$`))
   return m ? isLengthArbitrary(m[1]) : false
 }
 
@@ -315,7 +325,8 @@ export function opacityToken(value: string): string | null {
   if (Math.abs(frac * 100 - pct) < 0.001 && OPACITY_STEPS.has(pct)) return `opacity-${pct}`
   return `opacity-[${frac}]`
 }
-export const isOpacityToken = (tok: string): boolean => /^opacity-(?:\d{1,3}|\[[^\]]+\])$/.test(tok)
+// 0–100 only — opacity-200 (a custom scale or a typo) is not ours to strip.
+export const isOpacityToken = (tok: string): boolean => /^opacity-(?:100|[1-9]?\d|\[[^\]]+\])$/.test(tok)
 
 // --- kind-aware facade the engine calls ---------------------------------------
 // buildToken: value → Tailwind class token (or null → route inline). familyMatcher:
