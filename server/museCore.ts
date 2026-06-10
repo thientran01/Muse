@@ -31,7 +31,7 @@ import {
   type VarEdit,
   type ModuleEdit,
 } from './styleEdit'
-import { blankComments, editCssVar, listCssVars } from '../src/muse/style/cssVarEdit'
+import { blankComments, editCssVar, listCssVars, looksLikeColor } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
 import type { Flag, FlagDraft, FlagsFile } from '../src/muse/types'
@@ -973,15 +973,6 @@ async function handleReorderable(req: IncomingMessage, res: ServerResponse, ctx:
     console.error('[muse] /reorderable error:', err)
     return sendJson(res, 200, { reorderable: false, reason: 'check failed' })
   }
-}
-
-// A value that's recognizably a COLOR, so the token panel can show a swatch (else it
-// renders the value as text). Conservative: only obvious color forms — a raw `r g b`
-// channel triple (Tailwind-v4 `rgb(var(--x))` style) is ambiguous vs a spacing triple,
-// so it's left as text.
-const TOKEN_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|color\(|hwb\()/
-function looksLikeColor(value: string): boolean {
-  return TOKEN_COLOR_RE.test(value.trim().replace(/\s*!important\s*$/i, ''))
 }
 
 // GET /api/muse/tokens — the host's design tokens: every CSS custom property defined

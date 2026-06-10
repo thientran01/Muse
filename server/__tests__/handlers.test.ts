@@ -310,6 +310,101 @@ describe('/write src/ boundary', () => {
   })
 })
 
+// ---- design tokens: /tokens discovery + /token-edit writes -------------------------------
+
+describe('/tokens discovery', () => {
+  it('lists every custom property under src/, first definition wins, --muse-* excluded', async () => {
+    const p = makeProject({
+      'src/App.tsx': 'export const x = 1\n',
+      'src/index.css': `:root {\n  --c-energy: #7f2f2f;\n  --radius-lg: 16px;\n  --muse-accent: 127 47 47;\n}\nhtml.dark {\n  --c-energy: #e3a384;\n}\n`,
+      'src/site/zoo/zoo.css': `:root {\n  --zoo-accent: #7f2f2f;\n  --zoo-chip-radius: 12px;\n}\n`,
+    })
+    const r = await call(p.handlers.tokens, {})
+    expect(r.status).toBe(200)
+    const byName = Object.fromEntries(r.body.tokens.map((t: { name: string }) => [t.name, t]))
+    // First (base) definition wins — not the html.dark override.
+    expect(byName['--c-energy']).toMatchObject({ value: '#7f2f2f', isColor: true, file: 'src/index.css' })
+    expect(byName['--radius-lg']).toMatchObject({ value: '16px', isColor: false })
+    // Nested stylesheets contribute too (the strategy-zoo regression).
+    expect(byName['--zoo-accent']).toMatchObject({ value: '#7f2f2f', isColor: true, file: 'src/site/zoo/zoo.css' })
+    expect(byName['--zoo-chip-radius']).toMatchObject({ value: '12px', isColor: false })
+    // Muse's own overlay tokens never appear.
+    expect(byName['--muse-accent']).toBeUndefined()
+  })
+
+  it('classifies color forms (rgb/hsl/oklch) and leaves ambiguous values as text', async () => {
+    const p = makeProject({
+      'src/App.tsx': 'export const x = 1\n',
+      'src/index.css': `:root {\n  --a: rgb(1, 2, 3);\n  --b: oklch(0.5 0.1 200);\n  --c: 127 47 47;\n  --d: var(--a);\n}\n`,
+    })
+    const r = await call(p.handlers.tokens, {})
+    const byName = Object.fromEntries(r.body.tokens.map((t: { name: string; isColor: boolean }) => [t.name, t.isColor]))
+    expect(byName['--a']).toBe(true)
+    expect(byName['--b']).toBe(true)
+    expect(byName['--c']).toBe(false) // raw channel triple — ambiguous, stays text
+    expect(byName['--d']).toBe(false) // a var() reference isn't a paintable swatch
+  })
+})
+
+describe('/token-edit', () => {
+  const themeCss = `:root {\n  --c-energy: #7f2f2f;\n}\nhtml.dark {\n  --c-energy: #e3a384;\n}\n`
+
+  it('edits the base definition, returns originals for undo, and warns about overrides', async () => {
+    const p = makeProject({ 'src/App.tsx': 'export const x = 1\n', 'src/index.css': themeCss })
+    const r = await call(p.handlers.tokenEdit, { name: '--c-energy', value: '#123456' })
+    expect(r.status).toBe(200)
+    expect(r.body.edits).toHaveLength(1)
+    expect(r.body.edits[0].fileName).toBe('src/index.css')
+    expect(r.body.edits[0].newContent).toContain('--c-energy: #123456;')
+    expect(r.body.edits[0].newContent).toContain('--c-energy: #e3a384;') // dark override untouched
+    expect(r.body.originals['src/index.css']).toBe(themeCss)
+    expect(r.body.warnings.join(' ')).toContain('themed in 2 selectors')
+
+    // The undo contract: replaying originals through /write reverts byte-exact.
+    await call(p.handlers.write, { files: r.body.edits })
+    const undoFiles = Object.entries(r.body.originals).map(([fileName, newContent]) => ({ fileName, newContent }))
+    await call(p.handlers.write, { files: undoFiles })
+    expect(p.read('src/index.css')).toBe(themeCss)
+  })
+
+  it('warns when the token is defined in multiple stylesheets and edits the first', async () => {
+    const p = makeProject({
+      'src/App.tsx': 'export const x = 1\n',
+      'src/a.css': `:root { --shared: 4px; }\n`,
+      'src/b.css': `:root { --shared: 8px; }\n`,
+    })
+    const r = await call(p.handlers.tokenEdit, { name: '--shared', value: '6px' })
+    expect(r.body.edits[0].fileName).toBe('src/a.css')
+    expect(r.body.warnings.join(' ')).toContain('defined in 2 stylesheets')
+  })
+
+  it('reports an unknown token without edits', async () => {
+    const p = makeProject({ 'src/App.tsx': 'export const x = 1\n', 'src/index.css': `:root { --a: 1px; }\n` })
+    const r = await call(p.handlers.tokenEdit, { name: '--nope', value: 'red' })
+    expect(r.body.edits).toHaveLength(0)
+    expect(r.body.warnings.join(' ')).toContain("couldn't find where --nope is defined")
+  })
+
+  it('refuses an unsafe value (declaration breakout) as nothing-to-change', async () => {
+    const p = makeProject({ 'src/App.tsx': 'export const x = 1\n', 'src/index.css': `:root { --a: 1px; }\n` })
+    const r = await call(p.handlers.tokenEdit, { name: '--a', value: 'red; } body { display: none' })
+    expect(r.body.edits).toHaveLength(0)
+    expect(p.read('src/index.css')).toBe(`:root { --a: 1px; }\n`)
+  })
+
+  it('rejects a malformed token name', async () => {
+    const p = makeProject({ 'src/App.tsx': 'export const x = 1\n' })
+    const r = await call(p.handlers.tokenEdit, { name: 'c-energy', value: 'red' })
+    expect(r.status).toBe(400)
+  })
+
+  it('preserves CRLF in the edited stylesheet', async () => {
+    const p = makeProject({ 'src/App.tsx': 'export const x = 1\n', 'src/index.css': crlf(themeCss) })
+    const r = await call(p.handlers.tokenEdit, { name: '--c-energy', value: '#123456' })
+    expect(r.body.edits[0].newContent).toBe(crlf(themeCss).replace('#7f2f2f', '#123456'))
+  })
+})
+
 // ---- text edit: CRLF end to end ---------------------------------------------------------
 
 describe('/text-edit CRLF preservation', () => {

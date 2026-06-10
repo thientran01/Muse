@@ -50,6 +50,10 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
 export function TokenList({ portalContainer }: { portalContainer?: React.RefObject<HTMLElement> }) {
   const [tokens, setTokens] = useState<DesignToken[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Non-fatal write notes (e.g. "themed in 2 selectors — updated the base value").
+  // Shown in the panel, not just the console: in dark mode a base-value edit can be
+  // visually masked by the theme override, and this is the only thing that says why.
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
@@ -85,6 +89,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
     // MOCK / EPHEMERAL: no backend write — the live override IS the applied state.
     if (MOCK || EPHEMERAL) return
     setBusy(name)
+    setNotice(null)
     try {
       const { edits, originals, warnings } = await museTokenEdit(name, value)
       if (warnings.length) console.warn('[muse] token-edit:', warnings.join(' · '))
@@ -92,6 +97,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
         setError(warnings[0] ?? "Couldn't update that token.")
         return
       }
+      if (warnings.length) setNotice(warnings.join(' '))
       await museWrite(edits)
       const entry: HistoryEntry = {
         files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
@@ -101,9 +107,11 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
       setError(null)
     } catch (e) {
-      // Write failed — back out the optimistic value + the live override.
+      // Write failed — back out the optimistic value + the live override, and
+      // drop any pre-write notice (it implied a write that didn't land).
       applyLive(name, prev)
       setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value: prev } : t)) ?? null)
+      setNotice(null)
       setError((e as Error).message)
     } finally {
       setBusy(null)
@@ -111,7 +119,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
   }
 
   const errorChip = (msg: string) => (
-    <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
+    <p role="status" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
   )
 
   if (error && !tokens) return errorChip("Couldn't read your tokens.")
@@ -156,6 +164,11 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
         </div>
       )}
       {error && errorChip(error)}
+      {notice && (
+        <p role="status" className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/15">
+          {notice}
+        </p>
+      )}
     </div>
   )
 }
