@@ -20,9 +20,13 @@ import {
   isBorderStyleToken,
   isBorderWidthToken,
   isOpacityToken,
+  isShadowSizeToken,
   opacityToken,
   radiusFamilyMatch,
   radiusToken,
+  SHADOW,
+  shadowSignature,
+  shadowToken,
 } from '../../src/muse/style/tailwindScales'
 
 // ---- pure builders ----------------------------------------------------------------
@@ -116,6 +120,50 @@ describe('opacityToken', () => {
     expect(isOpacityToken('opacity')).toBe(false)
     expect(isOpacityToken('opacity-200')).toBe(false) // custom scale / typo — not ours to strip
     expect(isOpacityToken('bg-black/80')).toBe(false)
+  })
+})
+
+describe('shadow presets', () => {
+  it('round-trips every preset value to its named utility', () => {
+    expect(shadowToken(SHADOW.sm)).toBe('shadow-sm')
+    expect(shadowToken(SHADOW[''])).toBe('shadow')
+    expect(shadowToken(SHADOW.md)).toBe('shadow-md')
+    expect(shadowToken(SHADOW.lg)).toBe('shadow-lg')
+    expect(shadowToken(SHADOW.xl)).toBe('shadow-xl')
+    expect(shadowToken(SHADOW['2xl'])).toBe('shadow-2xl')
+    expect(shadowToken('none')).toBe('shadow-none')
+    expect(shadowToken('0 0 #0000')).toBe('shadow-none') // Tailwind's own none value
+    expect(shadowToken('0 2px 9px rgb(1 2 3 / 0.5)')).toBeNull() // custom → inline
+  })
+
+  it('matches a preset through the computed-style serialization (color first, px units)', () => {
+    // Chrome serializes the sm step as "rgba(0, 0, 0, 0.05) 0px 1px 2px 0px".
+    expect(shadowSignature('rgba(0, 0, 0, 0.05) 0px 1px 2px 0px')).toBe(shadowSignature(SHADOW.sm))
+    // …and a multi-layer step keeps its layer order in the signature.
+    expect(shadowSignature('rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0.1) 0px 2px 4px -2px')).toBe(
+      shadowSignature(SHADOW.md),
+    )
+    // Different steps never collide.
+    expect(shadowSignature(SHADOW.sm)).not.toBe(shadowSignature(SHADOW.lg))
+  })
+
+  it('sees through Tailwind ring placeholder layers in a computed value', () => {
+    // A Tailwind host's computed shadow-md carries two transparent placeholder
+    // layers ahead of the real ones (the --tw-ring-* slots).
+    const computedMd =
+      'rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0.1) 0px 2px 4px -2px'
+    expect(shadowSignature(computedMd)).toBe(shadowSignature(SHADOW.md))
+    // Placeholders alone signature to empty — "no real shadow".
+    expect(shadowSignature('rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px')).toBe('')
+  })
+
+  it('the size family never claims colored-shadow tokens', () => {
+    for (const tok of ['shadow', 'shadow-sm', 'shadow-2xl', 'shadow-none', 'shadow-inner', 'shadow-[0_2px_9px_rgba(0,0,0,0.5)]']) {
+      expect(isShadowSizeToken(tok)).toBe(true)
+    }
+    for (const tok of ['shadow-red-500', 'shadow-accent', 'shadow-[#fff]', 'shadow-[var(--x)]']) {
+      expect(isShadowSizeToken(tok)).toBe(false)
+    }
   })
 })
 
@@ -242,6 +290,17 @@ describe('appearance edits through the engine', () => {
     expect(out).toContain('12px')
     expect(out).toContain('\r\n')
     expect(out.replace(/\r\n/g, '\n')).not.toContain('\r') // no stray lone CRs
+  })
+
+  it('writes a shadow preset as its named utility, replacing the old step', async () => {
+    const src = `export const Card = () => (\n  <div className="shadow-sm p-4">hi</div>\n)\n`
+    const p = makeProject({ 'src/Card.tsx': src })
+    const r = await call(p.handlers.styleEdit, styleEditBody(p, 'src/Card.tsx', src, '<div', 'div', [
+      { property: 'boxShadow', value: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)' },
+    ], 'tailwind-first'))
+    const out = r.body.edits[0].newContent as string
+    expect(out).toContain('shadow-lg')
+    expect(out).not.toContain('shadow-sm')
   })
 
   it('routes a radius edit into a CSS Module rule', async () => {
