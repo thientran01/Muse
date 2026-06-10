@@ -13,3 +13,10 @@ dist-ssr
 
 # Muse flags — local capture handed to your own Claude Code via muse-mcp (not shared)
 .muse/
+
+# Local AI-tooling state (per-machine; CLAUDE.md itself IS committed).
+# Root-anchored so e.g. a future docs/DESIGN.md stays committable.
+/.agents/
+/.claude/
+/skills-lock.json
+/DESIGN.md

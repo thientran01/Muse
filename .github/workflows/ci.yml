@@ -1,0 +1,50 @@
+# CI — typecheck, the engine test harness, and both builds on every push/PR.
+# Windows runner on the test job is deliberate: the engine's CRLF handling is
+# load-bearing (the harness asserts byte-exact output incl. line endings) and
+# the maintainer develops on Windows.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  muse-mcp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/muse-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build

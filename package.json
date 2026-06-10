@@ -12,7 +12,8 @@
     "muse-server": "tsx server/standaloneServer.ts",
     "build:overlay-css": "node scripts/build-overlay-css.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
