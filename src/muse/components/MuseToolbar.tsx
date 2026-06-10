@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Flag, Palette, PaperPlaneTilt, Pause, Play, X } from '@phosphor-icons/react'
+import { Flag, Palette, PaperPlaneTilt, Pause, Play, Question, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
 import { usePresence } from '../hooks/usePresence'
@@ -10,6 +10,7 @@ import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
 import { FlagsPanel } from './FlagsPanel'
 import { ChangesPanel } from './ChangesPanel'
+import { ShortcutsPanel } from './ShortcutsPanel'
 
 // Muse's idle dock — ONE persistent pill that morphs between the FAB and the
 // toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
@@ -19,13 +20,13 @@ import { ChangesPanel } from './ChangesPanel'
 // element scale-popping in over another. The dock is pure utility; the design
 // tokens open as a popover above it (the bar stays put).
 
-type Pop = 'none' | 'tokens' | 'flags' | 'changes'
+type Pop = 'none' | 'tokens' | 'flags' | 'changes' | 'help'
 
 // The Changes/Share surface needs the real backend (session edits must be on disk
 // to become a branch) — in the in-browser demo modes the button is hidden entirely.
 const SHARE_UI = !EPHEMERAL && !MOCK
 
-const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes' } as const
+const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes', help: 'Shortcuts' } as const
 
 function IconBtn({ label, onClick, children, active, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; badge?: number }) {
   return (
@@ -123,7 +124,7 @@ export function MuseToolbar({
             </button>
           </header>
           <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
-            {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : <TokenList portalContainer={portalContainer} />}
+            {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : shownPop === 'help' ? <ShortcutsPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>
       )}
@@ -190,6 +191,9 @@ export function MuseToolbar({
             active={animationsPaused}
           >
             {animationsPaused ? <Play size={17} weight="fill" /> : <Pause size={17} />}
+          </IconBtn>
+          <IconBtn label="Shortcuts" onClick={() => setPop((p) => (p === 'help' ? 'none' : 'help'))} active={pop === 'help'}>
+            <Question size={17} />
           </IconBtn>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
           <IconBtn label="Close Muse" onClick={onClose}>
