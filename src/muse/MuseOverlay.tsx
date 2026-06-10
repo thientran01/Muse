@@ -105,8 +105,11 @@ export function MuseOverlay() {
 
   async function revertToOriginal() {
     // Ephemeral session: the "files" are DOM snapshots — revert is undo-everything.
+    // Same nothing-to-do guard shape as the file path below (the dialog is gated on
+    // hasHistory, so this is belt only).
     if (EPHEMERAL) {
-      museStore.ephemeralRevert()
+      const s = museStore.getState()
+      if (s.eUndoCount > 0 || s.eRedoCount > 0) museStore.ephemeralRevert()
       museStore.setState({ showRevertConfirm: false })
       return
     }
