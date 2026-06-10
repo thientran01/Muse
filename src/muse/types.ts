@@ -155,6 +155,55 @@ export type Flag = {
 // and the read-only muse-mcp server.
 export type FlagsFile = { version: 1; nextId: number; flags: Flag[] }
 
+// --- Share changes (session edits → branch/commit/PR, no checkout) ---
+// The share pipeline never touches the user's working tree, index, or checked-out
+// branch — it builds a commit with git plumbing against a temporary index and only
+// ever writes fresh `muse/*` refs. See server/gitShare.ts.
+
+export type ShareRemote = { url: string; host: 'github' | 'other'; owner?: string; repo?: string }
+
+// What POST /api/muse/share-probe reports. Fail-closed: the client renders the Share
+// button only on `available: true` (a missing git / repo / commit each gets a
+// designer-readable reason instead of an action that errors after the click).
+export type ShareProbe =
+  | {
+      available: true
+      branch: string | null // checked-out branch (null when detached)
+      detached: boolean
+      remote: ShareRemote | null
+      ghAvailable: boolean
+      defaultBranch: string | null
+      hasIdentity: boolean // git user.email configured (share falls back when not)
+      dirtyOtherCount: number // non-session dirty files — informational, never blocks
+    }
+  | { available: false; reason: string }
+
+// One session-touched file + the human edit labels that touched it ("padding 8px").
+// Labels feed the deterministic commit message / PR body — no inference anywhere.
+export type ShareChange = { fileName: string; labels: string[] }
+
+export type ShareRequest = {
+  files: string[] // root-relative session-touched paths (the client's undo-reconciled set)
+  changes: ShareChange[]
+  slugHint?: string // first edit label, for the branch name
+  branch?: string // continue this session's earlier share branch (append a commit)
+}
+
+// Degradations (no remote, push auth failure, no gh) are warnings on ok:true —
+// the local branch is the success floor.
+export type ShareResult =
+  | {
+      ok: true
+      branch: string
+      commit: string
+      pushed: boolean
+      prUrl?: string
+      compareUrl?: string
+      alreadyShared?: boolean
+      warnings: string[]
+    }
+  | { ok: false; error: string }
+
 // A computed file rewrite: the new full contents the server should write to disk.
 export type FileEdit = { fileName: string; newContent: string }
 
