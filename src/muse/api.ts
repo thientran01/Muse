@@ -208,7 +208,9 @@ export async function museShareProbe(files: string[]): Promise<ShareProbe> {
 
 // Turn the session's touched files into a muse/* branch (+ push + PR when possible).
 // Deterministic server pipeline — see server/gitShare.ts. Never throws: every failure
-// arrives as ok:false with a plain-words error the panel can show.
+// arrives as ok:false with a plain-words error the panel can show. The body is read
+// regardless of HTTP status (validation 400s carry the same ShareResult shape) — the
+// ok discriminator is the contract, so don't add a !res.ok guard here.
 export async function museShare(req: ShareRequest): Promise<ShareResult> {
   if (MOCK || EPHEMERAL) {
     return { ok: false, error: 'Demo mode edits live in the browser only — run Muse with its backend to share changes.' }
