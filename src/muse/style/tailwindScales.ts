@@ -239,6 +239,95 @@ export function isVarColorToken(prefix: string, tok: string): boolean {
 
 export { isLengthArbitrary, isColorArbitrary }
 
+// ============================================================
+//  APPEARANCE — radius / border width / border style / opacity
+// ------------------------------------------------------------
+//  The border- prefix is triple-overloaded (width vs style vs color), so each
+//  kind gets a content-aware matcher, same discipline as text-/font- above.
+//  Radius's "all corners" matcher deliberately covers the side/corner variants
+//  too: scrubbing the whole radius should REPLACE a lingering rounded-tl-none,
+//  not duel with it (the engine replaces the first match and drops the rest).
+// ============================================================
+
+// Inverse of the forward ROUNDED map, derived so they can't drift. '' is the
+// bare-`rounded` 0.25rem step; the suffix joins with '-' only when non-empty.
+// Every ROUNDED value parses (px/rem literals), so the filter is a type guard,
+// not a reachable fallback.
+const ROUNDED_INVERSE = new Map<number, string>(
+  Object.entries(ROUNDED)
+    .map(([suffix, val]) => [lengthToPx(val), suffix] as const)
+    .filter((e): e is [number, string] => e[0] !== null),
+)
+const roundedClass = (prefix: string, suffix: string) => (suffix === '' ? prefix : `${prefix}-${suffix}`)
+
+export function radiusToken(prefix: string, value: string): string | null {
+  const px = lengthToPx(value)
+  if (px === null || px < 0) return null
+  if (px >= 9999) return `${prefix}-full`
+  const suffix = ROUNDED_INVERSE.get(px)
+  if (suffix !== undefined) return roundedClass(prefix, suffix)
+  return `${prefix}-[${px}px]`
+}
+
+const ROUNDED_SUFFIXES = Object.keys(ROUNDED).filter(Boolean)
+// One radius family: the prefix bare, with a named step, or an arbitrary length.
+const radiusReFor = (prefix: string) =>
+  new RegExp(`^${esc(prefix)}(?:-(?:${ROUNDED_SUFFIXES.map(esc).join('|')}))?$|^${esc(prefix)}-\\[[^\\]]+\\]$`)
+// The all-corners matcher folds in every side/corner variant so a whole-radius
+// scrub replaces partial tokens instead of fighting their higher cascade slot.
+const RADIUS_VARIANTS = ['t', 'r', 'b', 'l', 'tl', 'tr', 'br', 'bl', 'ss', 'se', 'ee', 'es']
+export function radiusFamilyMatch(prefix: string, tok: string): boolean {
+  if (radiusReFor(prefix).test(tok)) return true
+  if (prefix !== 'rounded') return false
+  return RADIUS_VARIANTS.some((v) => radiusReFor(`rounded-${v}`).test(tok))
+}
+
+// Tailwind border widths: bare `border` = 1px; named 0/2/4/8; else arbitrary.
+const BORDER_WIDTH_NAMED = new Map<number, string>([[0, 'border-0'], [1, 'border'], [2, 'border-2'], [4, 'border-4'], [8, 'border-8']])
+export function borderWidthToken(value: string): string | null {
+  const px = lengthToPx(value)
+  if (px === null || px < 0) return null
+  return BORDER_WIDTH_NAMED.get(px) ?? `border-[${px}px]`
+}
+// Width tokens only — never border-color (named palette / #hex / var brackets, the
+// colorFamilyMatch territory) and never border-style. SIDE width tokens (border-t-2,
+// border-x, …) ARE absorbed, same rationale as the radius family: the panel's single
+// width scrub means "the border's width", and leaving a side longhand in place would
+// silently win the cascade over the new shorthand — an edit that doesn't stick is
+// worse than one that flattens a per-side setup. The strict suffix group keeps
+// border-teal-500 (a color) out of the `t` alternation.
+const BORDER_SIDE = '(?:t|r|b|l|x|y|s|e)'
+export const isBorderWidthToken = (tok: string): boolean => {
+  if (new RegExp(`^border(?:-${BORDER_SIDE})?(?:-(?:0|2|4|8))?$`).test(tok)) return true
+  const m = tok.match(new RegExp(`^border(?:-${BORDER_SIDE})?-\\[(.+)\\]$`))
+  return m ? isLengthArbitrary(m[1]) : false
+}
+
+const BORDER_STYLES = ['solid', 'dashed', 'dotted', 'double', 'hidden', 'none']
+export function borderStyleToken(value: string): string | null {
+  const v = value.trim()
+  return BORDER_STYLES.includes(v) ? `border-${v}` : null
+}
+export const isBorderStyleToken = (tok: string): boolean =>
+  new RegExp(`^border-(?:${BORDER_STYLES.join('|')})$`).test(tok)
+
+// Tailwind v3's named opacity steps; anything off-scale becomes an arbitrary
+// fraction. Accepts a 0..1 fraction or a percentage.
+const OPACITY_STEPS = new Set([0, 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95, 100])
+export function opacityToken(value: string): string | null {
+  const v = value.trim()
+  let frac: number
+  if (/^-?\d*\.?\d+%$/.test(v)) frac = parseFloat(v) / 100
+  else if (/^-?\d*\.?\d+$/.test(v)) frac = parseFloat(v)
+  else return null
+  if (!Number.isFinite(frac) || frac < 0 || frac > 1) return null
+  const pct = Math.round(frac * 100)
+  if (Math.abs(frac * 100 - pct) < 0.001 && OPACITY_STEPS.has(pct)) return `opacity-${pct}`
+  return `opacity-[${frac}]`
+}
+// 0–100 only — opacity-200 (a custom scale or a typo) is not ours to strip.
+export const isOpacityToken = (tok: string): boolean => /^opacity-(?:100|[1-9]?\d|\[[^\]]+\])$/.test(tok)
+
 // --- kind-aware facade the engine calls ---------------------------------------
 // buildToken: value → Tailwind class token (or null → route inline). familyMatcher:
 // a predicate that finds the element's existing token of the SAME family to replace
@@ -259,6 +348,14 @@ export function buildToken(spec: PropertySpec, value: string): string | null {
       return trackingToken(value)
     case 'color':
       return colorToken(spec.tw, value)
+    case 'radius':
+      return radiusToken(spec.tw, value)
+    case 'borderWidth':
+      return borderWidthToken(value)
+    case 'borderStyle':
+      return borderStyleToken(value)
+    case 'opacity':
+      return opacityToken(value)
     default:
       return null
   }
@@ -281,6 +378,14 @@ export function familyMatcher(spec: PropertySpec): (tok: string) => boolean {
       return (t) => trackingFamilyRe.test(t)
     case 'color':
       return (t) => colorFamilyMatch(spec.tw, t)
+    case 'radius':
+      return (t) => radiusFamilyMatch(spec.tw, t)
+    case 'borderWidth':
+      return isBorderWidthToken
+    case 'borderStyle':
+      return isBorderStyleToken
+    case 'opacity':
+      return isOpacityToken
     default:
       return () => false
   }

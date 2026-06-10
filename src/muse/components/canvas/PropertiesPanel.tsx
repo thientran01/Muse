@@ -14,6 +14,7 @@ function crumbLabel(c: CanvasElement): string {
 }
 
 export type Sides = { top: number; right: number; bottom: number; left: number }
+export type Corners = { topLeft: number; topRight: number; bottomRight: number; bottomLeft: number }
 export type CanvasValues = {
   padding: Sides
   margin: Sides
@@ -23,6 +24,12 @@ export type CanvasValues = {
   rendersText: boolean // the element directly shows text — gates the Type controls
   color: { text: string; background: string; border: string } // current values as #hex
   colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
+  appearance: {
+    radius: Corners
+    borderWidth: number
+    borderStyleNone: boolean // no visible border yet — a width scrub must also set a style
+    opacity: number // 0–100 (percent, the panel's display unit)
+  }
 }
 
 // Shared props every section atom takes — the edit pipe down to the engine.
@@ -232,6 +239,8 @@ export function SideGroup({
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
           title={expanded ? 'Link sides' : 'Edit each side'}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Link sides' : 'Edit each side'}
         >
           {expanded ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
         </button>
@@ -378,6 +387,86 @@ export function ColorFields({
   )
 }
 
+// Radius: one field when all corners match, four when they don't — the same
+// expand/collapse interaction as SideGroup, with corner naming (TL/TR/BR/BL).
+const cornersEqual = (c: Corners) =>
+  c.topLeft === c.topRight && c.topRight === c.bottomRight && c.bottomRight === c.bottomLeft
+
+function CornerGroup({ values, onPreview, onCommit }: { values: Corners } & EditProps) {
+  const [expanded, setExpanded] = useState(!cornersEqual(values))
+  const corners = [
+    { key: 'topLeft', prop: 'borderTopLeftRadius', short: 'TL', full: 'Top left' },
+    { key: 'topRight', prop: 'borderTopRightRadius', short: 'TR', full: 'Top right' },
+    { key: 'bottomRight', prop: 'borderBottomRightRadius', short: 'BR', full: 'Bottom right' },
+    { key: 'bottomLeft', prop: 'borderBottomLeftRadius', short: 'BL', full: 'Bottom left' },
+  ] as const
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wide text-fg-faint">Radius</span>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-fg-faint transition hover:text-fg-muted"
+          title={expanded ? 'Link corners' : 'Edit each corner'}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Link corners' : 'Edit each corner'}
+        >
+          {expanded ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
+        </button>
+      </div>
+      {expanded ? (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+          {corners.map(({ key, prop, short, full }) => (
+            <ScrubField
+              key={key}
+              label={short}
+              ariaLabel={`${full} radius`}
+              value={values[key]}
+              min={0}
+              onPreview={(v) => onPreview([{ property: prop, value: `${v}px` }])}
+              onCommit={(v) => onCommit([{ property: prop, value: `${v}px` }])}
+            />
+          ))}
+        </div>
+      ) : (
+        <ScrubField
+          label="All"
+          ariaLabel="Radius"
+          value={values.topLeft}
+          min={0}
+          onPreview={(v) => onPreview([{ property: 'borderRadius', value: `${v}px` }])}
+          onCommit={(v) => onCommit([{ property: 'borderRadius', value: `${v}px` }])}
+        />
+      )}
+    </div>
+  )
+}
+
+// Radius, border width, and opacity. A width scrub on an element with no visible
+// border also sets border-style (the computed style is `none`, so width alone
+// would paint nothing — same in Tailwind-less hosts where preflight isn't there).
+export function AppearanceFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
+  const a = values.appearance
+  const withStyle = (v: number, m: StyleMutation[]): StyleMutation[] =>
+    a.borderStyleNone && v > 0 ? [...m, { property: 'borderStyle', value: 'solid' }] : m
+  return (
+    <div className="space-y-2">
+      <CornerGroup values={a.radius} onPreview={onPreview} onCommit={onCommit} />
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+        {/* "Stroke", not "Border": the Color section already has a Border row (its
+            color), and two visible "Border" labels two sections apart read as the
+            same control. Stroke is the term this persona knows from Figma. */}
+        <ScrubField label="Stroke" ariaLabel="Border width" value={a.borderWidth} min={0}
+          onPreview={(v) => onPreview(withStyle(v, [{ property: 'borderWidth', value: `${v}px` }]))}
+          onCommit={(v) => onCommit(withStyle(v, [{ property: 'borderWidth', value: `${v}px` }]))} />
+        <ScrubField label="Opacity" value={a.opacity} min={0} max={100} unit="%"
+          onPreview={(v) => onPreview([{ property: 'opacity', value: `${v / 100}` }])}
+          onCommit={(v) => onCommit([{ property: 'opacity', value: `${v / 100}` }])} />
+      </div>
+    </div>
+  )
+}
+
 // Gap (flex/grid only). Always two half-width fields — Row (vertical) and Col
 // (horizontal) — so it matches the Size/Type 2-col rows instead of one field
 // stretching full width. Editing one writes that axis; they can still hold equal
@@ -435,7 +524,7 @@ function Section({ label, open, onToggle, children }: { label: string; open: boo
   )
 }
 
-type SectionKey = 'size' | 'type' | 'color' | 'spacing' | 'gap'
+type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'gap'
 
 // Which sections are open — PERSISTED at module scope so it survives the panel's
 // remount on every selection (the render site keys the panel by element). This is
@@ -568,6 +657,11 @@ export function PropertiesPanel({
       {divider}
       <Section label="Color" open={open.has('color')} onToggle={() => toggle('color')}>
         <ColorFields values={values} portalContainer={portalContainer} onPreview={onPreview} onCommit={onCommit} />
+      </Section>
+
+      {divider}
+      <Section label="Appearance" open={open.has('appearance')} onToggle={() => toggle('appearance')}>
+        <AppearanceFields values={values} onPreview={onPreview} onCommit={onCommit} />
       </Section>
 
       {divider}

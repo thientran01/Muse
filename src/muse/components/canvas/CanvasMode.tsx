@@ -56,6 +56,22 @@ function readValues(node: HTMLElement): CanvasValues {
       background: classTokens.some((t) => isVarColorToken('bg', t)),
       border: classTokens.some((t) => isVarColorToken('border', t)),
     },
+    appearance: {
+      radius: {
+        // Computed radii can be elliptical pairs ("8px 16px") — px() reads the
+        // leading length, which is the value the scrub round-trips. A PERCENT
+        // radius ("50%") also reads as its raw number: the display is then not
+        // px-true, but the round-trip stays consistent and a commit routes to
+        // the inline fallback (the token builder refuses %).
+        topLeft: Math.round(px(cs.borderTopLeftRadius)),
+        topRight: Math.round(px(cs.borderTopRightRadius)),
+        bottomRight: Math.round(px(cs.borderBottomRightRadius)),
+        bottomLeft: Math.round(px(cs.borderBottomLeftRadius)),
+      },
+      borderWidth: Math.round(px(cs.borderTopWidth) * 10) / 10,
+      borderStyleNone: cs.borderTopStyle === 'none',
+      opacity: Math.round(parseFloat(cs.opacity || '1') * 100),
+    },
   }
 }
 
