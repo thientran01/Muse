@@ -12,7 +12,7 @@ export function Overview() {
       </span>
 
       <h1 className="mt-5 text-4xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-        A visual editor for your running React app.
+        A visual editor for your live React app.
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-stone-600 dark:text-stone-400">
         Point at an element in your running app, shape it the way you would in a design tool, and Muse
