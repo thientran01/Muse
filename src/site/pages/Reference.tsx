@@ -40,7 +40,7 @@ export function Reference() {
       <P>
         It never switches your branch and never touches other edits in your working tree. Sharing
         again after more edits adds to the same branch and the pull request updates in place. Needs{' '}
-        <Code>git</Code> in the project; uses the <Code>gh</Code> CLI for the pull request when
+        <Code>git</Code> on the machine; uses the <Code>gh</Code> CLI for the pull request when
         present, and falls back to a GitHub compare link without it. When something is missing the
         panel says so plainly instead of offering a button that would fail.
       </P>
