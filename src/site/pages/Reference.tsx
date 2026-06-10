@@ -42,8 +42,15 @@ export function Reference() {
       </P>
       <P>
         <strong>Styling.</strong> Canvas edits Tailwind utility classes, inline styles, CSS variables,
-        CSS Modules, and styled-components or emotion. It picks the writer that matches your project, so
-        most styling systems are covered rather than Tailwind alone.
+        CSS Modules, and styled-components or emotion. It picks the writer that matches each element, so
+        most styling systems are covered rather than Tailwind alone — the{' '}
+        <a
+          href="#/styling"
+          className="rounded font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7f2f2f]/50 dark:focus-visible:ring-[#e3a384]/50"
+        >
+          Styling page
+        </a>{' '}
+        demos every one of them live.
       </P>
     </article>
   )

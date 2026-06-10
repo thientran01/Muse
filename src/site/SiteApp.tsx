@@ -4,6 +4,7 @@ import { NAV, pageFromHash, type PageId } from './nav'
 import { Overview } from './pages/Overview'
 import { Install } from './pages/Install'
 import { HowItWorks } from './pages/HowItWorks'
+import { Styling } from './pages/Styling'
 import { Reference } from './pages/Reference'
 import { FeedbackWidget } from './FeedbackWidget'
 import { ThemeToggle } from './ThemeToggle'
@@ -16,6 +17,7 @@ const PAGES: Record<PageId, () => JSX.Element> = {
   overview: Overview,
   install: Install,
   how: HowItWorks,
+  styling: Styling,
   reference: Reference,
 }
 

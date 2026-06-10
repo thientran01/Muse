@@ -1,0 +1,25 @@
+/* Strategy-zoo tokens — the CSS-variables demo on the Styling page paints through
+   these, so scrubbing a chip there edits THIS file (the VarEdit path), and the
+   token repaints everywhere it's used. Theme-aware like the site tokens in
+   index.css: the base value is what Muse edits; the dark override stays put.
+   Each surface token has a companion -ink so the chip text stays readable when
+   the dark theme flips a dark surface to a light one. Loaded globally (main.tsx)
+   so the Design-tokens popover's edits apply no matter which page is open.
+   Deliberately NOT the site's --c-* tokens: these exist to be rewritten. */
+:root {
+  --zoo-accent: #7f2f2f;
+  --zoo-accent-ink: #f7f4ee;
+  --zoo-mint: #3f6f5f;
+  --zoo-mint-ink: #f2f7f4;
+  --zoo-honey: #b07d2f;
+  --zoo-honey-ink: #1c1408;
+  --zoo-chip-radius: 12px;
+}
+html.dark {
+  --zoo-accent: #e3a384;
+  --zoo-accent-ink: #3a160a;
+  --zoo-mint: #8fc3af;
+  --zoo-mint-ink: #10241c;
+  --zoo-honey: #e0b36a;
+  --zoo-honey-ink: #241a09;
+}

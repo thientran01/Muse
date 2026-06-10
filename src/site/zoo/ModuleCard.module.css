@@ -1,0 +1,33 @@
+/* The CSS-Modules demo's real stylesheet: the card on the Styling page binds
+   className={styles.card} etc. into these rules, so a Canvas edit there lands
+   HERE (the ModuleEdit path) — not in the JSX and not inline. */
+.card {
+  padding: 24px;
+  border-radius: 16px;
+  background-color: #7f2f2f;
+  color: #f7f4ee;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.blurb {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #ecdcd2;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 6px;
+  border-radius: 999px;
+  background-color: #f7f4ee;
+  color: #7f2f2f;
+  font-size: 12px;
+  font-weight: 600;
+}
