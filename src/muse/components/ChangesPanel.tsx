@@ -7,10 +7,11 @@ import type { ShareProbe } from '../types'
 
 // Fingerprint of the current net changes — compared against the at-share snapshot
 // so the footer can tell "new edits since the share" (offer Share again) apart from
-// "nothing new" (rest at the success card). Label count moves on every commit AND
-// every undo, so both directions register.
+// "nothing new" (rest at the success card). The labels themselves, not their count:
+// an undo followed by a different edit lands back on the same count and would hide
+// the new edit behind a count-only fingerprint.
 const fingerprint = (changes: SessionChange[]) =>
-  JSON.stringify(changes.map((c) => [c.fileName, c.labels.length]))
+  JSON.stringify(changes.map((c) => [c.fileName, c.labels]))
 
 // The session-changes surface — what Muse touched since the page loaded, grouped per
 // file with the human edit labels ("padding 8px") that landed there, plus the Share
@@ -112,7 +113,7 @@ export function ChangesPanel() {
           can't share → its reason; otherwise the action + the latest outcome. */}
       <div className="border-t border-line/10 pt-2">
         {probe === null ? (
-          <p className="px-0.5 text-[11px] leading-relaxed text-fg-faint">Checking this project can be shared…</p>
+          <p className="px-0.5 text-[11px] leading-relaxed text-fg-muted">Checking if sharing is available…</p>
         ) : !probe.available ? (
           <p className="px-0.5 text-[11px] leading-relaxed text-fg-muted">{probe.reason}</p>
         ) : (
@@ -141,11 +142,21 @@ export function ChangesPanel() {
                 {share.message && (
                   <p className="mt-1 text-[11px] leading-relaxed text-fg-muted">{share.message}</p>
                 )}
+                {changes.length === 0 && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-fg-muted">
+                    You've since undone these edits here — the pull request still has them.
+                  </p>
+                )}
               </div>
             )}
 
             {share.status === 'error' && (
-              <p role="status" className="px-0.5 text-[11px] leading-relaxed text-rose-400">{share.message}</p>
+              // fg on a rose tint, not rose text: rose-400 prose fails AA on the light
+              // theme, and the overlay has no per-theme error text token. The tint
+              // carries the signal; fg keeps the words readable on both themes.
+              <p role="status" className="rounded-md bg-rose-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-fg ring-1 ring-rose-500/20">
+                {share.message}
+              </p>
             )}
 
             {(share.status === 'idle' || share.status === 'error' || share.status === 'sharing' || hasNewEdits) && (
@@ -156,20 +167,21 @@ export function ChangesPanel() {
                 aria-busy={share.status === 'sharing'}
                 className="w-full rounded-lg bg-fg py-1.5 text-[12px] font-semibold text-surface transition hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
-                {share.status === 'sharing'
-                  ? 'Sharing…'
-                  : share.status === 'error'
-                    ? 'Try again'
-                    : hasNewEdits
-                      ? 'Share new edits'
-                      : 'Share changes'}
+                {share.status === 'sharing' ? (
+                  <span className="animate-pulse">Sharing…</span>
+                ) : share.status === 'error' ? (
+                  'Try again'
+                ) : hasNewEdits ? (
+                  'Share new edits'
+                ) : (
+                  'Share changes'
+                )}
               </button>
             )}
 
             {share.status === 'idle' && probe.dirtyOtherCount > 0 && (
-              <p className="px-0.5 text-[11px] leading-relaxed text-fg-faint">
-                {probe.dirtyOtherCount} other edited file{probe.dirtyOtherCount === 1 ? '' : 's'} on this machine stay
-                {probe.dirtyOtherCount === 1 ? 's' : ''} out of the share.
+              <p className="px-0.5 text-[11px] leading-relaxed text-fg-muted">
+                Only the edits above go into the share — other code changes on this machine stay out.
               </p>
             )}
           </div>
