@@ -50,6 +50,10 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
 export function TokenList({ portalContainer }: { portalContainer?: React.RefObject<HTMLElement> }) {
   const [tokens, setTokens] = useState<DesignToken[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Non-fatal write notes (e.g. "themed in 2 selectors — updated the base value").
+  // Shown in the panel, not just the console: in dark mode a base-value edit can be
+  // visually masked by the theme override, and this is the only thing that says why.
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
@@ -85,6 +89,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
     // MOCK / EPHEMERAL: no backend write — the live override IS the applied state.
     if (MOCK || EPHEMERAL) return
     setBusy(name)
+    setNotice(null)
     try {
       const { edits, originals, warnings } = await museTokenEdit(name, value)
       if (warnings.length) console.warn('[muse] token-edit:', warnings.join(' · '))
@@ -92,6 +97,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
         setError(warnings[0] ?? "Couldn't update that token.")
         return
       }
+      if (warnings.length) setNotice(warnings.join(' '))
       await museWrite(edits)
       const entry: HistoryEntry = {
         files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
@@ -156,6 +162,11 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
         </div>
       )}
       {error && errorChip(error)}
+      {notice && (
+        <p className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/15">
+          {notice}
+        </p>
+      )}
     </div>
   )
 }

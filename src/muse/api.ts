@@ -1,4 +1,5 @@
 import { EPHEMERAL, MOCK, getApiBase } from './config'
+import { listCssVars, looksLikeColor } from './style/cssVarEdit'
 import type {
   FileEdit,
   Flag,
@@ -185,12 +186,51 @@ export type DesignToken = { name: string; value: string; isColor: boolean; file:
 
 // The host's design tokens (CSS custom properties under src/), for the token panel.
 export async function museTokens(): Promise<DesignToken[]> {
-  if (MOCK) return MOCK_TOKENS
-  if (EPHEMERAL) return [] // no backend to read the host stylesheet
+  // No backend in the demo modes — read the page's REAL tokens from the live
+  // CSSOM instead of a canned fixture (a fixture silently drifts every time the
+  // site's tokens change; the old one predated and hid the strategy-zoo tokens).
+  if (MOCK || EPHEMERAL) return readCssomTokens()
   const res = await fetch(apiUrl('/api/muse/tokens'))
   const data = (await res.json()) as { tokens?: DesignToken[]; error?: string }
   if (data.error) throw new Error(data.error)
   return Array.isArray(data.tokens) ? data.tokens : []
+}
+
+// Root-scoped rules are where design tokens live (`:root { … }`, `html.dark { … }`).
+// Restricting the scan to them keeps Tailwind's per-utility internals (--tw-*,
+// declared on utility classes) out of the panel.
+const ROOT_RULE_RE = /(^|,)\s*(:root|html)\b/i
+
+// The same token model the server's /tokens endpoint builds, derived from the
+// page's loaded stylesheets: walk same-origin sheets in document order, run each
+// root-scoped rule's cssText through the SAME listCssVars parser the server uses,
+// first definition wins (the base value, before any `html.dark` override — sheets
+// author :root first), Muse's own --muse-* excluded. An inline override on <html>
+// is a prior demo edit from this session (applyLive IS the persistence in
+// MOCK/EPHEMERAL), so it reads back as the current value.
+function readCssomTokens(): DesignToken[] {
+  const seen = new Set<string>()
+  const tokens: DesignToken[] = []
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue // cross-origin sheet — not the host's source anyway
+    }
+    const file = sheet.href ? (new URL(sheet.href).pathname.split('/').pop() ?? 'stylesheet') : 'page styles'
+    for (const rule of Array.from(rules)) {
+      if (!(rule instanceof CSSStyleRule) || !ROOT_RULE_RE.test(rule.selectorText)) continue
+      for (const v of listCssVars(rule.cssText)) {
+        if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
+        seen.add(v.name)
+        const override = document.documentElement.style.getPropertyValue(v.name).trim()
+        const value = override || v.value
+        tokens.push({ name: v.name, value, isColor: looksLikeColor(value), file })
+      }
+    }
+  }
+  return tokens
 }
 
 // Set a token's base value in the stylesheet that defines it. Returns the same
@@ -289,9 +329,3 @@ export async function museDeleteFlag(id: string): Promise<void> {
   if (data.error) throw new Error(data.error)
 }
 
-const MOCK_TOKENS: DesignToken[] = [
-  { name: '--c-energy', value: '#7f2f2f', isColor: true, file: 'src/index.css' },
-  { name: '--c-paper', value: '#f7f4ee', isColor: true, file: 'src/index.css' },
-  { name: '--c-ink', value: '#1c1917', isColor: true, file: 'src/index.css' },
-  { name: '--radius-lg', value: '16px', isColor: false, file: 'src/index.css' },
-]

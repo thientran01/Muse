@@ -113,6 +113,16 @@ export function listCssVars(css: string): CssVarDecl[] {
   return out
 }
 
+// Whether a token VALUE is a color (drives the token panel's swatch + picker vs a
+// plain value field). Conservative: only obvious color forms — a raw `r g b`
+// channel triple (Tailwind-v4 `rgb(var(--x))` style) is ambiguous vs a spacing
+// triple, so it's left as text. Shared by the server's /tokens scan and the
+// client's CSSOM fallback so the two surfaces classify identically.
+const TOKEN_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|color\(|hwb\()/
+export function looksLikeColor(value: string): boolean {
+  return TOKEN_COLOR_RE.test(value.trim().replace(/\s*!important\s*$/i, ''))
+}
+
 // Rewrite the value of `--varName` in a stylesheet. Edits the FIRST definition
 // (source order — typically the `:root` base value) and reports the total count
 // so the caller can warn when theme-specific overrides (.dark, media queries)
