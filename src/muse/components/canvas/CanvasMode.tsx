@@ -39,12 +39,16 @@ function readValues(node: HTMLElement): CanvasValues {
     padding: sidesOf(cs, 'padding'),
     margin: sidesOf(cs, 'margin'),
     gap: isFlexGrid ? { row: px(cs.rowGap), column: px(cs.columnGap) } : null,
+    layout: isFlexGrid
+      ? { justify: alignKeyword(cs.justifyContent), align: alignKeyword(cs.alignItems) }
+      : null,
     size: { width: Math.round(px(cs.width)), height: Math.round(px(cs.height)) },
     type: {
       fontSize: Math.round(px(cs.fontSize) * 10) / 10,
       fontWeight: Number(cs.fontWeight) || 400,
       lineHeight: cs.lineHeight === 'normal' ? 0 : Math.round(px(cs.lineHeight)),
       letterSpacing: cs.letterSpacing === 'normal' ? 0 : Math.round(px(cs.letterSpacing) * 100) / 100,
+      align: textAlignKeyword(cs.textAlign),
     },
     // Direct text content (not just descendants) → this element styles visible text.
     rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
@@ -74,6 +78,27 @@ function readValues(node: HTMLElement): CanvasValues {
       shadow: matchShadowPreset(cs.boxShadow),
     },
   }
+}
+
+// Normalize a computed justify-content / align-items to the chip names the panel
+// shows. `normal` (the spec's "no preference") stays as-is so an unset container
+// renders with no chip claimed — mapping it to a concrete chip would assert the
+// author SET that value.
+function alignKeyword(computed: string): string {
+  const v = computed.trim()
+  if (v === 'flex-start' || v === 'start') return 'start'
+  if (v === 'flex-end' || v === 'end') return 'end'
+  if (v === 'space-between') return 'between'
+  return v // center / stretch / baseline / normal / space-around / space-evenly
+}
+
+// Computed text-align: `start`/`end` resolve by direction; the chip row treats
+// them as left/right (the LTR reading — the committed value is always concrete).
+function textAlignKeyword(computed: string): string {
+  const v = computed.trim()
+  if (v === 'start') return 'left'
+  if (v === 'end') return 'right'
+  return v
 }
 
 // Which named shadow step the computed box-shadow IS, via the numeric signature

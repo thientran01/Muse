@@ -15,8 +15,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { createMuseContext, createMuseHandlers, type MuseHandlers } from '../museCore'
 import {
+  alignItemsToken,
   borderStyleToken,
   borderWidthToken,
+  isAlignItemsToken,
+  isJustifyToken,
+  isTextAlignToken,
+  justifyToken,
+  textAlignToken,
   isBorderStyleToken,
   isBorderWidthToken,
   isOpacityToken,
@@ -169,6 +175,32 @@ describe('shadow presets', () => {
   })
 })
 
+describe('alignment tokens (text-align / justify / items)', () => {
+  it('text-align builds and matches only the closed keyword set', () => {
+    expect(textAlignToken('center')).toBe('text-center')
+    expect(textAlignToken('justify')).toBe('text-justify')
+    expect(textAlignToken('middle')).toBeNull()
+    expect(isTextAlignToken('text-center')).toBe(true)
+    // The text- prefix's OTHER overloads stay out of the align family:
+    expect(isTextAlignToken('text-lg')).toBe(false)
+    expect(isTextAlignToken('text-red-500')).toBe(false)
+    expect(isTextAlignToken('text-[#fff]')).toBe(false)
+  })
+
+  it('justify/items map CSS values to the shortened Tailwind suffixes', () => {
+    expect(justifyToken('flex-start')).toBe('justify-start')
+    expect(justifyToken('space-between')).toBe('justify-between')
+    expect(justifyToken('space-evenly')).toBe('justify-evenly')
+    expect(justifyToken('weird')).toBeNull()
+    expect(isJustifyToken('justify-between')).toBe(true)
+    expect(isJustifyToken('justify-items-center')).toBe(false) // a different family
+    expect(alignItemsToken('flex-end')).toBe('items-end')
+    expect(alignItemsToken('baseline')).toBe('items-baseline')
+    expect(isAlignItemsToken('items-stretch')).toBe(true)
+    expect(isAlignItemsToken('items-baseline')).toBe(true)
+  })
+})
+
 // ---- handler-level integration (same harness as handlers.test.ts) -------------------
 
 const crlf = (s: string) => s.replace(/\n/g, '\r\n')
@@ -303,6 +335,31 @@ describe('appearance edits through the engine', () => {
     const out = r.body.edits[0].newContent as string
     expect(out).toContain('shadow-lg')
     expect(out).not.toContain('shadow-sm')
+  })
+
+  it('text-align replaces in place without touching the size or color overloads', async () => {
+    const src = `export const Card = () => (\n  <p className="text-lg text-red-500 text-left p-4">hi</p>\n)\n`
+    const p = makeProject({ 'src/Card.tsx': src })
+    const r = await call(p.handlers.styleEdit, styleEditBody(p, 'src/Card.tsx', src, '<p', 'p', [{ property: 'textAlign', value: 'center' }], 'tailwind-first'))
+    const out = r.body.edits[0].newContent as string
+    expect(out).toContain('text-center')
+    expect(out).not.toContain('text-left')
+    expect(out).toContain('text-lg')
+    expect(out).toContain('text-red-500')
+  })
+
+  it('writes container alignment as justify-/items- utilities', async () => {
+    const src = `export const Row = () => (\n  <div className="flex justify-start p-4">hi</div>\n)\n`
+    const p = makeProject({ 'src/Row.tsx': src })
+    const r = await call(p.handlers.styleEdit, styleEditBody(p, 'src/Row.tsx', src, '<div', 'div', [
+      { property: 'justifyContent', value: 'space-between' },
+      { property: 'alignItems', value: 'center' },
+    ], 'tailwind-first'))
+    const out = r.body.edits[0].newContent as string
+    expect(out).toContain('justify-between')
+    expect(out).not.toContain('justify-start')
+    expect(out).toContain('items-center')
+    expect(out).toContain('flex') // the display token is untouched
   })
 
   it('routes a radius edit into a CSS Module rule', async () => {

@@ -25,6 +25,8 @@ export type StyleProperty =
   | 'borderWidth' | 'borderStyle'
   | 'opacity'
   | 'boxShadow'
+  | 'textAlign'
+  | 'justifyContent' | 'alignItems'
 
 // `kind` selects how a raw value becomes a Tailwind token. 'length' (w/h) shares
 // the spacing scale as 'spacing'; typography + color kinds have their own token
@@ -36,6 +38,7 @@ export type PropertySpec = {
   kind:
     | 'spacing' | 'length' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'color'
     | 'radius' | 'borderWidth' | 'borderStyle' | 'opacity' | 'shadow'
+    | 'textAlign' | 'justify' | 'alignItems'
   tw: string
   css: string[]
 }
@@ -76,6 +79,9 @@ export const PROPERTIES: Record<StyleProperty, PropertySpec> = {
   borderStyle: { kind: 'borderStyle', tw: 'border', css: ['borderStyle'] },
   opacity: { kind: 'opacity', tw: 'opacity', css: ['opacity'] },
   boxShadow: { kind: 'shadow', tw: 'shadow', css: ['boxShadow'] },
+  textAlign: { kind: 'textAlign', tw: 'text', css: ['textAlign'] },
+  justifyContent: { kind: 'justify', tw: 'justify', css: ['justifyContent'] },
+  alignItems: { kind: 'alignItems', tw: 'items', css: ['alignItems'] },
 }
 
 export const isStyleProperty = (p: unknown): p is StyleProperty =>
