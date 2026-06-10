@@ -5,12 +5,28 @@ import type { Flag, HistoryEntry } from './types'
 // HMR of other Muse files (components) does not reset state — the store
 // module stays loaded as long as `store.ts` itself isn't edited.
 
+// The Share-changes flow's lifecycle, kept in the store (not panel-local state)
+// so it survives the popover closing and reopening mid-session. `branch` is the
+// session's share branch — sending it back continues that branch instead of
+// minting a new one. `snapshot` fingerprints the changes that were shared, so
+// the panel can tell "share again" (new net edits) apart from "already shared".
+// Resets on refresh, like `past` — acceptable v1.
+export type ShareState = {
+  status: 'idle' | 'sharing' | 'done' | 'error'
+  branch?: string
+  prUrl?: string
+  compareUrl?: string
+  message?: string
+  snapshot?: string
+}
+
 export type MuseState = {
   // The undo/redo history a Canvas commit lands in. Persists across selections.
   past: HistoryEntry[]
   future: HistoryEntry[]
   historyLoading: boolean
   showRevertConfirm: boolean
+  share: ShareState
   // Open + resolved flags (shift-click / refusal annotations handed off via muse-mcp).
   // REACTIVE — the Flags panel, the toolbar count badge, and the on-element pins all
   // re-render on change (unlike the ephemeral undo stacks, whose effect is DOM mutation).
@@ -22,6 +38,7 @@ const initialState: MuseState = {
   future: [],
   historyLoading: false,
   showRevertConfirm: false,
+  share: { status: 'idle' },
   flags: [],
 }
 
