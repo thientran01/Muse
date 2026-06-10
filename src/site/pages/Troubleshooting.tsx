@@ -18,9 +18,9 @@ export function Troubleshooting() {
       <P>
         The clicked element carries no <Code>data-muse-loc</Code> stamp and no React debug source,
         so Muse cannot tell which file it came from. Usual causes: the element belongs to a library
-        component (rendered from <Code>node_modules</Code>, which the locator deliberately skips),
-        or the Babel locator is not wired for the file's bundler path. Click a parent that is part
-        of your own source, or check the locator step in the install guide.
+        component (Babel transforms never run on <Code>node_modules</Code>, so library code is
+        never stamped), or the Babel locator is not wired for the file's bundler path. Click a
+        parent that is part of your own source, or check the locator step in the install guide.
       </P>
 
       <H2 id="themed">A color reads "themed"</H2>
@@ -65,8 +65,8 @@ export function Troubleshooting() {
         When a className is built dynamically, with <Code>clsx</Code>, a template literal, or a
         ternary, splicing a class into it safely is not possible. Muse applies the change as an
         inline <Code>style</Code> instead, which wins the cascade and renders exactly what you
-        chose. The note in the panel says when this happened. The edit is real and mergeable; if
-        you would rather have it as a class, flag the element and let your agent refactor it.
+        chose. A note records this in the browser console. The edit is real and mergeable; if you
+        would rather have it as a class, flag the element and let your agent refactor it.
       </P>
 
       <H2 id="svg">SVG elements do not select</H2>
