@@ -4,13 +4,13 @@ import { ModuleCard } from '../zoo/ModuleCard'
 import { StyledCard } from '../zoo/StyledCard'
 import '../zoo/zoo.css'
 
-// The strategy zoo — one live demo card per styling system Muse can write. Each
+// The strategy zoo: one live demo card per styling system Muse can write. Each
 // card's editable elements are authored purely in that system, so selecting and
-// scrubbing them exercises that engine path for real: the captions say exactly
-// which file the edit lands in. (This page is also our own regression surface —
-// if a strategy breaks, its card stops responding.)
+// scrubbing them exercises that engine path for real, and the captions say
+// exactly which file the edit lands in. (This page is also our own regression
+// surface: if a strategy breaks, its card stops responding.)
 
-// A shared inline-style const (used twice below) — selecting either stamp offers
+// A shared inline-style const, used twice below: selecting either stamp offers
 // the "apply to all" scope toggle, and a const-scope edit rewrites THIS object.
 // Values stay strings so the engine's re-emit round-trips byte-identically.
 const stamp: CSSProperties = {
@@ -28,8 +28,8 @@ export function Styling() {
     <article>
       <H1>Styling</H1>
       <Lead>
-        Muse writes the styling system each element already uses — these four cards are each authored a
-        different way. Open Muse and scrub them.
+        Muse writes the styling system each element already uses. These four cards are each authored a
+        different way: open Muse and scrub them.
       </Lead>
 
       <Callout tone="try">
@@ -41,7 +41,7 @@ export function Styling() {
       <H2 id="inline">Inline styles</H2>
       <P>
         The plainest case: values written straight into <Code>style={'{{…}}'}</Code>. Muse merges the
-        edit into the object literal. The two stamps below share one <Code>const</Code> — select one and
+        edit into the object literal. The two stamps below share one <Code>const</Code>: select one and
         the panel offers <strong>apply to all</strong>, which rewrites the shared object instead of the
         single element.
       </P>
@@ -64,7 +64,7 @@ export function Styling() {
       <H2 id="vars">CSS variables</H2>
       <P>
         These chips paint through <Code>var(--zoo-*)</Code> tokens defined in <Code>zoo.css</Code>.
-        Recolor one and Muse edits the <em>token's definition</em>, not the element — so everything using
+        Recolor one and Muse edits the <em>token's definition</em>, not the element, so everything using
         it repaints together. That's the difference between overriding one element and retuning a theme.
       </P>
       <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
@@ -107,7 +107,7 @@ export function Styling() {
           </span>
         </div>
         <p className="mt-4 text-[13px] text-stone-600 dark:text-stone-400">
-          Also in the toolbar's <strong>Design tokens</strong> popover — same tokens, same write.
+          Also in the toolbar's <strong>Design tokens</strong> popover: same tokens, same write.
         </p>
       </div>
 
@@ -115,7 +115,7 @@ export function Styling() {
       <P>
         Here the classNames are bindings (<Code>styles.card</Code>) and the values live in{' '}
         <Code>ModuleCard.module.css</Code>. Muse resolves the binding to its rule and sets the
-        declaration there — the JSX never changes.
+        declaration there; the JSX never changes.
       </P>
       <div className="mt-6">
         <ModuleCard />
@@ -134,7 +134,7 @@ export function Styling() {
 
       <H2 id="tailwind">…and Tailwind, everywhere else</H2>
       <P>
-        The rest of this site is utility classes — every heading and button on the other pages is the
+        The rest of this site is utility classes: every heading and button on the other pages is the
         Tailwind path (<Code>p-4 → p-6</Code>, or an arbitrary <Code>p-[17px]</Code> when you scrub off
         the scale). One selection model, five writers, no configuration: Muse detects how each element is
         styled and writes that.

@@ -1,6 +1,6 @@
 /* The CSS-Modules demo's real stylesheet: the card on the Styling page binds
    className={styles.card} etc. into these rules, so a Canvas edit there lands
-   HERE (the ModuleEdit path) — not in the JSX and not inline. */
+   HERE (the ModuleEdit path), not in the JSX and not inline. */
 .card {
   padding: 24px;
   border-radius: 16px;

@@ -1,9 +1,9 @@
 import styles from './ModuleCard.module.css'
 
-// The CSS-Modules demo: every visual value here lives in ModuleCard.module.css —
-// the classNames are just bindings. Select anything in this card and scrub; the
-// engine resolves styles.card → the `.card` rule and writes the declaration there
-// (the ModuleEdit path), leaving this JSX byte-identical.
+// The CSS-Modules demo: every visual value here lives in ModuleCard.module.css,
+// and the classNames are just bindings. Select anything in this card and scrub;
+// the engine resolves styles.card → the `.card` rule and writes the declaration
+// there (the ModuleEdit path), leaving this JSX byte-identical.
 export function ModuleCard() {
   return (
     <div className={styles.card}>
