@@ -31,7 +31,7 @@ import {
   type VarEdit,
   type ModuleEdit,
 } from './styleEdit'
-import { editCssVar, listCssVars } from '../src/muse/style/cssVarEdit'
+import { blankComments, editCssVar, listCssVars } from '../src/muse/style/cssVarEdit'
 import { setRuleProperty } from '../src/muse/style/cssRuleEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
 import type { Flag, FlagDraft, FlagsFile } from '../src/muse/types'
@@ -117,7 +117,11 @@ export function sendJson(res: ServerResponse, status: number, body: unknown) {
 
 function resolveInSrc(root: string, fileName: unknown): string | null {
   if (typeof fileName !== 'string' || fileName.length === 0) return null
-  const abs = path.resolve(fileName)
+  // Anchor relative names at the MUSE ROOT, not the process cwd — the client
+  // round-trips the root-relative fileNames our own responses emit, and the
+  // standalone server's cwd need not be the project root (MUSE_ROOT / --root).
+  // An absolute fileName is unaffected (resolve ignores the base then).
+  const abs = path.resolve(root, fileName)
   if (!fs.existsSync(abs)) return null
   const srcDir = fs.realpathSync(path.resolve(root, 'src'))
   const real = fs.realpathSync(abs)
@@ -221,14 +225,26 @@ function detectStrategy(root: string): StyleStrategy {
     const cssFiles: string[] = []
     collectCssFiles(path.join(root, 'src'), cssFiles)
     const sig = /@import\s+["']tailwindcss|@tailwind\b/
-    if (cssFiles.some((f) => sig.test(fs.readFileSync(f, 'utf8')))) return 'tailwind-first'
+    // Blank comments first so a commented-out directive (`/* @tailwind base */`)
+    // can't claim a host that actually styles some other way.
+    if (cssFiles.some((f) => sig.test(blankComments(fs.readFileSync(f, 'utf8'))))) return 'tailwind-first'
+    // Capped scan + no signature found: the directive may sit in a dropped file —
+    // say so (per the no-silent-caps rule) instead of silently detecting inline.
+    if (cssFiles.length >= CSS_SCAN_FILE_CAP) {
+      console.warn(`[muse] strategy detection scanned ${CSS_SCAN_FILE_CAP}+ stylesheets without a Tailwind signature — defaulting to inline; set the strategy explicitly if that's wrong`)
+    }
   } catch {
     // fall through
   }
   return 'inline'
 }
 
+// Same runaway backstop as the prop-text scan (PROP_SCAN_FILE_CAP): no real src/
+// tree holds this many stylesheets, but a pathological one shouldn't hang an edit.
+const CSS_SCAN_FILE_CAP = 2000
+
 function collectCssFiles(dir: string, acc: string[]): void {
+  if (acc.length >= CSS_SCAN_FILE_CAP) return
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -236,6 +252,7 @@ function collectCssFiles(dir: string, acc: string[]): void {
     return
   }
   for (const e of entries) {
+    if (acc.length >= CSS_SCAN_FILE_CAP) return
     if (e.name.startsWith('.') || e.name === 'node_modules') continue
     const full = path.join(dir, e.name)
     if (e.isDirectory()) collectCssFiles(full, acc)
@@ -246,11 +263,19 @@ function collectCssFiles(dir: string, acc: string[]): void {
 function findCssVarFiles(root: string, varName: string): string[] {
   const files: string[] = []
   collectCssFiles(path.join(root, 'src'), files)
+  // A capped scan can miss the defining stylesheet — surface it (per the
+  // no-silent-caps rule, like the prop-text scan) rather than no-op the edit.
+  if (files.length >= CSS_SCAN_FILE_CAP) {
+    console.warn(`[muse] CSS-variable scan hit the ${CSS_SCAN_FILE_CAP}-file cap; ${varName}'s defining stylesheet may have been missed`)
+  }
   files.sort()
   const re = new RegExp(`${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`)
   return files.filter((f) => {
     try {
-      return re.test(fs.readFileSync(f, 'utf8'))
+      // Blank comments before testing: a commented-out `--x: old` in a file that
+      // sorts earlier would otherwise win the pick, and the edit (editCssVar also
+      // blanks comments) would silently land nowhere.
+      return re.test(blankComments(fs.readFileSync(f, 'utf8')))
     } catch {
       return false
     }
@@ -279,17 +304,7 @@ function resolveModuleFileAbs(root: string, base: string): string | null {
 }
 function resolveStyledSpecifier(root: string, fromAbs: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null
-  const base = path.resolve(path.dirname(fromAbs), specifier)
-  const candidates = [
-    base,
-    ...STYLED_MODULE_EXTS.map((e) => base + e),
-    ...STYLED_MODULE_EXTS.map((e) => path.join(base, 'index' + e)),
-  ]
-  for (const c of candidates) {
-    const hit = resolveInSrc(root, c)
-    if (hit && fs.statSync(hit).isFile()) return hit
-  }
-  return null
+  return resolveModuleFileAbs(root, path.resolve(path.dirname(fromAbs), specifier))
 }
 
 function followStyledExport(
