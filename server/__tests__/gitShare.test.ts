@@ -7,8 +7,13 @@
 //  (CI has git on both ubuntu and windows); gh is always faked via an
 //  injected runner so the suite never talks to a real forge.
 // ============================================================
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
+
+// This suite shells out to real git (and probes for gh) dozens of times; on the
+// windows CI runner a cold `gh --version` plus a handful of git spawns can exceed
+// vitest's 5s default (observed: 5.4s on a probe test that runs in ~900ms locally).
+vi.setConfig({ testTimeout: 30_000 })
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import fs from 'node:fs'
