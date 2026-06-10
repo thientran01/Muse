@@ -10,6 +10,53 @@ import {
   type Hsv,
   type Rgb,
 } from '../../style/colorMath'
+import { rankTokenSwatches, type TokenSwatch } from '../../style/tokenSuggest'
+import { museTokens } from '../../api'
+
+// How often each token is actually painted with on this page: var() references
+// across the host's same-origin stylesheets. The DOM half of the swatch ranking
+// (the scoring itself is pure, in style/tokenSuggest). Tailwind hosts count too:
+// an arbitrary `text-[color:var(--x)]` class lands in the generated utility CSS.
+function countVarUsage(names: string[]): Record<string, number> {
+  let css = ''
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(sheet.cssRules)) css += rule.cssText
+    } catch {
+      /* cross-origin sheet — skip */
+    }
+  }
+  const counts: Record<string, number> = {}
+  for (const name of names) {
+    // Boundary after the name (lookahead), so --c-ink doesn't also absorb every
+    // --c-ink-soft reference and float above its own suffix siblings.
+    const re = new RegExp(`var\\(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g')
+    counts[name] = (css.match(re) ?? []).length
+  }
+  return counts
+}
+
+// The host's top color tokens, ranked for this picker (see tokenSuggest). Read
+// once per picker open — the popover remounts each time, and tokens don't move
+// mid-drag. Swatches are an enhancement: any failure just renders none.
+function useTokenSwatches(contrastAgainst?: string): TokenSwatch[] {
+  const [swatches, setSwatches] = useState<TokenSwatch[]>([])
+  useEffect(() => {
+    let cancelled = false
+    museTokens()
+      .then((tokens) => {
+        if (cancelled) return
+        const usage = countVarUsage(tokens.map((t) => t.name))
+        setSwatches(rankTokenSwatches(tokens, usage, { contrastAgainst }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // Mount-only: contrastAgainst is fixed for the life of one popover.
+  }, [])
+  return swatches
+}
 
 // The browser EyeDropper API (Chromium). Typed locally since lib.dom doesn't
 // always ship it; feature-detected at runtime before use.
@@ -77,6 +124,7 @@ export function ColorPicker({
   }
 
   const contrast = contrastAgainst ? contrastRatio(hex, contrastAgainst) : null
+  const swatches = useTokenSwatches(contrastAgainst)
 
   return (
     <div className="w-[200px] space-y-2.5">
@@ -137,6 +185,34 @@ export function ColorPicker({
           />
         ))}
       </div>
+
+      {/* The host's design tokens, one click away — the five the page most likely
+          wants (ranked by real var() usage; see tokenSuggest). Commits the token's
+          CURRENT hex (not a var() binding): a var-bound property routes future
+          scrubs to the token's definition and locks this picker out (`themed`),
+          which is the token panel's job, not a surprise to spring from a swatch. */}
+      {swatches.length > 0 && (
+        <div className="space-y-1">
+          {/* Same micro-label treatment as the spacing sub-labels, same term as
+              the toolbar popover. */}
+          <div className="text-[10px] uppercase tracking-wide text-fg-faint">Design tokens</div>
+          <div className="flex items-center gap-1.5">
+            {swatches.map((s) => (
+              <button
+                key={s.name}
+                onClick={() => setHex(s.value)}
+                title={`${s.name} · ${s.value}`}
+                aria-label={`Use ${s.name}, ${s.value}`}
+                aria-pressed={s.value === hex}
+                className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100 ${
+                  s.value === hex ? 'border-accent ring-1 ring-accent/60' : 'border-line/20'
+                }`}
+                style={{ backgroundColor: s.value }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-/* Strategy-zoo tokens — the CSS-variables demo on the Styling page paints through
+/* Strategy-zoo tokens: the CSS-variables demo on the Styling page paints through
    these, so scrubbing a chip there edits THIS file (the VarEdit path), and the
    token repaints everywhere it's used. Theme-aware like the site tokens in
    index.css: the base value is what Muse edits; the dark override stays put.

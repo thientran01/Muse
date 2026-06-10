@@ -3,7 +3,7 @@ import styled from 'styled-components'
 // The styled-components demo: the values live in these tagged-template bodies.
 // Select an element in this card and scrub; the engine resolves the component's
 // same-file styled definition and edits the declaration inside the template (the
-// styled path) — the nested &:hover stays untouched (top-level-only editing).
+// styled path). The nested &:hover stays untouched (top-level-only editing).
 const Shell = styled.div`
   padding: 24px;
   border-radius: 16px;
@@ -43,7 +43,7 @@ export function StyledCard() {
       <Title>Styled by styled-components</Title>
       <Blurb>
         This card's values live in tagged-template literals. Scrub anything here and Muse rewrites the
-        declaration inside the template body — the generated class hash never appears in your diff.
+        declaration inside the template body, and the generated class hash never appears in your diff.
       </Blurb>
       <Action type="button">writes to the template</Action>
     </Shell>
