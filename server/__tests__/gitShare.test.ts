@@ -9,9 +9,12 @@
 // ============================================================
 import { afterEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
+import { Readable } from 'node:stream'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createMuseContext, createMuseHandlers } from '../museCore'
 import {
   buildBranchName,
   buildCommitMessage,
@@ -494,6 +497,74 @@ describe.skipIf(!hasGit)('pushBranch', () => {
     const r = await pushBranch(root, 'muse/x')
     expect(r.pushed).toBe(false)
     expect(r.reason).toBeTruthy()
+  })
+})
+
+// ---- HTTP handlers (createMuseHandlers → /share-probe + /share) ---------------------------
+
+function fakeReq(body: unknown): IncomingMessage {
+  const r = new Readable({ read() {} })
+  r.push(JSON.stringify(body))
+  r.push(null)
+  return r as unknown as IncomingMessage
+}
+
+async function call(handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>, body: unknown) {
+  const out: { status: number; body: any } = { status: 0, body: null }
+  const res = {
+    statusCode: 200,
+    setHeader() {},
+    end(s: string) {
+      out.status = (res as { statusCode: number }).statusCode
+      out.body = JSON.parse(s)
+    },
+  } as unknown as ServerResponse
+  await handler(fakeReq(body), res)
+  return out
+}
+
+describe.skipIf(!hasGit)('share endpoints (museCore handlers)', () => {
+  it('/share-probe fails closed (200, available:false) outside a git repo', async () => {
+    const root = tmpDir()
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true })
+    const handlers = createMuseHandlers(createMuseContext({}, root))
+    const r = await call(handlers.shareProbe, { files: [] })
+    expect(r.status).toBe(200)
+    expect(r.body.available).toBe(false)
+    expect(r.body.reason).toBeTruthy()
+  })
+
+  it('/share-probe reports availability on a git fixture', async () => {
+    const root = makeGitProject(baseFiles)
+    const handlers = createMuseHandlers(createMuseContext({}, root))
+    const r = await call(handlers.shareProbe, { files: ['src/App.tsx'] })
+    expect(r.status).toBe(200)
+    expect(r.body).toMatchObject({ available: true, branch: 'main', detached: false })
+  })
+
+  it('/share refuses a path outside src/ with 400 — the /write boundary', async () => {
+    const root = makeGitProject({ ...baseFiles, 'secret.txt': 'nope\n' })
+    const handlers = createMuseHandlers(createMuseContext({}, root))
+    const r = await call(handlers.share, { files: ['secret.txt'], changes: CHANGES })
+    expect(r.status).toBe(400)
+    expect(r.body.ok).toBe(false)
+    expect(r.body.error).toContain('src/')
+  })
+
+  it('/share runs the pipeline end to end and leaves the user state untouched', async () => {
+    const root = makeGitProject(baseFiles)
+    fs.writeFileSync(path.join(root, 'src', 'App.tsx'), 'changed via handler\n')
+    const handlers = createMuseHandlers(createMuseContext({}, root))
+    const r = await call(handlers.share, {
+      files: ['src/App.tsx'],
+      changes: CHANGES,
+      slugHint: 'padding 8px',
+    })
+    expect(r.status).toBe(200)
+    expect(r.body.ok).toBe(true)
+    expect(r.body.branch).toMatch(/^muse\/padding-8px-/)
+    expect(sh(root, 'git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim()).toBe('main')
+    expect(sh(root, 'git', ['show', `${r.body.branch}:src/App.tsx`])).toBe('changed via handler\n')
   })
 })
 

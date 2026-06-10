@@ -47,6 +47,8 @@ function buildRoutes(ctx: MuseContext): Map<string, Handler> {
     ['GET /api/muse/flags', h.flags],
     ['POST /api/muse/flag-resolve', h.flagResolve],
     ['POST /api/muse/flag-delete', h.flagDelete],
+    ['POST /api/muse/share-probe', h.shareProbe],
+    ['POST /api/muse/share', h.share],
   ])
 }
 

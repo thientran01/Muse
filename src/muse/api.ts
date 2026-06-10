@@ -9,6 +9,9 @@ import type {
   ReorderRequest,
   ReorderResponse,
   SharedConst,
+  ShareProbe,
+  ShareRequest,
+  ShareResult,
   StyleEditRequest,
   StyleEditResponse,
   StyleStrategy,
@@ -178,6 +181,49 @@ export async function museReorderable(
     return { reorderable: false, reason: data.reason ?? data.error ?? 'not reorderable' }
   } catch {
     return { reorderable: false, reason: 'check failed' }
+  }
+}
+
+// Probe whether the session can be shared as a branch/PR (git present, repo, commits…)
+// BEFORE rendering the Share button — fails CLOSED with a designer-readable reason on
+// any transport error, and short-circuits in the demo modes (no backend, nothing real
+// to share) so the panel explains itself instead of offering a doomed action.
+export async function museShareProbe(files: string[]): Promise<ShareProbe> {
+  if (MOCK || EPHEMERAL) {
+    return { available: false, reason: 'Demo mode edits live in the browser only — run Muse with its backend to share changes.' }
+  }
+  try {
+    const res = await fetch(apiUrl('/api/muse/share-probe'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ files }),
+    })
+    const data = (await res.json()) as Partial<ShareProbe> | null
+    if (data && (data.available === true || data.available === false)) return data as ShareProbe
+    return { available: false, reason: 'Couldn’t check the repository.' }
+  } catch {
+    return { available: false, reason: 'Couldn’t reach the Muse backend.' }
+  }
+}
+
+// Turn the session's touched files into a muse/* branch (+ push + PR when possible).
+// Deterministic server pipeline — see server/gitShare.ts. Never throws: every failure
+// arrives as ok:false with a plain-words error the panel can show.
+export async function museShare(req: ShareRequest): Promise<ShareResult> {
+  if (MOCK || EPHEMERAL) {
+    return { ok: false, error: 'Demo mode edits live in the browser only — run Muse with its backend to share changes.' }
+  }
+  try {
+    const res = await fetch(apiUrl('/api/muse/share'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    const data = (await res.json()) as Partial<ShareResult> | null
+    if (data && (data.ok === true || data.ok === false)) return data as ShareResult
+    return { ok: false, error: 'Sharing failed unexpectedly.' }
+  } catch {
+    return { ok: false, error: 'Couldn’t reach the Muse backend.' }
   }
 }
 

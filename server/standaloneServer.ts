@@ -70,6 +70,8 @@ const ROUTES = new Map<string, Handler>([
   ['GET /api/muse/flags',            handlers.flags],
   ['POST /api/muse/flag-resolve',    handlers.flagResolve],
   ['POST /api/muse/flag-delete',     handlers.flagDelete],
+  ['POST /api/muse/share-probe',     handlers.shareProbe],
+  ['POST /api/muse/share',           handlers.share],
 ])
 
 const server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {
