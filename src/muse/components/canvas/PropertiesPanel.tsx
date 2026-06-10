@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
+import { SHADOW } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
@@ -29,6 +30,7 @@ export type CanvasValues = {
     borderWidth: number
     borderStyleNone: boolean // no visible border yet — a width scrub must also set a style
     opacity: number // 0–100 (percent, the panel's display unit)
+    shadow: string // matched preset name ('none'/'sm'/''/'md'/…), or 'custom' when off the scale
   }
 }
 
@@ -442,9 +444,44 @@ function CornerGroup({ values, onPreview, onCommit }: { values: Corners } & Edit
   )
 }
 
-// Radius, border width, and opacity. A width scrub on an element with no visible
-// border also sets border-style (the computed style is `none`, so width alone
-// would paint nothing — same in Tailwind-less hosts where preflight isn't there).
+// The shadow presets the panel offers (Tailwind's steps; the base and 2xl steps
+// exist in the engine but stay off the row — five chips is the readable cap, and
+// a base/2xl/custom current value simply renders with no chip selected).
+const SHADOW_PRESETS = [
+  { name: 'none', label: 'None', value: 'none' },
+  { name: 'sm', label: 'S', value: SHADOW.sm },
+  { name: 'md', label: 'M', value: SHADOW.md },
+  { name: 'lg', label: 'L', value: SHADOW.lg },
+  { name: 'xl', label: 'XL', value: SHADOW.xl },
+]
+
+function ShadowRow({ current, onCommit }: { current: string; onCommit: (m: StyleMutation[]) => void }) {
+  return (
+    <div className="space-y-1">
+      <span className="text-[10px] uppercase tracking-wide text-fg-faint">Shadow</span>
+      <div role="radiogroup" aria-label="Shadow" className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
+        {SHADOW_PRESETS.map((p) => (
+          <button
+            key={p.name}
+            type="button"
+            role="radio"
+            aria-checked={current === p.name}
+            onClick={() => onCommit([{ property: 'boxShadow', value: p.value }])}
+            className={`flex-1 rounded-md px-1 py-1 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+              current === p.name ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Radius, border width, opacity, and shadow presets. A width scrub on an element
+// with no visible border also sets border-style (the computed style is `none`, so
+// width alone would paint nothing — same in Tailwind-less hosts without preflight).
 export function AppearanceFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   const a = values.appearance
   const withStyle = (v: number, m: StyleMutation[]): StyleMutation[] =>
@@ -463,6 +500,7 @@ export function AppearanceFields({ values, onPreview, onCommit }: { values: Canv
           onPreview={(v) => onPreview([{ property: 'opacity', value: `${v / 100}` }])}
           onCommit={(v) => onCommit([{ property: 'opacity', value: `${v / 100}` }])} />
       </div>
+      <ShadowRow current={a.shadow} onCommit={onCommit} />
     </div>
   )
 }

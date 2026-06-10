@@ -328,6 +328,64 @@ export function opacityToken(value: string): string | null {
 // 0–100 only — opacity-200 (a custom scale or a typo) is not ours to strip.
 export const isOpacityToken = (tok: string): boolean => /^opacity-(?:100|[1-9]?\d|\[[^\]]+\])$/.test(tok)
 
+// --- box shadow (preset model) --------------------------------------------------
+// The panel offers Tailwind's shadow steps as PRESETS, so the value crossing the
+// wire is the step's real box-shadow CSS (usable verbatim by the inline and
+// CSS-file writers). FORWARD: name → value (the v3 defaults). INVERSE: a value
+// round-trips to its named utility via a numeric signature — every px-ish length
+// in order — which survives the different serializations (authored rems vs the
+// computed "rgba(…) 0px 1px 2px 0px" form) without string-normalizing colors.
+export const SHADOW: Record<string, string> = {
+  sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+  '': '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+  md: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+  lg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+  xl: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+  '2xl': '0 25px 50px -12px rgb(0 0 0 / 0.25)',
+  none: 'none',
+}
+
+// The ordered offsets/blurs/spreads of a shadow value, layer by layer: bare
+// numbers and px lengths count; color-function innards (rgb(0 0 0 / 0.05)) are
+// blanked first so their channels can't pollute the signature. ALL-ZERO layers
+// are dropped — Tailwind's shadow utilities compose with two transparent ring
+// placeholder layers ("0 0 #0000", computed as "rgba(0,0,0,0) 0px 0px 0px 0px"),
+// and a computed value must still match its authored preset through them.
+export function shadowSignature(value: string): string {
+  const noColors = value.replace(/(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
+  return noColors
+    .split(',')
+    .map((layer) => (layer.match(/-?\d*\.?\d+(?:px)?/g) ?? []).map((n) => String(parseFloat(n))))
+    .filter((nums) => nums.length > 0 && nums.some((n) => n !== '0'))
+    .map((nums) => nums.join(','))
+    .join('|')
+}
+
+const SHADOW_BY_SIGNATURE = new Map(
+  Object.entries(SHADOW).filter(([, v]) => v !== 'none').map(([name, v]) => [shadowSignature(v), name]),
+)
+
+export function shadowToken(value: string): string | null {
+  const v = value.trim()
+  if (v === 'none' || v === '0 0 #0000') return 'shadow-none'
+  const name = SHADOW_BY_SIGNATURE.get(shadowSignature(v))
+  if (name !== undefined) return name === '' ? 'shadow' : `shadow-${name}`
+  return null // a custom shadow → inline fallback (arbitrary tokens get unwieldy)
+}
+
+// shadow- is overloaded with COLORED shadows (shadow-red-500 sets --tw-shadow-color);
+// the size family is the named steps + bare `shadow` + an arbitrary whose content
+// starts like a length list. A full-value arbitrary that EMBEDS a color
+// (shadow-[0_2px_9px_#f00]) is deliberately still size-family: this matcher only
+// fires for boxShadow mutations, and clicking a preset chip means "replace my
+// shadow with this preset" — color included.
+const SHADOW_NAMES = Object.keys(SHADOW).filter(Boolean).concat('inner')
+export function isShadowSizeToken(tok: string): boolean {
+  if (new RegExp(`^shadow(?:-(?:${SHADOW_NAMES.join('|')}))?$`).test(tok)) return true
+  const m = tok.match(/^shadow-\[(.+)\]$/)
+  return m ? /^(?:inset[_ ])?-?\d/.test(m[1]) : false
+}
+
 // --- kind-aware facade the engine calls ---------------------------------------
 // buildToken: value → Tailwind class token (or null → route inline). familyMatcher:
 // a predicate that finds the element's existing token of the SAME family to replace
@@ -356,6 +414,8 @@ export function buildToken(spec: PropertySpec, value: string): string | null {
       return borderStyleToken(value)
     case 'opacity':
       return opacityToken(value)
+    case 'shadow':
+      return shadowToken(value)
     default:
       return null
   }
@@ -386,6 +446,8 @@ export function familyMatcher(spec: PropertySpec): (tok: string) => boolean {
       return isBorderStyleToken
     case 'opacity':
       return isOpacityToken
+    case 'shadow':
+      return isShadowSizeToken
     default:
       return () => false
   }

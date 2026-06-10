@@ -8,7 +8,7 @@ import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
-import { isVarColorToken } from '../../style/tailwindScales'
+import { isVarColorToken, SHADOW, shadowSignature } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
@@ -71,8 +71,26 @@ function readValues(node: HTMLElement): CanvasValues {
       borderWidth: Math.round(px(cs.borderTopWidth) * 10) / 10,
       borderStyleNone: cs.borderTopStyle === 'none',
       opacity: Math.round(parseFloat(cs.opacity || '1') * 100),
+      shadow: matchShadowPreset(cs.boxShadow),
     },
   }
+}
+
+// Which named shadow step the computed box-shadow IS, via the numeric signature
+// (offset/blur/spread lengths in order) — robust to the computed serialization
+// putting the color first. Off-scale shadows report 'custom' (no chip selected).
+function matchShadowPreset(computed: string): string {
+  if (!computed || computed === 'none') return 'none'
+  // An inset shadow is a different thing even when its offsets coincide with a
+  // preset's — highlighting S for it would invite a click that drops the inset.
+  if (/\binset\b/.test(computed)) return 'custom'
+  const sig = shadowSignature(computed)
+  // Only transparent placeholder layers (Tailwind's ring slots) → no real shadow.
+  if (!sig) return 'none'
+  for (const [name, value] of Object.entries(SHADOW)) {
+    if (value !== 'none' && shadowSignature(value) === sig) return name
+  }
+  return 'custom'
 }
 
 // The element's OWN direct text (not descendants') — what computeTextEdit actually
