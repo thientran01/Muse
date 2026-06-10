@@ -12,14 +12,15 @@ import '../zoo/zoo.css'
 
 // A shared inline-style const (used twice below) — selecting either stamp offers
 // the "apply to all" scope toggle, and a const-scope edit rewrites THIS object.
+// Values stay strings so the engine's re-emit round-trips byte-identically.
 const stamp: CSSProperties = {
   display: 'inline-block',
   padding: '6px',
   borderRadius: '8px',
-  backgroundColor: '#b07d2f',
+  backgroundColor: '#8a5f1d',
   color: '#fdf8ef',
   fontSize: '12px',
-  fontWeight: 600,
+  fontWeight: '600',
 }
 
 export function Styling() {
@@ -45,14 +46,16 @@ export function Styling() {
         single element.
       </P>
       <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-        <h3 style={{ fontSize: '15px', fontWeight: 600, letterSpacing: '0.2px' }}>
+        <h3 style={{ fontSize: '15px', fontWeight: '600', letterSpacing: '0.2px' }}>
           Styled with inline objects
         </h3>
-        <p style={{ marginTop: '8px', fontSize: '14px', lineHeight: 1.6, color: '#8a8077' }}>
+        {/* No color here: it inherits the theme-aware body ink, so the demo text
+            stays readable in dark mode. Scrub the color control to author one. */}
+        <p style={{ marginTop: '8px', fontSize: '14px', lineHeight: '1.6' }}>
           Every value on this card sits in a style attribute in Styling.tsx. Scrub the padding or color
           and Muse rewrites the object in place.
         </p>
-        <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
+        <div style={{ marginTop: '16px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
           <span style={stamp}>shared const</span>
           <span style={stamp}>same const</span>
         </div>
@@ -65,15 +68,15 @@ export function Styling() {
         it repaints together. That's the difference between overriding one element and retuning a theme.
       </P>
       <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
           <span
             style={{
               padding: '14px',
               borderRadius: 'var(--zoo-chip-radius)',
               backgroundColor: 'var(--zoo-accent)',
-              color: '#f7f4ee',
+              color: 'var(--zoo-accent-ink)',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: '600',
             }}
           >
             --zoo-accent
@@ -83,9 +86,9 @@ export function Styling() {
               padding: '14px',
               borderRadius: 'var(--zoo-chip-radius)',
               backgroundColor: 'var(--zoo-mint)',
-              color: '#10241c',
+              color: 'var(--zoo-mint-ink)',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: '600',
             }}
           >
             --zoo-mint
@@ -95,9 +98,9 @@ export function Styling() {
               padding: '14px',
               borderRadius: 'var(--zoo-chip-radius)',
               backgroundColor: 'var(--zoo-honey)',
-              color: '#2b1f0c',
+              color: 'var(--zoo-honey-ink)',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: '600',
             }}
           >
             --zoo-honey
