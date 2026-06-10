@@ -631,20 +631,48 @@ function PanelShell({ children }: { children: React.ReactNode }) {
 
 // One collapsible section: a clickable header + (when open) its body. The chevron
 // rotates to show state. Sections toggle independently (you can open several).
-function Section({ label, open, onToggle, children }: { label: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+// `dot` marks a COLLAPSED section that holds non-default values (a shadow set,
+// opacity below 100, a radius) — what makes collapsed-by-default safe: the header
+// says when it's load-bearing, so nothing is silently hidden. Only sections where
+// "all defaults" is the common case pass it; an always-on dot would be noise.
+function Section({ label, open, dot, onToggle, children }: { label: string; open: boolean; dot?: boolean; onToggle: () => void; children: React.ReactNode }) {
+  const showDot = !!dot && !open
   return (
     <div className="space-y-1.5">
       <button
         onClick={onToggle}
         className="flex w-full items-center justify-between text-left transition hover:opacity-80"
         aria-expanded={open}
+        aria-label={showDot ? `${label}, has values set` : label}
       >
-        <SectionLabel>{label}</SectionLabel>
+        <span className="flex items-center gap-1.5">
+          <SectionLabel>{label}</SectionLabel>
+          {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
+        </span>
         <span className={`text-[10px] leading-none text-fg-faint transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>›</span>
       </button>
       {open && children}
     </div>
   )
+}
+
+// Non-default detection for the dot. Deliberately only Appearance + Layout: every
+// element HAS a size/color/spacing, so a dot there would always be on; these two
+// sections are commonly all-defaults, which is exactly when a quiet signal helps.
+function appearanceSet(values: CanvasValues): boolean {
+  const a = values.appearance
+  return (
+    a.radius.topLeft > 0 || a.radius.topRight > 0 || a.radius.bottomRight > 0 || a.radius.bottomLeft > 0 ||
+    a.borderWidth > 0 ||
+    a.opacity < 100 ||
+    a.shadow !== 'none'
+  )
+}
+function layoutSet(values: CanvasValues): boolean {
+  if (!values.layout) return false
+  const unsetAlign = values.layout.justify === 'normal' && values.layout.align === 'normal'
+  const noGap = !values.gap || (values.gap.row === 0 && values.gap.column === 0)
+  return !(unsetAlign && noGap)
 }
 
 type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'layout'
@@ -783,7 +811,7 @@ export function PropertiesPanel({
       </Section>
 
       {divider}
-      <Section label="Appearance" open={open.has('appearance')} onToggle={() => toggle('appearance')}>
+      <Section label="Appearance" open={open.has('appearance')} dot={appearanceSet(values)} onToggle={() => toggle('appearance')}>
         <AppearanceFields values={values} onPreview={onPreview} onCommit={onCommit} />
       </Section>
 
@@ -795,7 +823,7 @@ export function PropertiesPanel({
       {values.layout && (
         <>
           {divider}
-          <Section label="Layout" open={open.has('layout')} onToggle={() => toggle('layout')}>
+          <Section label="Layout" open={open.has('layout')} dot={layoutSet(values)} onToggle={() => toggle('layout')}>
             <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
           </Section>
         </>
