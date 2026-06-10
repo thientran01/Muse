@@ -107,12 +107,24 @@ export function ColorRow({
       setPos({ left, top, side: fitsRight ? 'right' : 'left' })
     }
     place()
-    // A second pass after the popover has measured (height affects the top clamp).
-    const raf = requestAnimationFrame(place)
+    // Re-clamp when the popover's own height changes after open — the token
+    // swatch row arrives async (museTokens), and without this a picker opened
+    // near the viewport bottom would grow past the edge and clip the row.
+    const ro = new ResizeObserver(place)
+    if (popRef.current) ro.observe(popRef.current)
+    // A second pass after the popover has measured (height affects the top
+    // clamp) — and a second chance to attach the observer, since the popover
+    // node may not exist on the first synchronous pass (re-observing the same
+    // node is a no-op).
+    const raf = requestAnimationFrame(() => {
+      place()
+      if (popRef.current) ro.observe(popRef.current)
+    })
     window.addEventListener('scroll', place, true)
     window.addEventListener('resize', place)
     return () => {
       cancelAnimationFrame(raf)
+      ro.disconnect()
       window.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }

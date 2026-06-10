@@ -28,8 +28,10 @@ function countVarUsage(names: string[]): Record<string, number> {
   }
   const counts: Record<string, number> = {}
   for (const name of names) {
-    // `var(--x` with a boundary after, so --c-ink doesn't also count --c-ink-soft.
-    counts[name] = css.split(`var(${name}`).length - 1
+    // Boundary after the name (lookahead), so --c-ink doesn't also absorb every
+    // --c-ink-soft reference and float above its own suffix siblings.
+    const re = new RegExp(`var\\(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g')
+    counts[name] = (css.match(re) ?? []).length
   }
   return counts
 }
@@ -191,7 +193,9 @@ export function ColorPicker({
           which is the token panel's job, not a surprise to spring from a swatch. */}
       {swatches.length > 0 && (
         <div className="space-y-1">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-fg-faint">Tokens</div>
+          {/* Same micro-label treatment as the spacing sub-labels, same term as
+              the toolbar popover. */}
+          <div className="text-[10px] uppercase tracking-wide text-fg-faint">Design tokens</div>
           <div className="flex items-center gap-1.5">
             {swatches.map((s) => (
               <button
@@ -199,7 +203,10 @@ export function ColorPicker({
                 onClick={() => setHex(s.value)}
                 title={`${s.name} · ${s.value}`}
                 aria-label={`Use ${s.name}, ${s.value}`}
-                className="h-6 w-6 shrink-0 rounded-md border border-line/20 transition hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100"
+                aria-pressed={s.value === hex}
+                className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100 ${
+                  s.value === hex ? 'border-accent ring-1 ring-accent/60' : 'border-line/20'
+                }`}
                 style={{ backgroundColor: s.value }}
               />
             ))}
