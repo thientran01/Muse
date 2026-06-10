@@ -33,6 +33,29 @@ export function resolveRoot(start: string, override?: string): string {
 
 const flagsPath = (root: string): string => path.join(root, '.muse', 'flags.json')
 
+// One entry in flags.json — kept in sync with types.ts (and the overlay's
+// src/muse/types.ts). Passthrough so unknown fields survive a round-trip.
+// resolvedAt/resolution default absent → null: the dev server always writes
+// them, but a hand-repaired file that omits them shouldn't brick every flag.
+const FlagSchema = z
+  .object({
+    id: z.string(),
+    comment: z.string(),
+    status: z.enum(['open', 'resolved']),
+    file: z.string(),
+    line: z.number(),
+    column: z.number(),
+    tag: z.string(),
+    className: z.string(),
+    text: z.string(),
+    property: z.string().optional(),
+    reason: z.string().optional(),
+    createdAt: z.string(),
+    resolvedAt: z.string().nullable().default(null),
+    resolution: z.string().nullable().default(null),
+  })
+  .passthrough()
+
 export function readFlags(root: string): FlagsFile {
   let raw: string
   try {
@@ -69,27 +92,6 @@ export function readFlags(root: string): FlagsFile {
     flags: result.data as FlagsFile['flags'],
   }
 }
-
-// One entry in flags.json — kept in sync with types.ts (and the overlay's
-// src/muse/types.ts). Passthrough so unknown fields survive a round-trip.
-const FlagSchema = z
-  .object({
-    id: z.string(),
-    comment: z.string(),
-    status: z.enum(['open', 'resolved']),
-    file: z.string(),
-    line: z.number(),
-    column: z.number(),
-    tag: z.string(),
-    className: z.string(),
-    text: z.string(),
-    property: z.string().optional(),
-    reason: z.string().optional(),
-    createdAt: z.string(),
-    resolvedAt: z.string().nullable(),
-    resolution: z.string().nullable(),
-  })
-  .passthrough()
 
 // Write atomically (temp + rename) — the same discipline the dev-server backend uses, so
 // a concurrent reader never catches a torn half-write.
