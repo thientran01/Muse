@@ -108,6 +108,15 @@ export function freezePage(): () => void {
           }
         }
       }
+      // @import'd sheets never appear in document.styleSheets — they're only
+      // reachable through the import rule itself.
+      if (rule instanceof CSSImportRule && rule.styleSheet) {
+        try {
+          neuterRules(rule.styleSheet.cssRules)
+        } catch {
+          /* cross-origin import — its rules stay live */
+        }
+      }
       // Generic recursion: grouping rules (media/supports/layer/container/
       // scope) and CSS-nesting children of style rules all expose cssRules.
       const children = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined
