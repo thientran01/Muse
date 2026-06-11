@@ -28,6 +28,7 @@ import {
   isOpacityToken,
   isShadowSizeToken,
   opacityToken,
+  parseShadowLayer,
   radiusFamilyMatch,
   radiusToken,
   SHADOW,
@@ -139,7 +140,31 @@ describe('shadow presets', () => {
     expect(shadowToken(SHADOW['2xl'])).toBe('shadow-2xl')
     expect(shadowToken('none')).toBe('shadow-none')
     expect(shadowToken('0 0 #0000')).toBe('shadow-none') // Tailwind's own none value
-    expect(shadowToken('0 2px 9px rgb(1 2 3 / 0.5)')).toBeNull() // custom → inline
+  })
+
+  it('off-scale single-layer shadows become arbitrary tokens; multi-layer falls to inline', () => {
+    expect(shadowToken('0px 6px 20px 0px rgba(0,0,0,0.08)')).toBe('shadow-[0px_6px_20px_0px_rgba(0,0,0,0.08)]')
+    expect(isShadowSizeToken('shadow-[0px_6px_20px_0px_rgba(0,0,0,0.08)]')).toBe(true) // round-trips as the family
+    // Two custom layers can't be a single safe token — inline fallback.
+    expect(shadowToken('0 1px 2px rgb(0 0 0 / 0.2), 0 8px 30px rgb(0 0 0 / 0.1)')).toBeNull()
+    // Unsafe charset never reaches a className.
+    expect(shadowToken('0 2px 4px black; background: red')).toBeNull()
+  })
+
+  it('parseShadowLayer extracts the first visible layer through computed serialization', () => {
+    expect(parseShadowLayer('rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0.1) 0px 2px 4px -2px')).toEqual({
+      x: 0, y: 4, blur: 6, spread: -1, alpha: 0.1,
+    })
+    // Tailwind ring placeholders are skipped to the real layer.
+    expect(parseShadowLayer('rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0.05) 0px 1px 2px 0px')).toEqual({
+      x: 0, y: 1, blur: 2, spread: 0, alpha: 0.05,
+    })
+    expect(parseShadowLayer('none')).toBeNull()
+    expect(parseShadowLayer('rgba(0, 0, 0, 0.3) 0px 2px 4px 0px inset')).toBeNull() // inset is not ours
+    // A 3-channel rgb() must NOT donate its last channel as the alpha.
+    expect(parseShadowLayer('rgb(255, 0, 0) 0px 2px 4px 0px')?.alpha).toBe(1)
+    // The modern slash form carries its alpha.
+    expect(parseShadowLayer('0 2px 4px rgb(0 0 0 / 0.25)')?.alpha).toBe(0.25)
   })
 
   it('matches a preset through the computed-style serialization (color first, px units)', () => {
@@ -324,6 +349,17 @@ describe('appearance edits through the engine', () => {
     expect(out).toContain('12px')
     expect(out).toContain('\r\n')
     expect(out.replace(/\r\n/g, '\n')).not.toContain('\r') // no stray lone CRs
+  })
+
+  it('writes a custom shadow as an arbitrary token, replacing the old step', async () => {
+    const src = `export const Card = () => (\n  <div className="shadow-sm p-4">hi</div>\n)\n`
+    const p = makeProject({ 'src/Card.tsx': src })
+    const r = await call(p.handlers.styleEdit, styleEditBody(p, 'src/Card.tsx', src, '<div', 'div', [
+      { property: 'boxShadow', value: '0px 6px 20px 0px rgba(0,0,0,0.08)' },
+    ], 'tailwind-first'))
+    const out = r.body.edits[0].newContent as string
+    expect(out).toContain('shadow-[0px_6px_20px_0px_rgba(0,0,0,0.08)]')
+    expect(out).not.toContain('shadow-sm')
   })
 
   it('writes a shadow preset as its named utility, replacing the old step', async () => {

@@ -370,7 +370,36 @@ export function shadowToken(value: string): string | null {
   if (v === 'none' || v === '0 0 #0000') return 'shadow-none'
   const name = SHADOW_BY_SIGNATURE.get(shadowSignature(v))
   if (name !== undefined) return name === '' ? 'shadow' : `shadow-${name}`
-  return null // a custom shadow → inline fallback (arbitrary tokens get unwieldy)
+  // Off-scale: a SINGLE-layer shadow with a safe charset becomes an arbitrary
+  // token (spaces underscored per Tailwind's syntax — commas inside the color
+  // function are fine). Multi-layer or odd content falls back to inline style.
+  const noColors = v.replace(/(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
+  if (noColors.includes(',')) return null
+  if (!/^[\w.%#,()+\-/ ]+$/.test(v)) return null
+  return `shadow-[${v.replace(/\s+/g, '_')}]`
+}
+
+// First visible layer of a computed/authored box-shadow → its scrub-editable
+// parts. Returns null for 'none', placeholder-only values, or inset shadows
+// (a different thing — the custom editor composes outer shadows only). CSS
+// length order is offset-x offset-y blur spread; the computed serialization may
+// put the color first, which the color-blanking sidesteps.
+export function parseShadowLayer(value: string): { x: number; y: number; blur: number; spread: number; alpha: number } | null {
+  if (!value || value === 'none') return null
+  const layers = value.split(/,(?![^(]*\))/)
+  for (const layer of layers) {
+    if (/\binset\b/.test(layer)) continue
+    // Alpha from the layer's color: the comma form only on the 4-arg fns
+    // (rgba/hsla — a bare `rgb(r, g, b)` would otherwise donate its last
+    // CHANNEL as the alpha), or the slash form on any fn; default 1.
+    const alphaMatch = layer.match(/(?:rgba|hsla)\([^)]*,\s*([\d.]+)\s*\)/) ?? layer.match(/\/\s*([\d.]+)\s*\)/)
+    const alpha = alphaMatch ? parseFloat(alphaMatch[1]) : 1
+    const noColors = layer.replace(/(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
+    const nums = (noColors.match(/-?\d*\.?\d+(?:px)?/g) ?? []).map(parseFloat)
+    if (nums.length < 2 || nums.every((n) => n === 0)) continue // zero/placeholder layer
+    return { x: nums[0] ?? 0, y: nums[1] ?? 0, blur: nums[2] ?? 0, spread: nums[3] ?? 0, alpha }
+  }
+  return null
 }
 
 // shadow- is overloaded with COLORED shadows (shadow-red-500 sets --tw-shadow-color);
