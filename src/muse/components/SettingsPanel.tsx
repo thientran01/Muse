@@ -70,8 +70,9 @@ export function SettingsPanel() {
           </button>
         </div>
         <p className="text-[11px] leading-relaxed text-fg-muted">
-          The toolbar and banner stay out of sight — just the editing tools. Hover the corner to
-          bring the toolbar back; <kbd className="font-mono">R</kbd> still opens and closes Muse.
+          The toolbar and banner stay out of sight — just the editing tools. Press{' '}
+          <kbd className="font-mono">R</kbd> to peek at the toolbar (it tucks itself away again),
+          or hover its corner any time.
         </p>
       </div>
 

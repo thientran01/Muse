@@ -114,11 +114,17 @@ export function MuseToolbar({
   const { flags, past, prefs } = useMuseStore()
   const openFlagCount = flags.filter((f) => f.status === 'open').length
   const changedFileCount = SHARE_UI ? computeSessionChanges(past).filter((c) => c.changed).length : 0
-  // Zen: the whole dock stays hidden until the corner hotspot is hovered; it
-  // re-hides when the pointer leaves (unless a popover is open — closing the
-  // settings you just opened out from under your cursor would be hostile).
+  // Zen: the dock stays hidden, revealed two ways — hovering its corner, or any
+  // open/close of Muse itself (the PEEK below). It re-hides when the pointer
+  // leaves (unless a popover is open — closing the settings you just opened out
+  // from under your cursor would be hostile).
   const [revealed, setRevealed] = useState(false)
   const zenHidden = prefs.zen && !revealed
+  // Live mirrors for the peek timer's closure (state would be stale inside it).
+  const popLive = useRef(pop)
+  popLive.current = pop
+  const overDock = useRef(false)
+  const peekTimer = useRef<number | null>(null)
   useEffect(() => {
     // Flipping zen ON happens inside the Settings popover — count that as
     // revealed, or the dock (and the popover the cursor is in) would vanish on
@@ -127,6 +133,21 @@ export function MuseToolbar({
     if (prefs.zen && pop !== 'none') setRevealed(true)
     if (!prefs.zen) setRevealed(false)
   }, [prefs.zen, pop])
+  // THE PEEK — the recovery affordance zen shipped without (the invisible corner
+  // hotspot alone left a real user unable to find Muse at all): any open/close of
+  // Muse (R, the FAB) shows the dock, which tucks itself away again after a
+  // moment unless the pointer is on it or a popover is open.
+  useEffect(() => {
+    if (!prefs.zen) return
+    setRevealed(true)
+    if (peekTimer.current) window.clearTimeout(peekTimer.current)
+    peekTimer.current = window.setTimeout(() => {
+      if (popLive.current === 'none' && !overDock.current) setRevealed(false)
+    }, 2500)
+    return () => {
+      if (peekTimer.current) window.clearTimeout(peekTimer.current)
+    }
+  }, [expanded, prefs.zen])
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
@@ -153,7 +174,13 @@ export function MuseToolbar({
       className={`pointer-events-auto absolute z-[999999] flex gap-3 ${DOCK_POS[prefs.corner]} ${
         zenHidden ? 'pointer-events-none opacity-0' : 'opacity-100'
       } transition-opacity duration-200`}
+      onPointerEnter={() => {
+        overDock.current = true
+        // The pointer arriving on the dock holds an in-flight peek open.
+        if (peekTimer.current) window.clearTimeout(peekTimer.current)
+      }}
       onPointerLeave={() => {
+        overDock.current = false
         if (prefs.zen && pop === 'none') setRevealed(false)
       }}
     >
