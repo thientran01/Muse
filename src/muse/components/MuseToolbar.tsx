@@ -167,14 +167,19 @@ export function MuseToolbar({
       {zenHidden && (
         <div
           aria-hidden
-          className={`pointer-events-auto absolute z-[999999] h-12 w-12 ${HOTSPOT_POS[prefs.corner]}`}
+          className={`pointer-events-auto absolute z-[999999] h-16 w-16 ${HOTSPOT_POS[prefs.corner]}`}
           onPointerEnter={() => setRevealed(true)}
         />
       )}
     <div
       data-muse-dock
-      className={`pointer-events-auto absolute z-[999999] flex gap-3 ${DOCK_POS[prefs.corner]} ${
-        zenHidden ? 'pointer-events-none opacity-0' : 'opacity-100'
+      // pointer-events is EXCLUSIVE per state — never both classes at once. With
+      // both present, the generated stylesheet's order decides (not className
+      // order), and `auto` won: the hidden dock stayed interactive (invisible
+      // tooltips, swallowed clicks) AND sat over the hotspot, eating the hover
+      // that was supposed to reveal it.
+      className={`absolute z-[999999] flex gap-3 ${DOCK_POS[prefs.corner]} ${
+        zenHidden ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
       } transition-opacity duration-200`}
       onPointerEnter={() => {
         overDock.current = true
