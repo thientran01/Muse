@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShadowHost } from './hooks/useShadowHost'
+import { freezePage } from './animationFreeze'
 import { museWrite } from './api'
 import { EPHEMERAL } from './config'
 import { refreshFlags } from './flagsActions'
@@ -132,18 +133,13 @@ export function MuseOverlay() {
     }
   }
 
+  // Freeze the whole host page so the canvas is completely still — CSS
+  // animations/transitions, :hover/:active/:focus states, WAAPI, videos, SMIL.
+  // Muse's own chrome stays live. See animationFreeze.ts for the mechanics.
   const [animationsPaused, setAnimationsPaused] = useState(false)
   useEffect(() => {
     if (!animationsPaused) return
-    const style = document.createElement('style')
-    style.id = 'muse-animation-pause'
-    // Freeze all host-page animations and transitions so the canvas is still.
-    // Excludes the Muse overlay itself (data-muse-ui) so its own chrome stays live.
-    style.textContent =
-      ':not([data-muse-ui]):not([data-muse-ui] *)' +
-      '{animation-play-state:paused!important;transition-duration:0s!important;transition-delay:0s!important;}'
-    document.head.appendChild(style)
-    return () => style.remove()
+    return freezePage()
   }, [animationsPaused])
 
   // EPHEMERAL (the hosted demo): the toolbar drives the in-browser DOM-snapshot

@@ -4,10 +4,11 @@ import { defineConfig } from 'vitest/config'
 // AST/CSS editors (computeStyleEdit + the cssVar/cssRule/styled editors) and the
 // museCore handlers against throwaway tmp-dir fixture projects. Node environment,
 // no DOM, no plugins — deliberately independent of the app's vite.config.ts so a
-// test run never loads musePlugin or the Babel locator.
+// test run never loads musePlugin or the Babel locator. The src/muse suites are
+// limited to pure functions (no DOM) so they fit the same node environment.
 export default defineConfig({
   test: {
-    include: ['server/__tests__/**/*.test.ts'],
+    include: ['server/__tests__/**/*.test.ts', 'src/muse/__tests__/**/*.test.ts'],
     environment: 'node',
   },
 })
