@@ -24,7 +24,10 @@ export function HoverHighlight({
   return (
     <>
       <div
-        className="pointer-events-none absolute rounded-md bg-accent/10 ring-2 ring-accent transition-[top,left,width,height,background-color] duration-100 ease-in-out motion-reduce:transition-none"
+        // 90ms = DUR.fast (this follows every hover, so it stays at the floor of
+        // the scale) on the system's in-out — movement between two on-screen
+        // positions, not an enter/exit, and the stock ease-in-out is too weak.
+        className="pointer-events-none absolute rounded-md bg-accent/10 ring-2 ring-accent transition-[top,left,width,height,background-color] duration-[90ms] ease-[var(--muse-ease-in-out)] motion-reduce:transition-none"
         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
       />
       {info && cursor && (

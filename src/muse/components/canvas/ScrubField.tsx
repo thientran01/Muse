@@ -82,7 +82,7 @@ export function ScrubField({
     onCommit(v)
   }
 
-  const shown = dragging ? draft : typing ? text : String(Math.round(value * 100) / 100)
+  const shown = String(dragging ? draft : typing ? text : Math.round(value * 100) / 100)
 
   return (
     // One UNIFIED field box (Figma-style): label · value · unit all inside a single
@@ -90,7 +90,12 @@ export function ScrubField({
     // pieces. The box fills its grid cell, so fields in a 2-col group line up. The
     // border lights up on focus-within (the whole field reacts, not just the input).
     <label
-      className={`flex items-center gap-1 rounded-md border border-line/15 bg-surface px-2 py-1 text-[11px] transition-colors focus-within:border-accent/60 motion-reduce:transition-none ${
+      // px-1.5 (not px-2): in a half-width grid cell the long labels ("Opacity",
+      // "Letter") left the input too narrow for its own value — "100" clipped to
+      // "10" and a negative letter-spacing hid its minus sign (right-aligned text
+      // clips from the left). The tighter padding + the input's min-width below
+      // guarantee the value always wins the space fight.
+      className={`flex items-center gap-1 rounded-md border border-line/15 bg-surface px-1.5 py-1 text-[11px] transition-colors focus-within:border-accent/60 motion-reduce:transition-none ${
         disabled ? 'opacity-40' : ''
       }`}
     >
@@ -125,7 +130,11 @@ export function ScrubField({
           }
         }}
         onBlur={commitTyped}
-        className="w-full min-w-0 flex-1 border-0 bg-transparent p-0 text-right tabular-nums text-fg outline-none disabled:opacity-40"
+        className="w-full flex-1 border-0 bg-transparent p-0 text-right tabular-nums text-fg outline-none disabled:opacity-40"
+        // The current value sets the floor (capped so a pathological entry can't
+        // blow the box open) — flexbox may squeeze the input below its text width
+        // otherwise, clipping the digits the field exists to show.
+        style={{ minWidth: `${Math.min(Math.max(shown.length, 1), 6)}ch` }}
       />
       {unit && <span className="shrink-0 select-none text-fg-faint">{unit}</span>}
     </label>
