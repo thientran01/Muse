@@ -71,8 +71,16 @@ export default {
       },
       // A strong ease-out (Emil: the built-in curves are too weak) for the docs
       // site's interactions — press feedback, the feedback panel, page entrances.
+      // DEFAULT rebases every bare `transition`/`transition-colors`/... utility
+      // onto the system curve + base duration, so a hover or press never falls
+      // back to Tailwind's stock 150ms cubic-bezier(0.4,0,0.2,1) — the one place
+      // the EASE/DUR tokens didn't reach.
       transitionTimingFunction: {
+        DEFAULT: EASE.out,
         'out-strong': 'cubic-bezier(0.23, 1, 0.32, 1)',
+      },
+      transitionDuration: {
+        DEFAULT: DUR.base,
       },
       // Muse motion — keyframes describe WHAT moves; the `animation` block below
       // binds each to a duration + easing from the EASE/DUR tokens at the top of

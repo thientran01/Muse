@@ -1,6 +1,6 @@
 import { museStore, useMuseStore } from '../store'
 import type { DockCorner } from '../prefs'
-import { ShortcutsPanel } from './ShortcutsPanel'
+import { Key, ShortcutsPanel } from './ShortcutsPanel'
 
 // The Settings popover: where Muse's chrome lives (dock corner), whether it
 // hides entirely (zen), and the gesture reference. Preferences persist across
@@ -62,16 +62,18 @@ export function SettingsPanel() {
               prefs.zen ? 'bg-accent' : 'bg-line/30'
             }`}
           >
+            {/* The knob slides via transform, not `left` — compositor-only, and
+                the one property the motion system animates for movement. */}
             <span
-              className={`absolute top-[2px] h-3.5 w-3.5 rounded-full bg-surface shadow-sm transition-[left] ${
-                prefs.zen ? 'left-[18px]' : 'left-[2px]'
+              className={`absolute left-[2px] top-[2px] h-3.5 w-3.5 rounded-full bg-surface shadow-sm transition-transform motion-reduce:transition-none ${
+                prefs.zen ? 'translate-x-4' : 'translate-x-0'
               }`}
             />
           </button>
         </div>
         <p className="text-[11px] leading-relaxed text-fg-muted">
           The toolbar and banner stay out of sight — just the editing tools. Press{' '}
-          <kbd className="font-mono">R</kbd> to peek at the toolbar (it tucks itself away again),
+          <Key>R</Key> to peek at the toolbar (it tucks itself away again),
           or hover its corner any time.
         </p>
       </div>

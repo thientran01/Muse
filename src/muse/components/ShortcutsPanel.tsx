@@ -3,7 +3,7 @@
 // you can't remember the parent-step or keyboard-reorder gesture. Static list,
 // no state; rows mirror the active-selection banner's vocabulary.
 
-function Key({ children }: { children: React.ReactNode }) {
+export function Key({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-line/20 bg-line/5 px-1 font-mono text-[10px] leading-none text-fg-muted">
       {children}
@@ -14,14 +14,17 @@ function Key({ children }: { children: React.ReactNode }) {
 const SHORTCUTS: Array<{ keys: string[]; what: string }> = [
   { keys: ['R'], what: 'open and close Muse' },
   { keys: ['Click'], what: 'select and shape an element' },
-  { keys: ['⇧', 'Click'], what: 'flag an element for your agent' },
+  // Modifiers are WORDS ("Shift", "Alt"), matching the FlagsPanel copy and the
+  // banner — mixing ⇧ with a spelled-out Alt read as two systems. ⌘ stays a
+  // symbol only inside the paired "⌘/Ctrl" chip (spelling out Cmd doubles it).
+  { keys: ['Shift', 'Click'], what: 'flag an element for your agent' },
   { keys: ['Alt', 'Click'], what: 'step out to the parent' },
   { keys: ['Dbl-click'], what: 'edit text in place' },
   { keys: ['Drag'], what: 'reorder among siblings, scroll mid-drag to reach farther' },
   // The handler accepts both axes so it works in rows AND columns.
   { keys: ['⌘/Ctrl', '↑↓←→'], what: 'reorder by keyboard' },
   { keys: ['⌘/Ctrl', 'Z'], what: 'undo' },
-  { keys: ['⌘/Ctrl', '⇧', 'Z'], what: 'redo' },
+  { keys: ['⌘/Ctrl', 'Shift', 'Z'], what: 'redo' },
   { keys: ['Esc'], what: 'deselect, then close' },
 ]
 

@@ -1304,7 +1304,7 @@ export function CanvasMode({
                   ? reorderable?.reorderable
                     ? 'Drag to reorder · double-click to edit · Esc to deselect'
                     : 'Double-click to edit · Esc to deselect'
-                  : <>Click to edit · <BannerKbd>⇧</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
+                  : <>Click to edit · <BannerKbd>Shift</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
             </span>
             <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
               Done
