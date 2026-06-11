@@ -44,7 +44,7 @@ export function Overview() {
       <h2 className="mt-12 text-xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
         Canvas
       </h2>
-      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
+      <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400 text-left shadow-none">
         Click an element and edit it directly. Spacing, size, type, color, copy, and order are all
         draggable or clickable, and each change writes to your source and stays on the undo stack. A
         direct edit is a known transform, so Muse applies it without a model call: instant, key-free,

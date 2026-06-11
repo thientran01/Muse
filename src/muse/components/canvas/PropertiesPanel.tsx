@@ -32,6 +32,8 @@ export type CanvasValues = {
     borderStyleNone: boolean // no visible border yet — a width scrub must also set a style
     opacity: number // 0–100 (percent, the panel's display unit)
     shadow: string // matched preset name ('none'/'sm'/''/'md'/…), or 'custom' when off the scale
+    // First visible layer's scrub parts (null = no outer shadow) for the custom editor.
+    shadowParts: { x: number; y: number; blur: number; spread: number; alpha: number } | null
   }
 }
 
@@ -500,26 +502,90 @@ function SegmentRow({
 // The shadow presets the panel offers (Tailwind's steps; the base and 2xl steps
 // exist in the engine but stay off the row — five chips is the readable cap, and
 // a base/2xl/custom current value simply renders with no chip selected).
-const SHADOW_PRESETS: Record<string, string> = {
-  none: 'none',
-  sm: SHADOW.sm,
-  md: SHADOW.md,
-  lg: SHADOW.lg,
-  xl: SHADOW.xl,
-}
-const SHADOW_OPTIONS = [
-  { name: 'none', label: 'None' },
-  { name: 'sm', label: 'S' },
-  { name: 'md', label: 'M' },
-  { name: 'lg', label: 'L' },
-  { name: 'xl', label: 'XL' },
+const SHADOW_PRESETS: Array<{ name: string; value: string }> = [
+  { name: 'none', value: 'none' },
+  { name: 'sm', value: SHADOW.sm },
+  { name: 'md', value: SHADOW.md },
+  { name: 'lg', value: SHADOW.lg },
+  { name: 'xl', value: SHADOW.xl },
 ]
 
-// Radius, border width, opacity, and shadow presets. A width scrub on an element
-// with no visible border also sets border-style (the computed style is `none`, so
-// width alone would paint nothing — same in Tailwind-less hosts without preflight).
+// "0 4px 6px −1px · 10% black" — the human form of a shadow value, for tooltips.
+function shadowSummary(value: string): string {
+  if (value === 'none') return 'No shadow'
+  const first = value.split(/,(?![^(]*\))/)[0]
+  const alpha = first.match(/\/\s*([\d.]+)\s*\)/)
+  const lengths = first.replace(/(rgba?|rgb)\([^)]*\)/g, '').trim()
+  return `${lengths}${alpha ? ` · ${Math.round(parseFloat(alpha[1]) * 100)}% black` : ''}`
+}
+
+// Visual preset chips: each renders its ACTUAL shadow on a small swatch, so the
+// scale is seen rather than decoded from a letter; the tooltip carries the real
+// numbers. The row sits on a soft well so shadows have ground to land on.
+function ShadowSwatches({ current, onCommit }: { current: string; onCommit: (m: StyleMutation[]) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Shadow presets" className="flex gap-1.5 rounded-lg bg-line/10 p-1.5">
+      {SHADOW_PRESETS.map((p) => (
+        <button
+          key={p.name}
+          type="button"
+          role="radio"
+          aria-checked={current === p.name}
+          aria-label={p.name === 'none' ? 'No shadow' : `Shadow ${p.name}`}
+          title={shadowSummary(p.value)}
+          onClick={() => onCommit([{ property: 'boxShadow', value: p.value }])}
+          className={`flex flex-1 items-center justify-center rounded-md py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+            current === p.name ? 'bg-surface ring-1 ring-accent/60' : 'hover:bg-surface/60'
+          }`}
+        >
+          <span
+            aria-hidden
+            className="flex h-5 w-6 items-center justify-center rounded bg-surface text-[8px] leading-none text-fg-faint ring-1 ring-line/15"
+            style={p.value === 'none' ? undefined : { boxShadow: p.value }}
+          >
+            {p.name === 'none' ? '×' : ''}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// The custom editor: Y / blur / spread / opacity scrubs composing a single-layer
+// black shadow (the shape of almost every real UI shadow — colored shadows stay a
+// flag-it case). Live-previews like every scrub; on Tailwind hosts an off-scale
+// value writes an arbitrary shadow-[…] token, elsewhere the CSS lands verbatim.
+function ShadowCustomFields({ parts, onPreview, onCommit }: { parts: NonNullable<CanvasValues['appearance']['shadowParts']> | null } & EditProps) {
+  const p = parts ?? { x: 0, y: 2, blur: 8, spread: 0, alpha: 0.1 }
+  const compose = (patch: Partial<typeof p>) => {
+    const n = { ...p, ...patch }
+    // X is preserved when the element already has one; the scrubs edit the rest.
+    return `${n.x}px ${n.y}px ${Math.max(0, n.blur)}px ${n.spread}px rgba(0,0,0,${Math.min(1, Math.max(0, n.alpha))})`
+  }
+  const emit = (fn: (m: StyleMutation[]) => void, patch: Partial<typeof p>) =>
+    fn([{ property: 'boxShadow', value: compose(patch) }])
+  return (
+    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+      <ScrubField label="Y" ariaLabel="Shadow Y offset" value={p.y}
+        onPreview={(v) => emit(onPreview, { y: v })} onCommit={(v) => emit(onCommit, { y: v })} />
+      <ScrubField label="Blur" value={p.blur} min={0}
+        onPreview={(v) => emit(onPreview, { blur: v })} onCommit={(v) => emit(onCommit, { blur: v })} />
+      <ScrubField label="Spread" value={p.spread}
+        onPreview={(v) => emit(onPreview, { spread: v })} onCommit={(v) => emit(onCommit, { spread: v })} />
+      <ScrubField label="Opacity" ariaLabel="Shadow opacity" value={Math.round(p.alpha * 100)} min={0} max={100} unit="%"
+        onPreview={(v) => emit(onPreview, { alpha: v / 100 })} onCommit={(v) => emit(onCommit, { alpha: v / 100 })} />
+    </div>
+  )
+}
+
+// Radius, border width, opacity, and shadow. A width scrub on an element with no
+// visible border also sets border-style (the computed style is `none`, so width
+// alone would paint nothing — same in Tailwind-less hosts without preflight).
 export function AppearanceFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   const a = values.appearance
+  // Custom mode opens automatically when the element's shadow is already off the
+  // preset scale — those values are only reachable through the scrubs.
+  const [shadowCustom, setShadowCustom] = useState(a.shadow === 'custom')
   const withStyle = (v: number, m: StyleMutation[]): StyleMutation[] =>
     a.borderStyleNone && v > 0 ? [...m, { property: 'borderStyle', value: 'solid' }] : m
   return (
@@ -536,12 +602,22 @@ export function AppearanceFields({ values, onPreview, onCommit }: { values: Canv
           onPreview={(v) => onPreview([{ property: 'opacity', value: `${v / 100}` }])}
           onCommit={(v) => onCommit([{ property: 'opacity', value: `${v / 100}` }])} />
       </div>
-      <SegmentRow
-        label="Shadow"
-        options={SHADOW_OPTIONS}
-        current={a.shadow}
-        onPick={(name) => onCommit([{ property: 'boxShadow', value: SHADOW_PRESETS[name] }])}
-      />
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-wide text-fg-faint">Shadow</span>
+          <button
+            onClick={() => setShadowCustom((v) => !v)}
+            className="text-fg-faint transition hover:text-fg-muted"
+            title={shadowCustom ? 'Presets only' : 'Edit the shadow'}
+            aria-expanded={shadowCustom}
+            aria-label={shadowCustom ? 'Hide custom shadow controls' : 'Edit the shadow'}
+          >
+            {shadowCustom ? <ArrowsInSimple size={12} /> : <ArrowsOutSimple size={12} />}
+          </button>
+        </div>
+        <ShadowSwatches current={a.shadow} onCommit={onCommit} />
+        {shadowCustom && <ShadowCustomFields parts={a.shadowParts} onPreview={onPreview} onCommit={onCommit} />}
+      </div>
     </div>
   )
 }

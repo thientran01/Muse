@@ -8,7 +8,7 @@ import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
-import { isVarColorToken, SHADOW, shadowSignature } from '../../style/tailwindScales'
+import { isVarColorToken, parseShadowLayer, SHADOW, shadowSignature } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
@@ -76,6 +76,9 @@ function readValues(node: HTMLElement): CanvasValues {
       borderStyleNone: cs.borderTopStyle === 'none',
       opacity: Math.round(parseFloat(cs.opacity || '1') * 100),
       shadow: matchShadowPreset(cs.boxShadow),
+      // The first visible layer's scrub-editable parts (null = no outer shadow)
+      // — what the custom shadow editor reads as its current values.
+      shadowParts: parseShadowLayer(cs.boxShadow),
     },
   }
 }
