@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
-import { museStore, useMuseStore } from '../../store'
+import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
@@ -299,8 +299,14 @@ export function CanvasMode({
   onExit: () => void
 }) {
   // Reactive zen preference: hides the teaching banner (the editing tools stay).
-  const { prefs } = useMuseStore()
-  const zen = prefs.zen
+  // A NARROW selector, deliberately not useMuseStore(): subscribing this ~1300-line
+  // component to the whole store would re-render it on every flag/share/history
+  // change — including mid-drag, the worst moment for spurious work.
+  const zen = useSyncExternalStore(
+    museStore.subscribe,
+    () => museStore.getState().prefs.zen,
+    () => museStore.getState().prefs.zen,
+  )
   // True while a reorder drag is in flight. Declared before useCanvasMode so it can
   // SUSPEND Canvas's hover + selection during the drag — otherwise moving the cursor
   // over another element mid-drag re-hovers/re-selects it, which remounts the overlay

@@ -119,7 +119,14 @@ export function MuseToolbar({
   // settings you just opened out from under your cursor would be hostile).
   const [revealed, setRevealed] = useState(false)
   const zenHidden = prefs.zen && !revealed
-  useEffect(() => { if (!prefs.zen) setRevealed(false) }, [prefs.zen])
+  useEffect(() => {
+    // Flipping zen ON happens inside the Settings popover — count that as
+    // revealed, or the dock (and the popover the cursor is in) would vanish on
+    // the same render. The dock then hides on the NEXT pointer-leave, after the
+    // popover is closed. Turning zen off clears the stale reveal.
+    if (prefs.zen && pop !== 'none') setRevealed(true)
+    if (!prefs.zen) setRevealed(false)
+  }, [prefs.zen, pop])
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
