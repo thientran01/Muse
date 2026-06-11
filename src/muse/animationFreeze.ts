@@ -88,13 +88,22 @@ export function freezePage(): () => void {
   // --- 2. Neuter interactive-state selectors -----------------------------
   const neutered: { rule: CSSStyleRule; original: string }[] = []
   // Last-seen TOP-LEVEL rule count per processed sheet (-1 = inaccessible,
-  // don't retry). insertRule appends at the top level, so the sweep only walks
-  // the appended tail of a grown sheet; an HMR-swapped style tag is a brand-new
-  // CSSStyleSheet object and gets a full walk.
+  // don't retry). A count CHANGE triggers a full re-walk — not a tail walk,
+  // because insertRule defaults to index 0 (front), so new rules can land
+  // anywhere. Re-walking is idempotent: an already-neutered selector has no
+  // frozen pseudo left, so neuterSelectorText returns null and it can't be
+  // re-recorded with a wrong "original". An HMR-swapped style tag is a
+  // brand-new CSSStyleSheet object and gets walked as unseen. Known blind
+  // spot: insertions INSIDE an existing grouping rule (@media etc.) don't
+  // change the top-level count and are missed until the sheet's count moves.
   const seenSheets = new WeakMap<CSSStyleSheet, number>()
+  // @import'd sheets never appear in document.styleSheets — they're only
+  // reachable through their CSSImportRule. Collected during walks so the
+  // sweep re-checks them with the same count bookkeeping.
+  const importedSheets = new Set<CSSStyleSheet>()
 
-  const neuterRules = (rules: CSSRuleList, from = 0) => {
-    for (let i = from; i < rules.length; i++) {
+  const neuterRules = (rules: CSSRuleList) => {
+    for (let i = 0; i < rules.length; i++) {
       const rule = rules[i]
       if (rule instanceof CSSStyleRule) {
         const next = neuterSelectorText(rule.selectorText)
@@ -108,15 +117,7 @@ export function freezePage(): () => void {
           }
         }
       }
-      // @import'd sheets never appear in document.styleSheets — they're only
-      // reachable through the import rule itself.
-      if (rule instanceof CSSImportRule && rule.styleSheet) {
-        try {
-          neuterRules(rule.styleSheet.cssRules)
-        } catch {
-          /* cross-origin import — its rules stay live */
-        }
-      }
+      if (rule instanceof CSSImportRule && rule.styleSheet) importedSheets.add(rule.styleSheet)
       // Generic recursion: grouping rules (media/supports/layer/container/
       // scope) and CSS-nesting children of style rules all expose cssRules.
       const children = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined
@@ -125,21 +126,27 @@ export function freezePage(): () => void {
   }
 
   const sweepSheets = () => {
-    const sheets = [...Array.from(document.styleSheets), ...(document.adoptedStyleSheets ?? [])]
-    for (const sheet of sheets) {
-      if (!(sheet instanceof CSSStyleSheet)) continue
-      const lastCount = seenSheets.get(sheet)
-      if (lastCount === -1) continue // cross-origin — don't retry every tick
-      let rules: CSSRuleList
-      try {
-        rules = sheet.cssRules
-      } catch {
-        seenSheets.set(sheet, -1)
-        continue
+    // Walks can discover new @import'd sheets; loop until the set is stable so
+    // a freshly-found import chain is neutered in this pass, not next tick.
+    // Terminates: importedSheets only grows and is bounded by the page's sheets.
+    let known = -1
+    while (known !== importedSheets.size) {
+      known = importedSheets.size
+      const sheets = [...Array.from(document.styleSheets), ...(document.adoptedStyleSheets ?? []), ...importedSheets]
+      for (const sheet of sheets) {
+        if (!(sheet instanceof CSSStyleSheet)) continue
+        const lastCount = seenSheets.get(sheet)
+        if (lastCount === -1) continue // cross-origin — don't retry every tick
+        let rules: CSSRuleList
+        try {
+          rules = sheet.cssRules
+        } catch {
+          seenSheets.set(sheet, -1)
+          continue
+        }
+        if (rules.length !== lastCount) neuterRules(rules)
+        seenSheets.set(sheet, rules.length)
       }
-      const from = lastCount ?? 0
-      if (rules.length > from) neuterRules(rules, from)
-      seenSheets.set(sheet, rules.length)
     }
   }
 
@@ -207,7 +214,9 @@ export function freezePage(): () => void {
     }
     for (const anim of pausedAnims) {
       // Only resume what's still in OUR paused state — play() on a finished or
-      // cancelled animation would restart it from zero.
+      // cancelled animation would restart it from zero. Accepted ambiguity (for
+      // these and the videos below): if host code ALSO paused one of these
+      // while frozen, that's indistinguishable from our pause and it resumes.
       if (anim.playState === 'paused') {
         try {
           anim.play()
