@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { loadPrefs, savePrefs, type MusePrefs } from './prefs'
 import type { Flag, HistoryEntry } from './types'
 
 // In-memory only. State resets on full page refresh, or on HMR of THIS file.
@@ -33,6 +34,10 @@ export type MuseState = {
   // keyboard path works.
   eUndoCount: number
   eRedoCount: number
+  // UI preferences (dock corner, zen chrome-hiding) — localStorage-backed via
+  // prefs.ts, so they survive refresh; see that module for why this is the one
+  // deliberate exception to the in-memory-only rule.
+  prefs: MusePrefs
   // Open + resolved flags (shift-click / refusal annotations handed off via muse-mcp).
   // REACTIVE — the Flags panel, the toolbar count badge, and the on-element pins all
   // re-render on change (unlike the ephemeral undo stacks, whose effect is DOM mutation).
@@ -47,6 +52,7 @@ const initialState: MuseState = {
   share: { status: 'idle' },
   eUndoCount: 0,
   eRedoCount: 0,
+  prefs: loadPrefs(),
   flags: [],
 }
 
@@ -118,6 +124,12 @@ export const museStore = {
     ePast.push(e)
     syncEphemeralCounts()
     return true
+  },
+  /** Merge a UI-preferences patch, persist it, and notify. */
+  setPrefs(patch: Partial<MusePrefs>) {
+    const next = { ...state.prefs, ...patch }
+    savePrefs(next)
+    museStore.setState({ prefs: next })
   },
   /** Revert the whole ephemeral session: undo everything, then drop both stacks
    * (mirrors the file-history revert, which clears past AND future). */

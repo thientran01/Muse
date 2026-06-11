@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
 import { EPHEMERAL } from '../../config'
@@ -298,6 +298,15 @@ export function CanvasMode({
 }: {
   onExit: () => void
 }) {
+  // Reactive zen preference: hides the teaching banner (the editing tools stay).
+  // A NARROW selector, deliberately not useMuseStore(): subscribing this ~1300-line
+  // component to the whole store would re-render it on every flag/share/history
+  // change — including mid-drag, the worst moment for spurious work.
+  const zen = useSyncExternalStore(
+    museStore.subscribe,
+    () => museStore.getState().prefs.zen,
+    () => museStore.getState().prefs.zen,
+  )
   // True while a reorder drag is in flight. Declared before useCanvasMode so it can
   // SUSPEND Canvas's hover + selection during the drag — otherwise moving the cursor
   // over another element mid-drag re-hovers/re-selects it, which remounts the overlay
@@ -1279,23 +1288,27 @@ export function CanvasMode({
       )}
 
       {/* Active-selection banner — teaches the direct-manipulation gestures. Drops in
-          from the top edge when Canvas opens (matches where it arrives from). */}
-      <div className="absolute left-1/2 top-4 -translate-x-1/2">
-        <div className="pointer-events-auto flex animate-muse-drop items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
-          <span>
-            {editing
-              ? 'Editing text · Enter to save · Esc to cancel'
-              : selected
-                ? reorderable?.reorderable
-                  ? 'Drag to reorder · double-click to edit · Esc to deselect'
-                  : 'Double-click to edit · Esc to deselect'
-                : <>Click to edit · <BannerKbd>⇧</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
-          </span>
-          <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
-            Done
-          </button>
+          from the top edge when Canvas opens (matches where it arrives from). Hidden
+          in zen (the chrome-free preference) — the gestures still work; the
+          Shortcuts list lives in Settings when you need a reminder. */}
+      {!zen && (
+        <div className="absolute left-1/2 top-4 -translate-x-1/2">
+          <div className="pointer-events-auto flex animate-muse-drop items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+            <span>
+              {editing
+                ? 'Editing text · Enter to save · Esc to cancel'
+                : selected
+                  ? reorderable?.reorderable
+                    ? 'Drag to reorder · double-click to edit · Esc to deselect'
+                    : 'Double-click to edit · Esc to deselect'
+                  : <>Click to edit · <BannerKbd>⇧</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
+            </span>
+            <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
+              Done
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Flag, Palette, PaperPlaneTilt, Pause, Play, Question, X } from '@phosphor-icons/react'
+import { Flag, GearSix, Palette, PaperPlaneTilt, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
 import { usePresence } from '../hooks/usePresence'
@@ -10,7 +10,8 @@ import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
 import { FlagsPanel } from './FlagsPanel'
 import { ChangesPanel } from './ChangesPanel'
-import { ShortcutsPanel } from './ShortcutsPanel'
+import { SettingsPanel } from './SettingsPanel'
+import type { DockCorner } from '../prefs'
 
 // Muse's idle dock — ONE persistent pill that morphs between the FAB and the
 // toolbar. Collapsed it's the FAB (manta + "Muse"); expanded it's the toolbar
@@ -20,13 +21,37 @@ import { ShortcutsPanel } from './ShortcutsPanel'
 // element scale-popping in over another. The dock is pure utility; the design
 // tokens open as a popover above it (the bar stays put).
 
-type Pop = 'none' | 'tokens' | 'flags' | 'changes' | 'help'
+type Pop = 'none' | 'tokens' | 'flags' | 'changes' | 'settings'
 
 // The Changes/Share surface needs the real backend (session edits must be on disk
 // to become a branch) — in the in-browser demo modes the button is hidden entirely.
 const SHARE_UI = !EPHEMERAL && !MOCK
 
-const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes', help: 'Shortcuts' } as const
+const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes', settings: 'Settings' } as const
+
+// Dock placement per corner: position + which edge children align to + column
+// direction (top corners flip the column so the popover/undo bar open DOWNWARD
+// from the pill instead of off-screen).
+const DOCK_POS: Record<DockCorner, string> = {
+  br: 'bottom-6 right-6 items-end flex-col',
+  bl: 'bottom-6 left-6 items-start flex-col',
+  tr: 'top-6 right-6 items-end flex-col-reverse',
+  tl: 'top-6 left-6 items-start flex-col-reverse',
+}
+// The popover scales from the pill-facing corner, so it grows out of the bar.
+const POP_ORIGIN: Record<DockCorner, string> = {
+  br: 'bottom right',
+  bl: 'bottom left',
+  tr: 'top right',
+  tl: 'top left',
+}
+// The zen reveal hotspot hugs the dock's corner.
+const HOTSPOT_POS: Record<DockCorner, string> = {
+  br: 'bottom-0 right-0',
+  bl: 'bottom-0 left-0',
+  tr: 'top-0 right-0',
+  tl: 'top-0 left-0',
+}
 
 function IconBtn({ label, onClick, children, active, expanded, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; expanded?: boolean; badge?: number }) {
   return (
@@ -86,9 +111,22 @@ export function MuseToolbar({
   useEffect(() => { if (pop !== 'none') setShownPop(pop) }, [pop])
   // Open flags drive the count badge on the Flags button; net-changed files drive
   // the Changes badge (both reactive — undo shrinks the changes count live).
-  const { flags, past } = useMuseStore()
+  const { flags, past, prefs } = useMuseStore()
   const openFlagCount = flags.filter((f) => f.status === 'open').length
   const changedFileCount = SHARE_UI ? computeSessionChanges(past).filter((c) => c.changed).length : 0
+  // Zen: the whole dock stays hidden until the corner hotspot is hovered; it
+  // re-hides when the pointer leaves (unless a popover is open — closing the
+  // settings you just opened out from under your cursor would be hostile).
+  const [revealed, setRevealed] = useState(false)
+  const zenHidden = prefs.zen && !revealed
+  useEffect(() => {
+    // Flipping zen ON happens inside the Settings popover — count that as
+    // revealed, or the dock (and the popover the cursor is in) would vanish on
+    // the same render. The dock then hides on the NEXT pointer-leave, after the
+    // popover is closed. Turning zen off clears the stale reveal.
+    if (prefs.zen && pop !== 'none') setRevealed(true)
+    if (!prefs.zen) setRevealed(false)
+  }, [prefs.zen, pop])
   // Any time the pill collapses back to the FAB, dismiss an open popover.
   useEffect(() => { if (!expanded) setPop('none') }, [expanded])
   // Keep the popover mounted through its exit so it scales/fades back into the bar.
@@ -100,7 +138,25 @@ export function MuseToolbar({
   const popRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div data-muse-dock className="pointer-events-auto absolute bottom-6 right-6 z-[999999] flex flex-col items-end gap-3">
+    <>
+      {/* The zen reveal hotspot: a small invisible target hugging the dock's
+          corner, present only while the dock is hidden. */}
+      {zenHidden && (
+        <div
+          aria-hidden
+          className={`pointer-events-auto absolute z-[999999] h-12 w-12 ${HOTSPOT_POS[prefs.corner]}`}
+          onPointerEnter={() => setRevealed(true)}
+        />
+      )}
+    <div
+      data-muse-dock
+      className={`pointer-events-auto absolute z-[999999] flex gap-3 ${DOCK_POS[prefs.corner]} ${
+        zenHidden ? 'pointer-events-none opacity-0' : 'opacity-100'
+      } transition-opacity duration-200`}
+      onPointerLeave={() => {
+        if (prefs.zen && pop === 'none') setRevealed(false)
+      }}
+    >
       {/* Undo/redo floats above the dock whenever there's history — in both the
           FAB and toolbar forms (Canvas commits land on this same stack). */}
       {hasHistory && (
@@ -124,7 +180,7 @@ export function MuseToolbar({
           data-muse-panel
           data-state={popState}
           className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur"
-          style={{ '--muse-pop-origin': 'bottom right' } as React.CSSProperties}
+          style={{ '--muse-pop-origin': POP_ORIGIN[prefs.corner] } as React.CSSProperties}
           onKeyDown={(e) => {
             // An open color picker's own document-capture Esc handler runs first
             // and stops propagation (closing only the picker) — this fires only
@@ -147,7 +203,7 @@ export function MuseToolbar({
             </button>
           </header>
           <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
-            {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : shownPop === 'help' ? <ShortcutsPanel /> : <TokenList portalContainer={portalContainer} />}
+            {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : shownPop === 'settings' ? <SettingsPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>
       )}
@@ -215,8 +271,8 @@ export function MuseToolbar({
           >
             {animationsPaused ? <Play size={17} weight="fill" /> : <Pause size={17} />}
           </IconBtn>
-          <IconBtn label="Shortcuts" onClick={() => setPop((p) => (p === 'help' ? 'none' : 'help'))} expanded={pop === 'help'}>
-            <Question size={17} />
+          <IconBtn label="Settings" onClick={() => setPop((p) => (p === 'settings' ? 'none' : 'settings'))} expanded={pop === 'settings'}>
+            <GearSix size={17} />
           </IconBtn>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
           <IconBtn label="Close Muse" onClick={onClose}>
@@ -226,5 +282,6 @@ export function MuseToolbar({
         </div>
       </div>
     </div>
+    </>
   )
 }
