@@ -161,6 +161,10 @@ describe('shadow presets', () => {
     })
     expect(parseShadowLayer('none')).toBeNull()
     expect(parseShadowLayer('rgba(0, 0, 0, 0.3) 0px 2px 4px 0px inset')).toBeNull() // inset is not ours
+    // A 3-channel rgb() must NOT donate its last channel as the alpha.
+    expect(parseShadowLayer('rgb(255, 0, 0) 0px 2px 4px 0px')?.alpha).toBe(1)
+    // The modern slash form carries its alpha.
+    expect(parseShadowLayer('0 2px 4px rgb(0 0 0 / 0.25)')?.alpha).toBe(0.25)
   })
 
   it('matches a preset through the computed-style serialization (color first, px units)', () => {

@@ -389,8 +389,10 @@ export function parseShadowLayer(value: string): { x: number; y: number; blur: n
   const layers = value.split(/,(?![^(]*\))/)
   for (const layer of layers) {
     if (/\binset\b/.test(layer)) continue
-    // Alpha from the layer's color: rgba(...,a) / rgb(r g b / a); default 1.
-    const alphaMatch = layer.match(/(?:rgba?|hsla?)\([^)]*[,/]\s*([\d.]+)\s*\)/)
+    // Alpha from the layer's color: the comma form only on the 4-arg fns
+    // (rgba/hsla — a bare `rgb(r, g, b)` would otherwise donate its last
+    // CHANNEL as the alpha), or the slash form on any fn; default 1.
+    const alphaMatch = layer.match(/(?:rgba|hsla)\([^)]*,\s*([\d.]+)\s*\)/) ?? layer.match(/\/\s*([\d.]+)\s*\)/)
     const alpha = alphaMatch ? parseFloat(alphaMatch[1]) : 1
     const noColors = layer.replace(/(rgba?|hsla?|hwb|oklch|oklab|lch|lab|color)\([^)]*\)|#[0-9a-fA-F]{3,8}/g, ' ')
     const nums = (noColors.match(/-?\d*\.?\d+(?:px)?/g) ?? []).map(parseFloat)

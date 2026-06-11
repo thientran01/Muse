@@ -559,8 +559,12 @@ function ShadowCustomFields({ parts, onPreview, onCommit }: { parts: NonNullable
   const p = parts ?? { x: 0, y: 2, blur: 8, spread: 0, alpha: 0.1 }
   const compose = (patch: Partial<typeof p>) => {
     const n = { ...p, ...patch }
+    const alpha = Math.min(1, Math.max(0, n.alpha))
+    // Fully transparent IS no shadow — write the clean `none` instead of a
+    // verbose invisible arbitrary value.
+    if (alpha === 0) return 'none'
     // X is preserved when the element already has one; the scrubs edit the rest.
-    return `${n.x}px ${n.y}px ${Math.max(0, n.blur)}px ${n.spread}px rgba(0,0,0,${Math.min(1, Math.max(0, n.alpha))})`
+    return `${n.x}px ${n.y}px ${Math.max(0, n.blur)}px ${n.spread}px rgba(0,0,0,${alpha})`
   }
   const emit = (fn: (m: StyleMutation[]) => void, patch: Partial<typeof p>) =>
     fn([{ property: 'boxShadow', value: compose(patch) }])
