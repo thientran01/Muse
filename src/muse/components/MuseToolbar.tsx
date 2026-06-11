@@ -136,7 +136,9 @@ export function MuseToolbar({
   // THE PEEK — the recovery affordance zen shipped without (the invisible corner
   // hotspot alone left a real user unable to find Muse at all): any open/close of
   // Muse (R, the FAB) shows the dock, which tucks itself away again after a
-  // moment unless the pointer is on it or a popover is open.
+  // moment unless the pointer is on it or a popover is open. Firing on MOUNT is
+  // deliberate too: a returning zen user gets a brief "Muse lives here" cue on
+  // page load instead of a silently invisible tool.
   useEffect(() => {
     if (!prefs.zen) return
     setRevealed(true)
