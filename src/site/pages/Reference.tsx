@@ -18,7 +18,7 @@ export function Reference() {
         <div className="flex items-center gap-3"><Kbd>Double-click</Kbd> edit text in place</div>
         <div className="flex items-center gap-3"><Kbd>Drag</Kbd> an element among its siblings to reorder it — scroll while dragging to reach a spot off-screen</div>
         <div className="flex items-center gap-3"><Kbd>⌘</Kbd>/<Kbd>Ctrl</Kbd> + <Kbd>↑</Kbd><Kbd>↓</Kbd> reorder the selected element by keyboard</div>
-        <div className="flex items-center gap-3"><Kbd>⌘</Kbd> <Kbd>Z</Kbd> undo, <Kbd>⌘</Kbd> <Kbd>⇧</Kbd> <Kbd>Z</Kbd> redo</div>
+        <div className="flex items-center gap-3"><Kbd>⌘</Kbd> <Kbd>Z</Kbd> undo, <Kbd>⌘</Kbd> <Kbd>Shift</Kbd> <Kbd>Z</Kbd> redo</div>
         <div className="flex items-center gap-3"><Kbd>Esc</Kbd> deselect, then close Muse</div>
       </div>
 

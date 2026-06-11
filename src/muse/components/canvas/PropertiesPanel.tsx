@@ -729,7 +729,7 @@ function Section({ label, open, dot, onToggle, children }: { label: string; open
           <SectionLabel>{label}</SectionLabel>
           {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
         </span>
-        <span className={`text-[10px] leading-none text-fg-faint transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+        <span className={`text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
       </button>
       {open && children}
     </div>

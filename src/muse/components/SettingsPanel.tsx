@@ -65,8 +65,11 @@ export function SettingsPanel() {
             {/* The knob slides via transform, not `left` — compositor-only, and
                 the one property the motion system animates for movement. */}
             <span
+              // translate-x-[16px], not translate-x-4: the knob's endpoints are
+              // pixel-set (left-[2px] → 18px) and rem resolves against the HOST
+              // page's root font-size — a 62.5%-base host would strand the knob.
               className={`absolute left-[2px] top-[2px] h-3.5 w-3.5 rounded-full bg-surface shadow-sm transition-transform motion-reduce:transition-none ${
-                prefs.zen ? 'translate-x-4' : 'translate-x-0'
+                prefs.zen ? 'translate-x-[16px]' : 'translate-x-0'
               }`}
             />
           </button>
