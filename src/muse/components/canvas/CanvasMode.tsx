@@ -468,6 +468,9 @@ export function CanvasMode({
     museStore.setPrefs({ hintUses: { ...cur.hintUses, [k]: cur.hintUses[k] + 1 } })
   }
   useEffect(() => {
+    // Counts programmatic re-selects too (breadcrumb hops, post-reorder
+    // re-selection) — accepted: each IS a successful selection, it only
+    // retires the teaching text a little sooner for power users.
     if (selected) bumpHint('select')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected])
@@ -1727,17 +1730,23 @@ export function CanvasMode({
                 <>Click to edit · <BannerKbd>Shift</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>
               )
               if (vw < 480) return null
-              if (!retired || hintPeek) return <span>{message}</span>
+              if (!retired) return <span>{message}</span>
+              // The "?" stays MOUNTED while peeked (the text appears beside it):
+              // unmounting a just-activated button strands keyboard focus.
               return (
-                <button
-                  onClick={() => setHintPeek(true)}
-                  aria-label="Show the gesture hints"
-                  title="Show the gesture hints"
-                  className="rounded-full px-1.5 py-0.5 text-fg-faint transition hover:bg-line/10 hover:text-fg"
-                  onMouseEnter={() => setHintPeek(true)}
-                >
-                  ?
-                </button>
+                <>
+                  {hintPeek && <span>{message}</span>}
+                  <button
+                    onClick={() => setHintPeek((v) => !v)}
+                    onFocus={() => setHintPeek(true)}
+                    onMouseEnter={() => setHintPeek(true)}
+                    aria-label="Show the gesture hints"
+                    title="Show the gesture hints"
+                    className="rounded-full px-1.5 py-0.5 text-fg-faint transition hover:bg-line/10 hover:text-fg"
+                  >
+                    ?
+                  </button>
+                </>
               )
             })()}
             <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
