@@ -86,14 +86,13 @@ function readValues(node: CanvasNode): CanvasValues {
       background: effectiveBgHex(node),
       border: rgbToHex(cs.borderColor),
       // The element's OWN background (the swatch's `background` is the
-      // ancestor-composited backdrop) — null when not FULLY opaque: a
-      // transparent bg must never copy as the backdrop color, and rgbToHex
-      // drops alpha, so bg-white/10 would paste as solid white. Alpha-aware
-      // copy unlocks when the picker grows an alpha channel.
+      // ancestor-composited backdrop) — null only when FULLY transparent (a
+      // see-through element must never copy its backdrop as paint); a
+      // semi-transparent bg now round-trips as #rrggbbaa.
       ownBackground: (() => {
         const own = cs.backgroundColor
-        const alpha = /rgba\([^)]*,\s*([\d.]+)\s*\)$/.exec(own)?.[1]
-        return own === 'transparent' || (alpha !== undefined && parseFloat(alpha) < 1) ? null : rgbToHex(own)
+        const p = parseRgba(own)
+        return own === 'transparent' || !p || p.a === 0 ? null : rgbToHex(own)
       })(),
     },
     // A var-themed channel reads its color from a CSS variable in the source class
@@ -204,11 +203,13 @@ function parseRgba(c: string): { r: number; g: number; b: number; a: number } | 
 
 const hex2 = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0')
 
-// rgb()/rgba() → #rrggbb for the color picker's current value (alpha dropped).
+// rgb()/rgba() → #rrggbb, or #rrggbbaa when semi-transparent — the picker has an
+// alpha channel and the engine preserves the byte, so the read path keeps it.
 function rgbToHex(c: string): string {
   const p = parseRgba(c)
   if (!p) return '#000000'
-  return '#' + hex2(p.r) + hex2(p.g) + hex2(p.b)
+  const base = '#' + hex2(p.r) + hex2(p.g) + hex2(p.b)
+  return p.a >= 1 ? base : base + hex2(p.a * 255)
 }
 
 // The EFFECTIVE background a designer actually sees: the element's own background

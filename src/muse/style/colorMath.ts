@@ -12,10 +12,11 @@ export type Hsv = { h: number; s: number; v: number } // h 0–360, s/v 0–100
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 const hex2 = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0')
 
-// "#rgb" / "#rrggbb" / "#rrggbbaa" → {r,g,b} (alpha dropped), or null if unparseable.
+// "#rgb" / "#rgba" / "#rrggbb" / "#rrggbbaa" → {r,g,b} (alpha dropped — read it
+// separately via alphaFromHex), or null if unparseable.
 export function hexToRgb(hex: string): Rgb | null {
   let h = hex.trim().replace(/^#/, '').toLowerCase()
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+  if (h.length === 3 || h.length === 4) h = h.split('').map((c) => c + c).join('')
   if (h.length === 8) h = h.slice(0, 6)
   if (!/^[0-9a-f]{6}$/.test(h)) return null
   return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) }
@@ -61,10 +62,27 @@ export const hexToHsv = (hex: string): Hsv | null => {
 }
 export const hsvToHex = (hsv: Hsv): string => rgbToHex(hsvToRgb(hsv))
 
-// Normalize loose user hex input ("fff", "#ABC", "abcdef") → "#rrggbb", or null.
+// The alpha byte of a 4/8-digit hex as 0..1, or 1 when absent/unparseable.
+export function alphaFromHex(hex: string): number {
+  const h = hex.trim().replace(/^#/, '').toLowerCase()
+  if (h.length === 4 && /^[0-9a-f]{4}$/.test(h)) return parseInt(h[3] + h[3], 16) / 255
+  if (h.length === 8 && /^[0-9a-f]{8}$/.test(h)) return parseInt(h.slice(6, 8), 16) / 255
+  return 1
+}
+
+// Compose a 6-digit hex + 0..1 alpha into the canonical wire format: #rrggbb at
+// full opacity (no churn on existing colors), #rrggbbaa otherwise.
+export function composeHexAlpha(hex: string, alpha: number): string {
+  const a = clamp(alpha, 0, 1)
+  return a >= 1 ? hex : `${hex}${hex2(a * 255)}`
+}
+
+// Normalize loose user hex input ("fff", "#ABC", "abcdef", "#rrggbbaa") →
+// "#rrggbb" / "#rrggbbaa" — alpha PRESERVED (the engine keeps it now), or null.
 export function normalizeHexInput(raw: string): string | null {
   const rgb = hexToRgb(raw)
-  return rgb ? rgbToHex(rgb) : null
+  if (!rgb) return null
+  return composeHexAlpha(rgbToHex(rgb), alphaFromHex(raw))
 }
 
 // WCAG relative luminance (0–1) of an sRGB color, with the standard gamma decode.

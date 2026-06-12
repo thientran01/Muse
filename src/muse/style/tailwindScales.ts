@@ -260,15 +260,26 @@ const COLOR_NAMES =
   'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
 const COLOR_KEYWORDS = 'white|black|transparent|current|inherit'
 
-// Normalize a color value to #rrggbb, or null if we can't (so the caller skips a
-// class write). Accepts #rgb / #rrggbb / rgb()/rgba().
+// Normalize a color value to #rrggbb (full opacity) or #rrggbbaa, or null if we
+// can't (so the caller skips a class write). Accepts #rgb/#rgba/#rrggbb/#rrggbbaa
+// and rgb()/rgba() — alpha is PRESERVED (Tailwind arbitrary values take 8-digit
+// hex; the picker emits it).
 function normalizeHex(value: string): string | null {
   const v = value.trim().toLowerCase()
-  if (/^#[0-9a-f]{8}$/.test(v)) return v.slice(0, 7) // drop the alpha byte
+  if (/^#[0-9a-f]{8}$/.test(v)) return v.endsWith('ff') ? v.slice(0, 7) : v
   if (/^#[0-9a-f]{6}$/.test(v)) return v
+  if (/^#[0-9a-f]{4}$/.test(v)) {
+    const e = '#' + v.slice(1).split('').map((c) => c + c).join('')
+    return e.endsWith('ff') ? e.slice(0, 7) : e
+  }
   if (/^#[0-9a-f]{3}$/.test(v)) return '#' + v.slice(1).split('').map((c) => c + c).join('')
-  const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-  if (m) return '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
+  const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/)
+  if (m) {
+    const base = '#' + [m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')
+    const a = m[4] === undefined ? 1 : Number(m[4])
+    if (!(a >= 0 && a <= 1)) return null
+    return a >= 1 ? base : base + Math.round(a * 255).toString(16).padStart(2, '0')
+  }
   return null
 }
 
