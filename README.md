@@ -17,7 +17,7 @@ It's built for the loop a design engineer actually works in: you're looking at t
 **Canvas — direct edits, no model call:**
 
 1. **Open Muse** from the button in the corner (or press `R`), then click any element to select it.
-2. **Shape it directly.** Drag the padding / margin / gap bands on the element, resize it from the corners, scrub size and weight, pick colors, double-click to rewrite text, or drag the element among its siblings to reorder. Each is a deterministic AST rewrite of the one element you touched.
+2. **Shape it directly.** Drag the padding / margin / gap bands on the element, resize it from the corners, scrub size and weight, pick colors (alpha included), double-click to rewrite text, or drag the element among its siblings to reorder. Pin `:hov` to shape hover states, target a breakpoint so edits write `md:` classes, restructure layout (block ⇄ flex ⇄ grid), add or remove Tailwind classes verbatim, copy styles between elements, and Alt-hover to measure. Each is a deterministic AST rewrite of the one element you touched.
 3. **It's already written.** A Canvas edit is applied to the source the moment you make it — no key, no wait — and lands on the same undo stack as everything else.
 
 **Share changes — session → pull request, no git knowledge:**

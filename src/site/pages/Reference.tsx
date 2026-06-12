@@ -24,6 +24,25 @@ export function Reference() {
         <div className="flex items-center gap-3"><Kbd>Esc</Kbd> deselect, then close Muse</div>
       </div>
 
+      <H2 id="states">States, breakpoints, and classes</H2>
+      <P>
+        The panel's <strong>Classes</strong> section shows the element's full className as chips —
+        variant-prefixed tokens (<Code>hover:</Code>, <Code>md:</Code>, <Code>dark:</Code>) carry a
+        tinted prefix so state and breakpoint styling is visible at a glance. The{' '}
+        <Code>:hov</Code> pin on its header forces the element's hover styles on, so they render,
+        read, and scrub like any other value. <strong>+ class</strong> adds tokens verbatim (space
+        separates several, Enter applies); a chip's <Code>×</Code> removes it. Tokens that could
+        break the source string are refused before they're written.
+      </P>
+      <P>
+        The banner's breakpoint pills pick the target your edits write: with <Code>md</Code> active,
+        a scrub produces <Code>md:p-6</Code> instead of editing the base value. The dot marks the
+        window's current breakpoint (Tailwind's default screens — a custom{' '}
+        <Code>theme.screens</Code> only shifts the dot, never what an edit writes), and an active
+        target wider than the window turns amber: the edit still writes, it just can't paint at this
+        width. Editing the base while a variant governs the value warns instead of failing silently.
+      </P>
+
       <H2 id="config">Configuration</H2>
       <P>
         There is none. Canvas needs no API key and no environment variables — every edit is a
