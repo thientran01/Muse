@@ -24,7 +24,7 @@ export type CanvasValues = {
   display: string // computed display keyword (block/flex/grid/…; exotic values match no chip)
   flex: { direction: string; wrap: string } | null // set when display is a flex container
   size: { width: number; height: number }
-  type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
+  type: { fontFamily: string; fontFamilyStack: string; fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
   rendersText: boolean // the element directly shows text — gates the Type controls
   isSvg: boolean // an <svg> root — Size + Color only (see ColorFields / the section gating)
   color: { text: string; background: string; border: string; ownBackground: string | null } // current values as #hex
@@ -354,6 +354,17 @@ const TEXT_ALIGN_OPTIONS = [
 export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
   return (
     <div className="space-y-2">
+      {/* Family is a READOUT, not a control (changing it safely needs project-
+          font detection — later phase): the first family, full stack on title. */}
+      {values.type.fontFamily && (
+        <div
+          title={values.type.fontFamilyStack}
+          className="flex items-center justify-between rounded-md border border-line/15 bg-surface px-1.5 py-1 text-[11px]"
+        >
+          <span className="shrink-0 select-none text-fg-faint">Font</span>
+          <span className="truncate pl-2 font-mono text-fg-muted">{values.type.fontFamily.slice(0, 24)}</span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
         <ScrubField label="Size" value={values.type.fontSize} min={1}
           onPreview={(v) => onPreview([{ property: 'fontSize', value: `${v}px` }])}
