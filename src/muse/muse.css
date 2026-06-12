@@ -56,6 +56,11 @@
   --muse-diff-add-text: 155 215 175;  /* lighter forest — readable on warm dark */
   --muse-diff-del-tint: 185 75 85;    /* clean cherry red — not pink, not terracotta */
   --muse-diff-del-text: 230 165 170;  /* lighter cherry — readable on warm dark */
+  /* Note tokens — the engine's non-fatal warning strip (amber to the error's
+   * rose). Warm muted ambers, theme-flipped like the diff tokens: raw Tailwind
+   * amber-400 washes out on the warm-white surface. */
+  --muse-note-tint: 217 160 60;       /* warm amber tint */
+  --muse-note-text: 235 190 110;      /* soft amber — readable on warm dark */
 }
 
 [data-muse-ui][data-theme='light'] {
@@ -74,6 +79,8 @@
   --muse-diff-add-text: 18 60 30;     /* very deep forest — readable on warm white */
   --muse-diff-del-tint: 175 40 55;    /* deep clean cherry — distinct from burgundy accent */
   --muse-diff-del-text: 95 18 30;     /* very deep cherry — readable on warm white */
+  --muse-note-tint: 180 120 25;       /* deep warm amber */
+  --muse-note-text: 122 80 12;        /* deep amber-brown — readable on warm white */
 }
 
 /* Clean, themed scrollbars for every Muse scroll area. Thin and quiet — an

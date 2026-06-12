@@ -328,6 +328,22 @@ export function CanvasMode({
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
+  // Non-fatal engine warnings from a commit that DID write (a refused sub-edit, a
+  // "variant still wins" note). Unlike `error` they ride alongside a successful
+  // edit, so they survive the post-HMR revision bump and expire on their own.
+  const [notice, setNotice] = useState<string[] | null>(null)
+  const noticeTimerRef = useRef<number | null>(null)
+  const showNotice = (w: string[]) => {
+    setNotice(w)
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 5000)
+  }
+  useEffect(() => {
+    setNotice(null) // a new selection starts clean; the strip never outlives its element
+    return () => {
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+    }
+  }, [selected])
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
   // it only appears when a drop will actually commit. Probed per selection, container-
   // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
@@ -843,6 +859,10 @@ export function CanvasMode({
         setError(warnings[0] ?? "Couldn't apply that change.")
         return
       }
+      // The edit landed but the engine had something to say (a skipped sub-edit, a
+      // "variant still wins at its state" note) — surface it by the panel instead
+      // of letting it die in the console.
+      if (warnings.length) showNotice(warnings)
       await museWrite(edits)
       // Build the undo entry only if every file's pre-edit content is known —
       // an empty `before` would zero the file on undo. (Keys always align today;
@@ -1270,6 +1290,19 @@ export function CanvasMode({
                 {error && (
                   <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
                     {error}
+                  </p>
+                )}
+                {/* Engine notices (edit landed, with a caveat) — amber to the error's
+                    rose, same strip idiom as TokenList's status row. Latest batch
+                    only; the full list rides the title. Errors take the slot. */}
+                {!error && notice && notice.length > 0 && (
+                  <p
+                    role="status"
+                    title={notice.join('\n')}
+                    className="mt-1.5 w-[208px] animate-muse-step rounded-lg bg-note/10 px-2.5 py-1.5 text-[11px] text-note-text ring-1 ring-note/25 motion-reduce:animate-none"
+                  >
+                    {notice[0]}
+                    {notice.length > 1 && <span className="text-note-text/70"> · +{notice.length - 1} more</span>}
                   </p>
                 )}
               </div>

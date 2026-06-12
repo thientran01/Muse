@@ -68,6 +68,10 @@ export default {
         'diff-add-text': 'rgb(var(--muse-diff-add-text) / <alpha-value>)',
         'diff-del': 'rgb(var(--muse-diff-del-tint) / <alpha-value>)',
         'diff-del-text': 'rgb(var(--muse-diff-del-text) / <alpha-value>)',
+        // Note colors — the panel's non-fatal warning strip (amber to the
+        // error's rose), theme-flipped like the diff tokens.
+        note: 'rgb(var(--muse-note-tint) / <alpha-value>)',
+        'note-text': 'rgb(var(--muse-note-text) / <alpha-value>)',
       },
       // A strong ease-out (Emil: the built-in curves are too weak) for the docs
       // site's interactions — press feedback, the feedback panel, page entrances.
