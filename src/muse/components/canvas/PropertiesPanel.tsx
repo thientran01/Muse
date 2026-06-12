@@ -776,7 +776,8 @@ function initialOpen(values: CanvasValues): Set<SectionKey> {
 // renders as an accent-tinted prefix segment — that IS the variant badge: which
 // tokens live under a state/breakpoint is visible at a glance, no separate badge
 // row. splitVariants is the engine's own parser, so the chip can never disagree
-// with what an edit would match.
+// with what an edit would match. (Its `variants` carries no trailing colon —
+// the render appends it, so a compound chain reads `dark:hover:` verbatim.)
 function ClassChip({ token }: { token: string }) {
   const { variants, base } = splitVariants(token)
   return (
@@ -825,7 +826,7 @@ function ClassChips({ classNames }: { classNames: string }) {
           </button>
         )}
         {expanded && tokens.length > COLLAPSE_AT && (
-          <button onClick={() => setExpanded(false)} className={chipBtn}>
+          <button onClick={() => setExpanded(false)} className={chipBtn} aria-label="Show fewer classes">
             less
           </button>
         )}
@@ -972,8 +973,12 @@ export function PropertiesPanel({
       )}
 
       {divider}
+      {/* Classes is the deliberate exception to the 6-section cap (#120's density
+          design): it's REFERENCE, not controls — collapsed by default, no fields,
+          and unconditional because "no classes" is itself an answer about the
+          element. The defensive ?.node?. survives a future node-optional type. */}
       <Section label="Classes" open={open.has('classes')} onToggle={() => toggle('classes')}>
-        <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node.getAttribute('class') ?? ''} />
+        <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node?.getAttribute('class') ?? ''} />
       </Section>
     </PanelShell>
   )
