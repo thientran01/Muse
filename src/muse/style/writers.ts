@@ -24,17 +24,19 @@
 //  preference. Today the only registered host writer is Tailwind.
 // ============================================================
 import type { PropertySpec } from './properties'
-import { buildToken, familyMatcher } from './tailwindScales'
+import { buildToken, familyMatcher, splitVariants } from './tailwindScales'
 
 export interface StyleWriter {
   readonly id: string
   // Author a class token for this property+value, or null if it can't be safely
   // expressed as a class (the engine then routes the mutation to inline style).
   build(spec: PropertySpec, value: string): string | null
-  // A predicate that recognizes this property's existing class token (so the
-  // engine replaces the family's utility in place instead of appending a dup).
+  // A predicate that recognizes this property's existing class token UNDER the
+  // given variant chain ('' = base, the default) — `hover:p-4` belongs to
+  // padding's family only for variant 'hover'; a base edit must never claim it
+  // (and must never append a bare token that silently loses to it).
   // Returns a fresh closure per spec, matching the engine's once-per-mutation use.
-  family(spec: PropertySpec): (token: string) => boolean
+  family(spec: PropertySpec, variant?: string): (token: string) => boolean
   // True when a token paints its value through a CSS variable — the engine skips
   // such a token (with a warning) rather than clobber a theme binding with a literal.
   themed(token: string): boolean
@@ -47,7 +49,16 @@ export interface StyleWriter {
 export const tailwindWriter: StyleWriter = {
   id: 'tailwind',
   build: (spec, value) => buildToken(spec, value),
-  family: (spec) => familyMatcher(spec),
+  // The underlying matchers are unchanged (they see only the base utility);
+  // variant equality is the new outer layer, so bare-token behavior is identical
+  // to the pre-variant engine by construction.
+  family: (spec, variant = '') => {
+    const matchBase = familyMatcher(spec)
+    return (token) => {
+      const { variants, base } = splitVariants(token)
+      return variants === variant && matchBase(base)
+    }
+  },
   themed: (token) => token.includes('var('),
 }
 

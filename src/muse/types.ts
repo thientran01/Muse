@@ -28,8 +28,13 @@ export type CanvasElement = {
   node: HTMLElement
 }
 
-// One deterministic style change, in the shared property vocabulary.
-export type StyleMutation = { property: StyleProperty; value: string }
+// One deterministic style change, in the shared property vocabulary. `variant`
+// targets a Tailwind variant chain, colon-joined without the trailing colon
+// ('hover', 'md', 'dark:hover'); absent/'' = the base value. Variant edits are
+// Tailwind-class-only — the engine refuses them on the inline / CSS-var /
+// CSS-module / styled routes with a warning instead of writing a value that
+// would apply at every state.
+export type StyleMutation = { property: StyleProperty; value: string; variant?: string }
 
 // How a value is written: prefer Tailwind utilities, or always inline style.
 // Mirrors StyleStrategy in server/styleEdit.ts.

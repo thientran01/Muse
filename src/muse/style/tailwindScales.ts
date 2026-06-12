@@ -82,6 +82,40 @@ export function spacingSuffix(value: string): string | null {
 // must go through inline style instead (the caller falls back on a null return).
 const SAFE_ARBITRARY = /^[\w.%#,()+\-*/ ]+$/
 
+// ============================================================
+//  VARIANT PREFIXES — hover:p-4 / md:p-6 / dark:hover:text-white
+// ------------------------------------------------------------
+//  A Tailwind token is (variant chain) + (base utility), colon-joined. The chain
+//  splits ONLY at bracket depth 0, so `text-[length:17px]` has no variants and
+//  `lg:text-[color:var(--x)]` splits as lg + text-[color:var(--x)]. This is the
+//  single shared token parser: the family matchers (via the StyleWriter seam),
+//  the panel's class chips, and the client's variant resolvers all read tokens
+//  through it.
+// ============================================================
+export function splitVariants(token: string): { variants: string; base: string } {
+  let depth = 0
+  let lastColon = -1
+  for (let i = 0; i < token.length; i++) {
+    const ch = token[i]
+    if (ch === '[') depth++
+    else if (ch === ']') depth = depth > 0 ? depth - 1 : 0
+    else if (ch === ':' && depth === 0) lastColon = i
+  }
+  return lastColon === -1
+    ? { variants: '', base: token }
+    : { variants: token.slice(0, lastColon), base: token.slice(lastColon + 1) }
+}
+
+// A variant chain Muse will WRITE ('hover', 'md', 'dark:hover'): simple ident
+// segments only. Arbitrary/bracket variants ([&>li]:) are recognized by
+// splitVariants but never authored — and a chain arriving over the wire is
+// embedded into a className verbatim, so it MUST pass this first (the server
+// re-validates; never trust the client).
+const VARIANT_SEGMENT = /^[a-z0-9_-]+$/i
+export function isVariantChain(chain: string): boolean {
+  return chain.length > 0 && chain.split(':').every((s) => VARIANT_SEGMENT.test(s))
+}
+
 // Build a spacing utility for a prefix (p, px, mt, gap-x, …) from a CSS value.
 // `auto` → `${prefix}-auto`; on-scale → named step; off-scale → arbitrary value
 // (spaces underscored, per Tailwind's arbitrary-value syntax). Returns null when
@@ -233,8 +267,11 @@ export function colorFamilyMatch(prefix: string, tok: string): boolean {
 
 // True when this token paints a color via a CSS variable (e.g. text-[color:var(--x)])
 // — the engine leaves these untouched (skip + warn) rather than hardcode a hex.
+// Variant-blind on purpose: dark:text-[color:var(--x)] is just as theme-bound as
+// the bare form, so the panel marks the channel read-only either way.
 export function isVarColorToken(prefix: string, tok: string): boolean {
-  return colorFamilyMatch(prefix, tok) && /var\(/.test(tok)
+  const { base } = splitVariants(tok)
+  return colorFamilyMatch(prefix, base) && /var\(/.test(base)
 }
 
 export { isLengthArbitrary, isColorArbitrary }
