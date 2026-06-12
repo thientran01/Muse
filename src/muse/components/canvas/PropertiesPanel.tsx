@@ -804,7 +804,9 @@ function ClassChip({ token, onRemove }: { token: string; onRemove?: () => void }
         <button
           onClick={onRemove}
           aria-label={`Remove ${token}`}
-          className="-mr-0.5 ml-0.5 shrink-0 rounded px-0.5 leading-none text-fg-faint opacity-0 transition hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 group-hover/chip:opacity-100"
+          // p-1 -m-1 grows the hit area without growing the glyph — × is
+          // destructive and the visual size alone is a misclick magnet.
+          className="-mr-1.5 ml-0.5 shrink-0 rounded p-1 leading-none text-fg-faint opacity-0 transition hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 group-hover/chip:opacity-100"
         >
           ×
         </button>
@@ -918,11 +920,18 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
                   setAdding(false)
                 }
               }}
-              onBlur={submit}
+              // Blur CANCELS (Enter is the only commit): a half-typed token like
+              // `p-` is structurally safe and would write verbatim — clicking
+              // away must never publish a partial thought. Also keeps a chip's ×
+              // click a single action (remove), not remove + surprise add.
+              onBlur={() => {
+                setDraft('')
+                setInvalid([])
+                setAdding(false)
+              }}
               placeholder="p-4 hover:bg-…"
-              aria-label="Add classes"
+              aria-label="Add classes — Enter to apply"
               aria-invalid={invalid.length > 0}
-              title={invalid.length > 0 ? `Not a safe class token: ${invalid.join(' ')}` : undefined}
               className={`w-28 rounded-md bg-transparent px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
                 invalid.length > 0 ? 'ring-rose-500/40' : 'ring-line/20 focus:ring-accent/50'
               }`}
@@ -933,6 +942,13 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
             </button>
           ))}
       </div>
+      {/* Visible, screen-reader-reachable validation text (FlagComposer's inline
+          idiom) — a rose ring alone names neither the tokens nor the why. */}
+      {invalid.length > 0 && (
+        <p role="status" className="font-mono text-[10px] text-rose-300">
+          Not a safe class token: {invalid.join(' ')}
+        </p>
+      )}
     </div>
   )
 }

@@ -1063,6 +1063,10 @@ export function CanvasMode({
       obs.observe(node, { attributes: true, attributeFilter: ['class'] })
       window.setTimeout(rebump, SETTLE_CAP_MS)
     } catch (e) {
+      // Same catch hygiene as commit(): a prior commit's notice must not
+      // resurface once this error clears.
+      setNotice(null)
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
       setError((e as Error).message)
     }
   }
