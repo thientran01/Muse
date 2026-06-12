@@ -2,8 +2,9 @@
 //  Color math — pure hex ↔ rgb ↔ hsv helpers for the custom picker.
 // ------------------------------------------------------------
 //  No dependency: the picker drives an HSV model (saturation/brightness square +
-//  hue slider), but the panel speaks #rrggbb (the engine drops alpha anyway), so
-//  these convert between the three. All pure, framework-free.
+//  hue slider + alpha), and the panel speaks #rrggbb / #rrggbbaa (the engine
+//  preserves the alpha byte), so these convert between the forms. All pure,
+//  framework-free.
 // ============================================================
 
 export type Rgb = { r: number; g: number; b: number } // 0–255

@@ -135,6 +135,8 @@ export function ColorPicker({
     }
   }
 
+  // Contrast deliberately checks the OPAQUE channel (WCAG defines no composited-
+  // alpha formula) — the verdict speaks to the intended color, not the blend.
   const contrast = contrastAgainst ? contrastRatio(hex, contrastAgainst) : null
   const swatches = useTokenSwatches(contrastAgainst)
 
@@ -306,19 +308,35 @@ function HueSlider({ hue, onChange }: { hue: number; onChange: (h: number, commi
 const CHECKER =
   'repeating-conic-gradient(rgba(127,127,127,0.35) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px'
 
-// Alpha 0–100% slider: current hue over the checkerboard.
+// Alpha 0–100% slider: current hue over the checkerboard. role=slider PROMISES
+// keyboard per the APG, so it delivers: focusable, arrows ±1% (Shift ±10%),
+// Home/End — each press commits (a keyboard step is a deliberate value, not a
+// drag in flight).
 function AlphaSlider({ hex, alpha, onChange }: { hex: string; alpha: number; onChange: (a: number, commit: boolean) => void }) {
   const { ref, handlers } = useRectDrag((x, _y, commit) => onChange(x, commit))
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 0.1 : 0.01
+    let next: number | null = null
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(1, alpha + step)
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, alpha - step)
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = 1
+    if (next === null) return
+    e.preventDefault()
+    onChange(next, true)
+  }
   return (
     <div
       ref={ref}
       {...handlers}
+      onKeyDown={onKeyDown}
+      tabIndex={0}
       role="slider"
       aria-label="Alpha"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(alpha * 100)}
-      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full"
+      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       style={{ background: `linear-gradient(to right, transparent, ${hex}), ${CHECKER}` }}
     >
       <Knob left={`${alpha * 100}%`} top="50%" />
