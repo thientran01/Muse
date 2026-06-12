@@ -346,18 +346,22 @@ export function CanvasMode({
     }
   }, [selected])
   // Forced-:hover pin (the Classes section's ":hov" chip). Per-selection: the
-  // pin belongs to the element and never outlives it. Toggling bumps revision so
-  // readValues re-reads — hover-governed values become scrubable while pinned.
+  // pin belongs to the element and never outlives it. The [revision] effect is
+  // the SOLE pinner — toggling just flips the ref + bumps, so the pin is built
+  // exactly once per state change (no pin-dispose-repin flicker) and rebuilt on
+  // every later bump (an HMR sheet swap can't leave stale clones). The ref is
+  // the effect's truth — state alone would be STALE when selection + revision
+  // change in one commit (a reorder re-select), ghost-pinning the new element.
   const [hoverPinned, setHoverPinned] = useState(false)
+  const hoverPinnedRef = useRef(false)
   const pinRef = useRef<(() => void) | null>(null)
   const setHoverPin = (on: boolean) => {
-    pinRef.current?.()
-    pinRef.current = null
-    if (on && selected) pinRef.current = pinHover(selected.node)
+    hoverPinnedRef.current = on
     setHoverPinned(on)
     bump((v) => v + 1)
   }
   useEffect(() => {
+    hoverPinnedRef.current = false
     setHoverPinned(false)
     return () => {
       pinRef.current?.()
@@ -365,12 +369,13 @@ export function CanvasMode({
     }
   }, [selected])
   useEffect(() => {
-    // The pin is a SNAPSHOT of the page's :hover rules. Anything that rewrites
-    // stylesheets under an active pin (commit → HMR repaint, undo/redo) lands
-    // here as a revision bump — rebuild the clones so they can't go stale.
-    if (!hoverPinned || !selected) return
     pinRef.current?.()
-    pinRef.current = pinHover(selected.node)
+    pinRef.current = null
+    // A node detached by an HMR remount can take the attribute but never paint —
+    // skip; the next re-select brings a live node.
+    if (hoverPinnedRef.current && selected && selected.node.isConnected) {
+      pinRef.current = pinHover(selected.node)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision])
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
@@ -842,20 +847,24 @@ export function CanvasMode({
     if (spaceBlocked.size > 0) mutations = mutations.filter((m) => !spaceBlocked.has(m.property))
 
     // While the :hov pin is active, an edit to a property the element styles
-    // with a hover: token targets THAT token (variant:'hover'), not the base —
+    // with a hover: token targets THAT token's variant chain, not the base —
     // the user is looking at the hover state, so that's the value they scrubbed.
-    // Properties with no hover: token stay base edits (the engine warns if a
-    // variant would still win).
+    // Chain choice: a plain hover: token wins; else dark:hover when the page is
+    // dark (the chain that's painting). Other compounds (md:hover) stay base
+    // edits v1 — the engine's "variant still wins" warning keeps that honest.
     if (hoverPinned) {
       const tokens = (selected.node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
       mutations = mutations.map((m) => {
         if (m.variant) return m
         const matchBase = familyMatcher(PROPERTIES[m.property])
-        const governed = tokens.some((t) => {
+        const chains = new Set<string>()
+        for (const t of tokens) {
           const { variants, base } = splitVariants(t)
-          return variants === 'hover' && matchBase(base)
-        })
-        return governed ? { ...m, variant: 'hover' } : m
+          if (variants && variants.split(':').includes('hover') && matchBase(base)) chains.add(variants)
+        }
+        const dark = document.documentElement.classList.contains('dark')
+        const chosen = chains.has('hover') ? 'hover' : dark && chains.has('dark:hover') ? 'dark:hover' : null
+        return chosen ? { ...m, variant: chosen } : m
       })
     }
 

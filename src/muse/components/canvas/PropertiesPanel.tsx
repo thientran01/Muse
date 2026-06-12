@@ -715,9 +715,12 @@ function PanelShell({ children }: { children: React.ReactNode }) {
 // opacity below 100, a radius) — what makes collapsed-by-default safe: the header
 // says when it's load-bearing, so nothing is silently hidden. Only sections where
 // "all defaults" is the common case pass it; an always-on dot would be noise.
-// `action` is an optional control docked to the header's right edge, OUTSIDE the
-// toggle button (a nested button is invalid markup) — visible even collapsed,
-// e.g. the Classes section's :hov pin.
+// `action` is an optional control on the header row, OUTSIDE the toggle button
+// (a nested button is invalid markup) and INSIDE the chevron — so the chevron
+// column stays right-aligned across every section whether or not a row carries
+// an action (e.g. the Classes section's :hov pin), and the action is visible
+// even collapsed. The chevron is decorative (aria-hidden, the button is the
+// accessible toggle) but keeps a mouse hit via onClick.
 function Section({ label, open, dot, action, onToggle, children }: { label: string; open: boolean; dot?: boolean; action?: React.ReactNode; onToggle: () => void; children: React.ReactNode }) {
   const showDot = !!dot && !open
   return (
@@ -725,17 +728,21 @@ function Section({ label, open, dot, action, onToggle, children }: { label: stri
       <div className="flex items-center gap-1.5">
         <button
           onClick={onToggle}
-          className="flex flex-1 items-center justify-between text-left transition hover:opacity-80"
+          className="flex flex-1 items-center gap-1.5 text-left transition hover:opacity-80"
           aria-expanded={open}
           aria-label={showDot ? `${label}, has values set` : label}
         >
-          <span className="flex items-center gap-1.5">
-            <SectionLabel>{label}</SectionLabel>
-            {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
-          </span>
-          <span className={`text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
+          <SectionLabel>{label}</SectionLabel>
+          {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
         </button>
         {action}
+        <span
+          aria-hidden
+          onClick={onToggle}
+          className={`cursor-pointer text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+        >
+          ›
+        </span>
       </div>
       {open && children}
     </div>
@@ -800,8 +807,11 @@ function ClassChip({ token }: { token: string }) {
 // The Classes section's ":hov" pin — forces the selected element's hover styles
 // on (forcedState.ts clones the page's :hover rules behind an attribute), so
 // hover-governed values render, read, and scrub without the cursor parked on
-// the element. Pressed state carries the accent treatment (a mode, like the
-// ScopeToggle's "All" — loud enough that you can't forget it's forced).
+// the element. It lives on Classes because that's where the hover: tokens it
+// forces are visible. Pressed state borrows the breadcrumb's selected-crumb
+// treatment (bg-accent/15 + accent text) — a visible mode marker; ScopeToggle
+// deliberately stays neutral at its larger size, but at this chip's 10px the
+// tint reads as a flag, not a surface.
 function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: boolean) => void }) {
   return (
     <button

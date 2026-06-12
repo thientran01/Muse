@@ -60,9 +60,11 @@ function collectHoverClones(rules: CSSRuleList, ctx: string[], out: string[], im
         for (let j = ctx.length - 1; j >= 0; j--) css = `${ctx[j]}{${css}}`
         out.push(css)
       }
-      // CSS-nesting children live under the parent's selector block.
+      // CSS-nesting children live under the parent's selector block — the PINNED
+      // parent when the parent itself had :hover, else a nested `&:hover` child's
+      // clone would still demand a real hover on the parent.
       if (rule.cssRules && rule.cssRules.length) {
-        collectHoverClones(rule.cssRules, [...ctx, original], out, imports)
+        collectHoverClones(rule.cssRules, [...ctx, pinned ?? original], out, imports)
       }
       continue
     }

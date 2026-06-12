@@ -11,6 +11,8 @@
  *     smooth scroll off) — everything outside [data-muse-ui].
  *  2. Neuter interactive-state selectors (:hover/:active/:focus*) in every
  *     accessible stylesheet via CSSOM, so the state styles never match at all.
+ *     Pre-freeze selectors are exposed to other CSSOM consumers via the
+ *     getFrozenOriginal registry (the forced-:hover pin builds from them).
  *  3. Pause pure-WAAPI animations (element.animate). CSS-originated animations
  *     are deliberately SKIPPED: calling WAAPI pause()/play() on a CSSAnimation
  *     permanently overrides `animation-play-state`, which would make the
@@ -44,10 +46,12 @@ import { walkCssRules } from './cssom'
 export const FROZEN_PSEUDOS = /(?<!\\):(hover|active|focus-visible|focus-within|focus)(?![\w-])/g
 
 // Selectors neutered by the ACTIVE freeze, keyed by rule — so other CSSOM
-// consumers (the forced-:hover pin) can read a rule's pre-freeze selector
-// instead of the `:not(*)` placeholder. Populated by freezePage, emptied on
-// restore; at most one freeze is live at a time (a toolbar toggle).
-const frozenOriginals = new Map<CSSStyleRule, string>()
+// consumers (the forced-:hover pin, see forcedState.ts) can read a rule's
+// pre-freeze selector instead of the `:not(*)` placeholder. Populated by
+// freezePage, entries deleted on restore; at most one freeze is live at a
+// time (a toolbar toggle). A WeakMap so rules orphaned by an HMR sheet swap
+// mid-freeze are GC'd instead of accumulating for the freeze's lifetime.
+const frozenOriginals = new WeakMap<CSSStyleRule, string>()
 export function getFrozenOriginal(rule: CSSStyleRule): string | undefined {
   return frozenOriginals.get(rule)
 }
@@ -221,8 +225,8 @@ export function freezePage(): () => void {
       } catch {
         /* sheet was HMR-replaced — nothing to restore */
       }
+      frozenOriginals.delete(rule)
     }
-    frozenOriginals.clear()
     for (const anim of pausedAnims) {
       // Only resume what's still in OUR paused state — play() on a finished or
       // cancelled animation would restart it from zero. Accepted ambiguity (for
