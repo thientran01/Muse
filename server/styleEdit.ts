@@ -932,7 +932,7 @@ export function computeStyleEdit(
       // A shared style const is plain CSS — there's no state/breakpoint slot to
       // write a variant value into.
       if (m.variant) {
-        warnings.push(`${m.property}: ${m.variant}: edits are supported for Tailwind classes only — skipped`)
+        warnings.push(`${m.property}: ${m.variant}: edits are supported for Tailwind classes only — left unchanged`)
         continue
       }
       for (const key of PROPERTIES[m.property].css) {
@@ -1020,12 +1020,20 @@ export function computeStyleEdit(
 
   // The variant chains (hover, md, dark:hover) of this family's variant-prefixed
   // tokens, minus the mutation's own target chain. A base edit uses this to warn
-  // (the variant still wins at its state); an inline write uses it to REFUSE
-  // (inline overrides EVERY state — the silent-destruction path this fixes).
-  const familyVariantChains = (spec: (typeof PROPERTIES)[StyleProperty], excluding: string): string[] => {
+  // (the variant still wins at its state) — scanning the PRE-EDIT tokens, so a
+  // batch that deliberately sets md: and base together doesn't warn about its own
+  // write. An inline write uses it to REFUSE (inline overrides EVERY state — the
+  // silent-destruction path this fixes) — scanning the LIVE tokens, so even a
+  // variant token added earlier in this batch is protected.
+  const originalClassTokens = classTokens.slice()
+  const familyVariantChains = (
+    spec: (typeof PROPERTIES)[StyleProperty],
+    excluding: string,
+    tokens: string[] = classTokens,
+  ): string[] => {
     const matchBase = writer.family(spec)
     const found: string[] = []
-    for (const c of classTokens) {
+    for (const c of tokens) {
       const { variants, base } = splitVariants(c)
       if (variants && variants !== excluding && matchBase(base) && !found.includes(variants)) found.push(variants)
     }
@@ -1203,9 +1211,10 @@ export function computeStyleEdit(
       }
       classTouched = true
       // Mobile-first semantics make editing the base CORRECT here, but the user is
-      // looking at a value that a variant may govern right now — say so.
+      // looking at a value that a variant may govern right now — say so. Scans the
+      // pre-edit tokens: a variant written by THIS batch was asked for, not a surprise.
       if (!variant) {
-        const chains = familyVariantChains(spec, '')
+        const chains = familyVariantChains(spec, '', originalClassTokens)
         if (chains.length > 0) {
           warnings.push(`${m.property}: also set by ${chains.map((v) => v + ':').join(', ')} — edited the base value; the variant still wins at its state`)
         }

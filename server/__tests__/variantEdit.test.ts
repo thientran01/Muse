@@ -106,6 +106,19 @@ describe('base edit with variant tokens present', () => {
     expect(r.warnings.some((w) => w.includes('also set by md:'))).toBe(true)
   })
 
+  it('base edit on an element whose ONLY var-bound color lives under a variant writes the base (no var defer)', () => {
+    // dark:text-[color:var(--x)] binds DARK mode to the theme var; the base slot is
+    // free. Deferring to the var would mutate dark mode globally — writing a base
+    // token (+ the variant warning) is the correct, intentional behavior. The
+    // panel separately marks the channel read-only (isVarColorToken is
+    // variant-blind), so this path is for variant-aware clients.
+    const src = `export const C = () => (\n  <div className="dark:text-[color:var(--x)]">hi</div>\n)\n`
+    const r = edit(src, '<div', 'div', [{ property: 'color', value: '#112233' }])
+    expect(r.varEdits).toEqual([])
+    expect(r.newContent).toContain('className="dark:text-[color:var(--x)] text-[#112233]"')
+    expect(r.warnings.some((w) => w.includes('also set by dark:'))).toBe(true)
+  })
+
   it('does NOT warn when the variant token is a different family (bracket-colon)', () => {
     const src = `export const C = () => (\n  <div className="lg:text-[color:var(--x)]">hi</div>\n)\n`
     const r = edit(src, '<div', 'div', [{ property: 'fontSize', value: '20px' }])
@@ -170,6 +183,16 @@ describe('variant-targeted edits', () => {
     const src = `export const C = () => (\n  <div className="dark:hover:text-white text-black">hi</div>\n)\n`
     const r = edit(src, '<div', 'div', [{ property: 'color', value: '#ff0000', variant: 'dark:hover' }])
     expect(r.newContent).toContain('className="dark:hover:text-[#ff0000] text-black"')
+  })
+
+  it('does not warn about a variant THIS batch deliberately wrote (variant before base)', () => {
+    const src = `export const C = () => (\n  <div className="p-4">hi</div>\n)\n`
+    const r = edit(src, '<div', 'div', [
+      { property: 'padding', value: '24px', variant: 'md' },
+      { property: 'padding', value: '8px' },
+    ])
+    expect(r.newContent).toContain('className="p-2 md:p-6"')
+    expect(r.warnings).toEqual([])
   })
 
   it('preserves CRLF byte-for-byte around a variant splice', () => {
