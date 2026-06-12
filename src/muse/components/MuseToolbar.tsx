@@ -303,7 +303,7 @@ export function MuseToolbar({
             <Palette size={17} />
           </IconBtn>
           <IconBtn
-            label={animationsPaused ? 'Resume animations' : 'Pause animations'}
+            label={animationsPaused ? 'Unfreeze page' : 'Freeze page'}
             onClick={onToggleAnimations}
             active={animationsPaused}
           >
