@@ -70,6 +70,10 @@ function readValues(node: CanvasNode): CanvasValues {
     flex: cs.display.includes('flex') ? { direction: cs.flexDirection, wrap: cs.flexWrap } : null,
     size: { width: Math.round(px(cs.width)), height: Math.round(px(cs.height)) },
     type: {
+      // Read-only: changing a family safely needs project-font detection — a
+      // later phase. The readout alone answers "what font IS this?" in place.
+      fontFamily: (cs.fontFamily.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, ''),
+      fontFamilyStack: cs.fontFamily,
       fontSize: Math.round(px(cs.fontSize) * 10) / 10,
       fontWeight: Number(cs.fontWeight) || 400,
       lineHeight: cs.lineHeight === 'normal' ? 0 : Math.round(px(cs.lineHeight)),

@@ -15,7 +15,7 @@ const base = (over: Partial<CanvasValues> = {}): CanvasValues => ({
   display: 'block',
   flex: null,
   size: { width: 200, height: 100 },
-  type: { fontSize: 16, fontWeight: 400, lineHeight: 24, letterSpacing: 0, align: 'left' },
+  type: { fontFamily: 'Inter', fontFamilyStack: 'Inter, sans-serif', fontSize: 16, fontWeight: 400, lineHeight: 24, letterSpacing: 0, align: 'left' },
   rendersText: true,
   isSvg: false,
   color: { text: '#111111', background: '#ffffff', border: '#000000', ownBackground: '#ffffff' },

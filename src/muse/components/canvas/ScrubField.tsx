@@ -127,6 +127,22 @@ export function ScrubField({
           else if (e.key === 'Escape') {
             cancelRef.current = true
             ;(e.target as HTMLInputElement).blur()
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            // Keyboard nudge: ±1, Shift ±10 (coarse — the opposite of drag's
+            // Shift-for-fine, deliberately: a keypress is already the fine
+            // gesture, Figma splits the modifiers the same way). Each press
+            // previews live; the commit stays on Enter/blur via commitTyped,
+            // so a nudge run lands as ONE history entry.
+            e.preventDefault()
+            const step = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1)
+            // Functional updater: consecutive presses inside one batch each see
+            // the previous press's value (the preview inside is idempotent).
+            setText((prev) => {
+              const base = Number(prev)
+              const next = clamp((Number.isFinite(base) ? base : value) + step)
+              onPreview(next)
+              return String(Math.round(next * 100) / 100)
+            })
           }
         }}
         onBlur={commitTyped}
