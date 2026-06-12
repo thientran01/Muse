@@ -386,13 +386,19 @@ export function CanvasMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision])
   // Breakpoint-target switcher (real backend only — see BP_UI). The target is
-  // store state (survives the panel, session-only by design); the live viewport
-  // width drives the current-breakpoint dot and the mismatch warning.
+  // store state (survives the panel, session-only by design) and — unlike
+  // `scope`, which resets per selection — deliberately PERSISTS across
+  // selections: the always-visible banner pills + the sticky mismatch strip
+  // carry the mode, so it can't go invisible. The one place that guarantee
+  // breaks is zen (the banner hides), so entering zen resets the target.
   const bpTarget = useSyncExternalStore(
     museStore.subscribe,
     () => museStore.getState().bpTarget,
     () => museStore.getState().bpTarget,
   )
+  useEffect(() => {
+    if (zen) museStore.setState({ bpTarget: '' })
+  }, [zen])
   const [vw, setVw] = useState(() => window.innerWidth)
   useEffect(() => {
     const onResize = () => setVw(window.innerWidth)
@@ -902,7 +908,12 @@ export function CanvasMode({
       })
     }
 
-    applyPreview(mutations) // make sure the final value is showing
+    // Make sure the final value is showing — except under a breakpoint mismatch,
+    // where applyPreview no-ops: any inline residue from pre-resize drag frames
+    // would show a value the committed md: class won't paint here, so restore
+    // the true (base) state instead and let the write land silently.
+    if (bpMismatch) clearPreview()
+    else applyPreview(mutations)
     const label = mutations.map((m) => `${m.variant ? `${m.variant}:` : ''}${m.property} ${m.value}`).join(', ').slice(0, 80)
 
     // EPHEMERAL: the inline preview IS the committed state. Record a DOM-snapshot
@@ -1401,10 +1412,10 @@ export function CanvasMode({
                     role="status"
                     className="mt-1.5 w-[208px] break-words rounded-lg bg-note/10 px-2.5 py-1.5 text-[11px] text-note-text ring-1 ring-note/20"
                   >
-                    Editing {bpTarget}: — changes apply at ≥{SCREEN_MIN[bpTarget as Exclude<BpTarget, ''>]}px (this window is narrower, so nothing moves here)
+                    {bpTarget}: edits write but won't paint here — this window is below {SCREEN_MIN[bpTarget as Exclude<BpTarget, ''>]}px
                   </p>
                 )}
-                {!error && !bpMismatch && notice && notice.length > 0 && (
+                {!error && notice && notice.length > 0 && (
                   <p
                     role="status"
                     title={notice.join('\n')}
@@ -1437,27 +1448,32 @@ export function CanvasMode({
           Shortcuts list lives in Settings when you need a reminder. */}
       {!zen && (
         <div className="absolute left-1/2 top-4 -translate-x-1/2">
-          <div className="pointer-events-auto flex animate-muse-drop items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+          {/* flex-wrap (not nowrap): the pills push the one-line floor to ~640px,
+              which collides with exactly the narrow-window responsive testing the
+              switcher serves — wrapping to a second row beats clipping. PR-14
+              (banner lifecycle) refines narrow-width behavior properly. */}
+          <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] animate-muse-drop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
             {/* Breakpoint-target pills — a MODE, so it lives in the always-visible
                 banner, not a popover. The dot marks the window's CURRENT breakpoint
                 (Tailwind default screens — a custom theme.screens host only shifts
                 the dot, never what an edit writes); an active target below the
                 window's width turns note-amber (edits write, nothing paints here). */}
             {BP_UI && (
-              <span role="group" aria-label="Breakpoint target for edits" className="flex items-center gap-0.5">
+              // Exactly one target is active — radio semantics, same pattern as
+              // the panel's ScopeToggle (role=radiogroup / radio / aria-checked).
+              <span role="radiogroup" aria-label="Breakpoint target for edits" className="flex items-center gap-0.5">
                 {BP_TARGETS.map((bp) => {
                   const active = bpTarget === bp
+                  const current = curBp === bp
                   const mismatch = active && bp !== '' && !targetApplies(bp, vw)
+                  const write = bp === '' ? 'Edits write base classes' : `Edits write ${bp}: classes (≥${SCREEN_MIN[bp as Exclude<BpTarget, ''>]}px)`
                   return (
                     <button
                       key={bp || 'base'}
+                      role="radio"
                       onClick={() => museStore.setState({ bpTarget: bp })}
-                      aria-pressed={active}
-                      title={
-                        bp === ''
-                          ? 'Edits write base classes'
-                          : `Edits write ${bp}: classes (≥${SCREEN_MIN[bp as Exclude<BpTarget, ''>]}px)`
-                      }
+                      aria-checked={active}
+                      title={current ? `${write} — current window` : write}
                       className={`relative rounded-full px-1.5 py-0.5 text-[11px] leading-none transition ${
                         active
                           ? mismatch
@@ -1466,8 +1482,8 @@ export function CanvasMode({
                           : 'text-fg-faint hover:text-fg'
                       }`}
                     >
-                      {bp || 'Base'}
-                      {curBp === bp && (
+                      {bp || 'base'}
+                      {current && (
                         <span aria-hidden className="absolute -bottom-px left-1/2 h-0.5 w-0.5 -translate-x-1/2 rounded-full bg-accent" />
                       )}
                     </button>
