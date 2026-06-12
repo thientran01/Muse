@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
-import { SHADOW } from '../../style/tailwindScales'
+import { SHADOW, splitVariants } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
@@ -755,7 +755,7 @@ function layoutSet(values: CanvasValues): boolean {
   return !(unsetAlign && noGap)
 }
 
-type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'layout'
+type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'layout' | 'classes'
 
 // Which sections are open — PERSISTED at module scope so it survives the panel's
 // remount on every selection (the render site keys the panel by element). This is
@@ -770,6 +770,68 @@ let persistedOpen: Set<SectionKey> | null = null
 function initialOpen(values: CanvasValues): Set<SectionKey> {
   if (persistedOpen) return new Set(persistedOpen)
   return new Set<SectionKey>([values.rendersText ? 'type' : 'size'])
+}
+
+// One class token as a mono chip. The variant chain (hover:, md:, dark:hover:)
+// renders as an accent-tinted prefix segment — that IS the variant badge: which
+// tokens live under a state/breakpoint is visible at a glance, no separate badge
+// row. splitVariants is the engine's own parser, so the chip can never disagree
+// with what an edit would match.
+function ClassChip({ token }: { token: string }) {
+  const { variants, base } = splitVariants(token)
+  return (
+    <span
+      title={token}
+      className="inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-muted ring-1 ring-line/10"
+    >
+      {variants && <span className="shrink-0 text-accent-hover">{variants}:</span>}
+      <span className="truncate">{base}</span>
+    </span>
+  )
+}
+
+// The element's className, read straight off the live node — the medium a design
+// engineer actually thinks in, which the panel otherwise never showed. Read-only
+// (the editable field is a follow-up); wraps, collapsed to the first 8 with a +N
+// expander. A summary line names the distinct variant chains present.
+function ClassChips({ classNames }: { classNames: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const tokens = classNames.split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return <p className="text-[11px] text-fg-faint">No classes on this element.</p>
+  const chains: string[] = []
+  for (const t of tokens) {
+    const { variants } = splitVariants(t)
+    if (variants && !chains.includes(variants)) chains.push(variants)
+  }
+  const COLLAPSE_AT = 8
+  const shown = expanded ? tokens : tokens.slice(0, COLLAPSE_AT)
+  const hidden = tokens.length - shown.length
+  const chipBtn =
+    'rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-faint ring-1 ring-line/10 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+  return (
+    <div className="space-y-1.5">
+      {chains.length > 0 && (
+        <p className="text-[10px] text-fg-faint">
+          Variants: <span className="text-fg-muted">{chains.join(' · ')}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1">
+        {shown.map((t, i) => (
+          <ClassChip key={`${t}-${i}`} token={t} />
+        ))}
+        {hidden > 0 && (
+          <button onClick={() => setExpanded(true)} className={chipBtn} aria-label={`Show ${hidden} more classes`}>
+            +{hidden}
+          </button>
+        )}
+        {expanded && tokens.length > COLLAPSE_AT && (
+          <button onClick={() => setExpanded(false)} className={chipBtn}>
+            less
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // The live canvas properties panel — collapsible sections (independent toggles)
@@ -908,6 +970,11 @@ export function PropertiesPanel({
           </Section>
         </>
       )}
+
+      {divider}
+      <Section label="Classes" open={open.has('classes')} onToggle={() => toggle('classes')}>
+        <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node.getAttribute('class') ?? ''} />
+      </Section>
     </PanelShell>
   )
 }
