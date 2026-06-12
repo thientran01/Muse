@@ -95,6 +95,35 @@ describe('tailwind-first', () => {
     expect(r.newContent).toBe(src.replace('p-4', 'p-6'))
     expect(r.newContent).not.toMatch(/[^\r]\n/)
   })
+
+  it('handles a paste-sized batch (15+ mixed mutations) in one call', () => {
+    const src = `export const C = () => (\n  <div className="p-4 text-sm">hi</div>\n)\n`
+    const r = edit(src, '<div', 'div', [
+      { property: 'paddingTop', value: '8px' },
+      { property: 'paddingRight', value: '8px' },
+      { property: 'paddingBottom', value: '8px' },
+      { property: 'paddingLeft', value: '8px' },
+      { property: 'marginTop', value: '16px' },
+      { property: 'marginBottom', value: '16px' },
+      { property: 'borderTopLeftRadius', value: '8px' },
+      { property: 'borderTopRightRadius', value: '8px' },
+      { property: 'borderBottomRightRadius', value: '8px' },
+      { property: 'borderBottomLeftRadius', value: '8px' },
+      { property: 'borderWidth', value: '1px' },
+      { property: 'borderStyle', value: 'solid' },
+      { property: 'opacity', value: '100%' },
+      { property: 'color', value: '#111111' },
+      { property: 'fontSize', value: '14px' },
+      { property: 'fontWeight', value: '600' },
+      { property: 'textAlign', value: 'center' },
+    ])
+    expect(r.changed).toBe(true)
+    expect(r.newContent).toContain('mt-4')
+    expect(r.newContent).toContain('rounded-tl-lg')
+    expect(r.newContent).toContain('border-solid')
+    expect(r.newContent).toContain('font-semibold')
+    expect(r.newContent).toContain('text-center')
+  })
 })
 
 // ---- Inline strategy -------------------------------------------------------------

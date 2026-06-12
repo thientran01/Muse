@@ -26,7 +26,7 @@ export type CanvasValues = {
   size: { width: number; height: number }
   type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
   rendersText: boolean // the element directly shows text — gates the Type controls
-  color: { text: string; background: string; border: string } // current values as #hex
+  color: { text: string; background: string; border: string; ownBackground: string | null } // current values as #hex
   colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
   appearance: {
     radius: Corners
