@@ -1,5 +1,5 @@
 /**
- * Full-page freeze for the toolbar's "Pause animations" toggle.
+ * Full-page freeze for the toolbar's "Freeze page" toggle.
  *
  * The injected pause stylesheet alone isn't enough for a still canvas: zeroed
  * transitions make :hover changes SNAP instead of not happening, and JS-started

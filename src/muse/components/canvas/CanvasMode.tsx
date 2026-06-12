@@ -449,6 +449,30 @@ export function CanvasMode({
   // Target set but the window is below it: the edit will write (mobile-first,
   // the md: class just isn't painting here) — but live feedback would be a lie.
   const bpMismatch = bpTarget !== '' && !targetApplies(bpTarget, vw)
+
+  // ---- Teaching-banner lifecycle ------------------------------------------
+  // Onboarding chrome retires itself: each successful gesture bumps its
+  // localStorage counter (prefs.hintUses); once the banner's CURRENT message
+  // teaches a gesture that has landed HINT_RETIRES times, the text collapses to
+  // the Done pill + a "?" that re-expands on hover/focus — never fully gone
+  // (Esc-to-exit must stay discoverable). One-time narrow-width notice below.
+  const HINT_RETIRES = 5
+  const prefs = useSyncExternalStore(
+    museStore.subscribe,
+    () => museStore.getState().prefs,
+    () => museStore.getState().prefs,
+  )
+  const bumpHint = (k: 'select' | 'reorder' | 'text') => {
+    const cur = museStore.getState().prefs
+    if (cur.hintUses[k] >= HINT_RETIRES) return // settled — stop writing storage
+    museStore.setPrefs({ hintUses: { ...cur.hintUses, [k]: cur.hintUses[k] + 1 } })
+  }
+  useEffect(() => {
+    if (selected) bumpHint('select')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected])
+  const [hintPeek, setHintPeek] = useState(false)
+  useEffect(() => setHintPeek(false), [selected, editing])
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
   // it only appears when a drop will actually commit. Probed per selection, container-
   // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
@@ -645,6 +669,9 @@ export function CanvasMode({
       if (!fitsRight || hitsDock(rightX)) {
         left = leftX >= GAP && !hitsDock(leftX) ? leftX : fitsRight ? rightX : leftX
       }
+      // Final viewport clamp: at narrow widths neither side may fit — covering
+      // content beats shearing off-screen (the narrow notice says why).
+      left = Math.max(GAP, Math.min(left, vw - PANEL_W - GAP))
       setPanelPos({ top, left })
     }
     place()
@@ -1181,6 +1208,7 @@ export function CanvasMode({
         for (const n of all) if (n.isConnected) n.textContent = text
       }
       museStore.pushEphemeral({ label: `text "${raw.slice(0, 40)}"`, undo: () => set(original), redo: () => set(raw) })
+      bumpHint('text')
       exitEditing()
       return
     }
@@ -1213,6 +1241,7 @@ export function CanvasMode({
           label: `text "${raw.slice(0, 40)}"`,
         }
         museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
+        bumpHint('text')
       }
       exitEditing()
     } catch (e) {
@@ -1260,6 +1289,7 @@ export function CanvasMode({
         for (const c of order) if (c.parentElement === parent) parent.appendChild(c)
       }
       museStore.pushEphemeral({ label: `reorder ${el.tag}`, undo: () => restore(beforeOrder), redo: () => restore(afterOrder) })
+      bumpHint('reorder')
       const c = canvasChain(el.node)[0]
       if (c) selectElement(c)
       bump((v) => v + 1)
@@ -1301,6 +1331,7 @@ export function CanvasMode({
           label: `reorder ${el.tag}`,
         }
         museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
+        bumpHint('reorder')
       } else {
         console.warn('[muse] reorder: missing originals, skipping undo entry')
       }
@@ -1670,19 +1701,63 @@ export function CanvasMode({
                 })}
               </span>
             )}
-            <span>
-              {editing
-                ? 'Editing text · Enter to save · Esc to cancel'
+            {/* The teaching text retires itself: each message maps to the gesture it
+                teaches (select/reorder/text); once that gesture has landed
+                HINT_RETIRES times, the text collapses behind a "?" that re-expands
+                on hover/focus/click. The Done pill never collapses. Below 480px the
+                text yields the row to the pills + Done regardless. */}
+            {(() => {
+              const gesture: 'select' | 'reorder' | 'text' = editing
+                ? 'text'
                 : selected
                   ? reorderable?.reorderable
-                    ? 'Drag to reorder · double-click to edit · Esc to deselect'
-                    : 'Double-click to edit · Esc to deselect'
-                  : <>Click to edit · <BannerKbd>Shift</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>}
-            </span>
+                    ? 'reorder'
+                    : 'text'
+                  : 'select'
+              const retired = prefs.hintUses[gesture] >= HINT_RETIRES
+              const message = editing ? (
+                'Editing text · Enter to save · Esc to cancel'
+              ) : selected ? (
+                reorderable?.reorderable ? (
+                  'Drag to reorder · double-click to edit · Esc to deselect'
+                ) : (
+                  'Double-click to edit · Esc to deselect'
+                )
+              ) : (
+                <>Click to edit · <BannerKbd>Shift</BannerKbd> click to flag · <BannerKbd>Esc</BannerKbd> to exit</>
+              )
+              if (vw < 480) return null
+              if (!retired || hintPeek) return <span>{message}</span>
+              return (
+                <button
+                  onClick={() => setHintPeek(true)}
+                  aria-label="Show the gesture hints"
+                  title="Show the gesture hints"
+                  className="rounded-full px-1.5 py-0.5 text-fg-faint transition hover:bg-line/10 hover:text-fg"
+                  onMouseEnter={() => setHintPeek(true)}
+                >
+                  ?
+                </button>
+              )
+            })()}
             <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
               Done
             </button>
           </div>
+          {/* One-time narrow-width honesty note — Muse is desktop-first chrome; at
+              phone widths the panel must cover content to stay on-screen. */}
+          {vw < 700 && !prefs.narrowNoticeSeen && (
+            <div className="pointer-events-auto mt-1.5 flex items-center justify-center gap-2 rounded-full bg-note/10 px-3 py-1 text-[11px] text-note-text ring-1 ring-note/20">
+              <span>Muse works best at desktop widths</span>
+              <button
+                onClick={() => museStore.setPrefs({ narrowNoticeSeen: true })}
+                aria-label="Dismiss"
+                className="rounded-full px-1 leading-none transition hover:bg-note/10"
+              >
+                ×
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
