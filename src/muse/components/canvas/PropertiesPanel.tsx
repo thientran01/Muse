@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
-import { SHADOW, splitVariants } from '../../style/tailwindScales'
+import { isSafeClassToken, SHADOW, splitVariants } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
@@ -791,15 +791,26 @@ function initialOpen(values: CanvasValues): Set<SectionKey> {
 // row. splitVariants is the engine's own parser, so the chip can never disagree
 // with what an edit would match. (Its `variants` carries no trailing colon —
 // the render appends it, so a compound chain reads `dark:hover:` verbatim.)
-function ClassChip({ token }: { token: string }) {
+function ClassChip({ token, onRemove }: { token: string; onRemove?: () => void }) {
   const { variants, base } = splitVariants(token)
   return (
     <span
       title={token}
-      className="inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-muted ring-1 ring-line/10"
+      className="group/chip inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-muted ring-1 ring-line/10"
     >
       {variants && <span className="shrink-0 text-accent-hover">{variants}:</span>}
       <span className="truncate">{base}</span>
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          aria-label={`Remove ${token}`}
+          // p-1 -m-1 grows the hit area without growing the glyph — × is
+          // destructive and the visual size alone is a misclick magnet.
+          className="-mr-1.5 ml-0.5 shrink-0 rounded p-1 leading-none text-fg-faint opacity-0 transition hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/50 group-hover/chip:opacity-100"
+        >
+          ×
+        </button>
+      )}
     </span>
   )
 }
@@ -828,13 +839,19 @@ function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: bo
 }
 
 // The element's className, read straight off the live node — the medium a design
-// engineer actually thinks in, which the panel otherwise never showed. Read-only
-// (the editable field is a follow-up); wraps, collapsed to the first 8 with a +N
-// expander. A summary line names the distinct variant chains present.
-function ClassChips({ classNames }: { classNames: string }) {
+// engineer actually thinks in, which the panel otherwise never showed. Wraps,
+// collapsed to the first 8 with a +N expander; a summary line names the distinct
+// variant chains present. With `onPatch` (the freeform field) each chip gains a
+// hover ×, and a ghost "+ class" chip opens a mono input — Enter commits (space
+// separates multiple tokens), Esc cancels. Tokens are pre-validated with the
+// engine's own isSafeClassToken (the server re-validates); unknown-but-valid
+// utilities write anyway — Tailwind JIT may cover them.
+function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (add: string[], remove: string[]) => void }) {
   const [expanded, setExpanded] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [invalid, setInvalid] = useState<string[]>([])
   const tokens = classNames.split(/\s+/).filter(Boolean)
-  if (tokens.length === 0) return <p className="text-[11px] text-fg-faint">No classes on this element.</p>
   const chains: string[] = []
   for (const t of tokens) {
     const { variants } = splitVariants(t)
@@ -845,6 +862,24 @@ function ClassChips({ classNames }: { classNames: string }) {
   const hidden = tokens.length - shown.length
   const chipBtn =
     'rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-faint ring-1 ring-line/10 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+
+  const submit = () => {
+    const adds = draft.split(/\s+/).filter(Boolean)
+    if (adds.length === 0) {
+      setAdding(false)
+      return
+    }
+    const bad = adds.filter((t) => !isSafeClassToken(t))
+    if (bad.length > 0) {
+      setInvalid(bad) // keep the draft so it can be fixed in place
+      return
+    }
+    onPatch?.(adds, [])
+    setDraft('')
+    setInvalid([])
+    setAdding(false)
+  }
+
   return (
     <div className="space-y-1.5">
       {chains.length > 0 && (
@@ -852,9 +887,10 @@ function ClassChips({ classNames }: { classNames: string }) {
           Variants: <span className="text-fg-muted">{chains.join(' · ')}</span>
         </p>
       )}
-      <div className="flex flex-wrap gap-1">
+      {tokens.length === 0 && !onPatch && <p className="text-[11px] text-fg-faint">No classes on this element.</p>}
+      <div className="flex flex-wrap items-center gap-1">
         {shown.map((t, i) => (
-          <ClassChip key={`${t}-${i}`} token={t} />
+          <ClassChip key={`${t}-${i}`} token={t} onRemove={onPatch ? () => onPatch([], [t]) : undefined} />
         ))}
         {hidden > 0 && (
           <button onClick={() => setExpanded(true)} className={chipBtn} aria-label={`Show ${hidden} more classes`}>
@@ -866,7 +902,53 @@ function ClassChips({ classNames }: { classNames: string }) {
             less
           </button>
         )}
+        {onPatch &&
+          (adding ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                setInvalid([])
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit()
+                if (e.key === 'Escape') {
+                  e.stopPropagation() // don't bubble into canvas deselect
+                  setDraft('')
+                  setInvalid([])
+                  setAdding(false)
+                }
+              }}
+              // Blur CANCELS (Enter is the only commit): a half-typed token like
+              // `p-` is structurally safe and would write verbatim — clicking
+              // away must never publish a partial thought. Also keeps a chip's ×
+              // click a single action (remove), not remove + surprise add.
+              onBlur={() => {
+                setDraft('')
+                setInvalid([])
+                setAdding(false)
+              }}
+              placeholder="p-4 hover:bg-…"
+              aria-label="Add classes — Enter to apply"
+              aria-invalid={invalid.length > 0}
+              className={`w-28 rounded-md bg-transparent px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
+                invalid.length > 0 ? 'ring-rose-500/40' : 'ring-line/20 focus:ring-accent/50'
+              }`}
+            />
+          ) : (
+            <button onClick={() => setAdding(true)} className={chipBtn} aria-label="Add a class">
+              + class
+            </button>
+          ))}
       </div>
+      {/* Visible, screen-reader-reachable validation text (FlagComposer's inline
+          idiom) — a rose ring alone names neither the tokens nor the why. */}
+      {invalid.length > 0 && (
+        <p role="status" className="font-mono text-[10px] text-rose-300">
+          Not a safe class token: {invalid.join(' ')}
+        </p>
+      )}
     </div>
   )
 }
@@ -942,6 +1024,7 @@ export function PropertiesPanel({
   onScopeChange,
   hoverPinned = false,
   onHoverPinChange,
+  onClassPatch,
   onPreview,
   onCommit,
 }: {
@@ -955,6 +1038,8 @@ export function PropertiesPanel({
   onScopeChange?: (s: 'element' | 'const') => void
   hoverPinned?: boolean // the :hov forced-state pin (see HoverPinChip)
   onHoverPinChange?: (on: boolean) => void
+  // The freeform class field's commit — add/remove tokens verbatim (see ClassChips).
+  onClassPatch?: (add: string[], remove: string[]) => void
 } & EditProps) {
   const [open, setOpen] = useState<Set<SectionKey>>(() => initialOpen(values))
   const toggle = (k: SectionKey) =>
@@ -1014,16 +1099,17 @@ export function PropertiesPanel({
 
       {divider}
       {/* Classes is the deliberate exception to the 6-section cap (#120's density
-          design): it's REFERENCE, not controls — collapsed by default, no fields,
-          and unconditional because "no classes" is itself an answer about the
-          element. The defensive ?.node?. survives a future node-optional type. */}
+          design): the chips are REFERENCE plus one escape hatch (the freeform
+          field) — collapsed by default, unconditional because "no classes" is
+          itself an answer about the element. The defensive ?.node?. survives a
+          future node-optional type. */}
       <Section
         label="Classes"
         open={open.has('classes')}
         onToggle={() => toggle('classes')}
         action={onHoverPinChange ? <HoverPinChip pinned={hoverPinned} onChange={onHoverPinChange} /> : undefined}
       >
-        <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node?.getAttribute('class') ?? ''} />
+        <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node?.getAttribute('class') ?? ''} onPatch={onClassPatch} />
       </Section>
     </PanelShell>
   )

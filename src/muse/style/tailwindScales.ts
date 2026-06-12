@@ -116,6 +116,31 @@ export function isVariantChain(chain: string): boolean {
   return chain.length > 0 && chain.split(':').every((s) => VARIANT_SEGMENT.test(s))
 }
 
+// A class token the FREEFORM field may write verbatim into a className — the
+// classPatch security boundary (user text → source file; the server
+// re-validates, never trusting the client). A BLOCKLIST of the structural
+// characters that could escape a `"…"` or `` {`…`} `` className emit or read
+// as JSX — whitespace, double quote, backtick, $ (template interpolation),
+// braces, angle brackets, semicolon, backslash — so real Tailwind passes
+// untouched: variants (hover:), arbitrary values (w-[calc(100%-2rem)],
+// content-['»'] — unicode included), fractions (w-1/2), modifiers
+// (bg-white/60, !mt-0). Balanced brackets required so one token can't open a
+// bracket the next token closes.
+const UNSAFE_CLASS_CHAR = /[\s"`$\\{}<>;]/
+export function isSafeClassToken(token: string): boolean {
+  if (token.length === 0 || token.length > 128) return false
+  if (UNSAFE_CLASS_CHAR.test(token)) return false
+  let depth = 0
+  for (const ch of token) {
+    if (ch === '[') depth++
+    else if (ch === ']') {
+      depth--
+      if (depth < 0) return false
+    }
+  }
+  return depth === 0
+}
+
 // Build a spacing utility for a prefix (p, px, mt, gap-x, …) from a CSS value.
 // `auto` → `${prefix}-auto`; on-scale → named step; off-scale → arbitrary value
 // (spaces underscored, per Tailwind's arbitrary-value syntax). Returns null when

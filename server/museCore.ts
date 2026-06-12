@@ -25,6 +25,7 @@ import {
   findPropLiteralUsages,
   findStyledExport,
   styledObjectPatches,
+  type ClassPatch,
   type Mutation,
   type OffsetHint,
   type StyleStrategy,
@@ -484,7 +485,7 @@ async function handleWrite(req: IncomingMessage, res: ServerResponse, ctx: MuseC
 async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: MuseContext): Promise<void> {
   try {
     const body = JSON.parse(await readBody(req)) as {
-      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown; scope?: unknown }>
+      edits?: Array<{ fileName?: unknown; line?: unknown; column?: unknown; tag?: unknown; classNames?: unknown; mutations?: unknown; scope?: unknown; classPatch?: unknown }>
       strategy?: unknown
     }
     const rawEdits = Array.isArray(body.edits) ? body.edits : []
@@ -499,7 +500,7 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
 
     const out: Array<{ fileName: string; newContent: string }> = []
     const warnings: string[] = []
-    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[]; scope?: 'element' | 'const' }> }>()
+    const byFile = new Map<string, { abs: string; rel: string; items: Array<{ line: number; column: number; tag?: string; classNames?: string; mutations: Mutation[]; scope?: 'element' | 'const'; classPatch?: ClassPatch }> }>()
 
     for (const e of rawEdits) {
       const abs = resolveInSrc(ctx.root, e?.fileName)
@@ -513,13 +514,19 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
       const tag = typeof e?.tag === 'string' ? e.tag : undefined
       const classNames = typeof e?.classNames === 'string' ? e.classNames : undefined
       const mutations = (Array.isArray(e?.mutations) ? e!.mutations : []) as Mutation[]
-      if (!Number.isInteger(line) || line <= 0 || mutations.length === 0) {
-        warnings.push(`skipped ${rel} — needs a positive line and at least one mutation.`)
+      // The freeform field's verbatim class op — strings only; the ENGINE gates
+      // each added token through isSafeClassToken (the security boundary).
+      const rawPatch = e?.classPatch as { add?: unknown; remove?: unknown } | undefined
+      const onlyStrings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
+      const classPatch: ClassPatch | undefined = rawPatch ? { add: onlyStrings(rawPatch.add), remove: onlyStrings(rawPatch.remove) } : undefined
+      const hasPatch = !!classPatch && (classPatch.add.length > 0 || classPatch.remove.length > 0)
+      if (!Number.isInteger(line) || line <= 0 || (mutations.length === 0 && !hasPatch)) {
+        warnings.push(`skipped ${rel} — needs a positive line and at least one mutation or class edit.`)
         continue
       }
       const scope = e?.scope === 'const' ? 'const' : 'element'
       const bucket = byFile.get(rel) ?? { abs, rel, items: [] }
-      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations, scope })
+      bucket.items.push({ line, column: Number.isFinite(column) ? column : 0, tag, classNames, mutations, scope, classPatch: hasPatch ? classPatch : undefined })
       byFile.set(rel, bucket)
     }
 
@@ -539,7 +546,7 @@ async function handleStyleEdit(req: IncomingMessage, res: ServerResponse, ctx: M
       let changed = false
       items.sort((a, b) => b.line - a.line)
       for (const it of items) {
-        const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, ctx.lineOffsetHint, it.scope)
+        const result = computeStyleEdit(content, it.line, it.column, it.mutations, strategy, it.tag, it.classNames, ctx.lineOffsetHint, it.scope, it.classPatch)
         if (result.sharedConst && !sharedConst) sharedConst = result.sharedConst
         if (result.warnings.length) warnings.push(...result.warnings.map((w) => `${rel}: ${w}`))
         if (result.varEdits.length) varEdits.push(...result.varEdits)
