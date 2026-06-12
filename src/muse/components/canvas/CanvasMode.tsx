@@ -244,7 +244,7 @@ function effectiveBgHex(node: CanvasNode): string {
 // visibly lag behind the one being scrubbed.
 function peerNodes(el: CanvasElement): CanvasNode[] {
   const peers: CanvasNode[] = [el.node]
-  document.querySelectorAll<HTMLElement>('*').forEach((n) => {
+  document.querySelectorAll<HTMLElement | SVGSVGElement>('*').forEach((n) => {
     if (n === el.node) return
     const loc = getSourceLocation(n)
     if (loc && loc.fileName === el.fileName && loc.lineNumber === el.line && loc.columnNumber === el.column) {
@@ -686,8 +686,10 @@ export function CanvasMode({
     // absolute/fixed) — a source reorder shuffles DOM order but wouldn't move it, so a
     // silent no-effect shuffle is worse than no handle. Never gate on a sibling's pinning.
     if (!(selected.node instanceof HTMLElement)) {
-      // SVG v1: recolor/resize via the panel only — reorder stays off.
-      setReorderable(null)
+      // SVG v1: recolor/resize via the panel only. A reasoned refusal (not a
+      // silent null) so a shift-click flag can carry the why, like every other
+      // synchronous refusal in this effect.
+      setReorderable({ reorderable: false, reason: 'an svg moves as a unit — reorder its wrapping element instead' })
       return
     }
     if (isPositionPinned(selected.node)) {
