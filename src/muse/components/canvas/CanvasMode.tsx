@@ -1434,7 +1434,10 @@ export function CanvasMode({
       {/* Hover affordance while no edit is in flight — lets you retarget. While Shift is
           held the flag chip replaces the element tooltip (don't stack both over the target).
           Alt + a selection turns hover into the MEASUREMENT overlay instead (distance
-          readouts) — hover-only; Alt-CLICK still steps out to the parent. */}
+          readouts) — hover-only; Alt-CLICK still steps out to the parent. Known limit:
+          the hover lock clears hoverRect over the selection's own DESCENDANTS, so
+          selection→child measuring never fires — the box-model bands already carry
+          the inside story (padding), so the measure overlay only speaks to peers. */}
       {hoverRect &&
         (altHeld && selected && selected.node.isConnected ? (
           <MeasureOverlay node={selected.node} hoverRect={hoverRect} />

@@ -15,6 +15,7 @@ export function Reference() {
         <div className="flex items-center gap-3"><Kbd>R</Kbd> toggle Muse on and off</div>
         <div className="flex items-center gap-3"><Kbd>Click</Kbd> select and shape an element</div>
         <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + click step out to the parent</div>
+        <div className="flex items-center gap-3"><Kbd>Alt</Kbd> + hover measure from the selection to the hovered element</div>
         <div className="flex items-center gap-3"><Kbd>Double-click</Kbd> edit text in place</div>
         <div className="flex items-center gap-3"><Kbd>Drag</Kbd> an element among its siblings to reorder it — scroll while dragging to reach a spot off-screen</div>
         <div className="flex items-center gap-3"><Kbd>⌘</Kbd>/<Kbd>Ctrl</Kbd> + <Kbd>↑</Kbd><Kbd>↓</Kbd> reorder the selected element by keyboard</div>

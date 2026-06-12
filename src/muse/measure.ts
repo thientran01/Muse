@@ -36,9 +36,13 @@ export function measureBetween(a: RectEdges, b: RectEdges): MeasureSegment[] {
   if (!xOverlap) {
     const x1 = a.right <= b.left ? a.right : b.right
     const x2 = a.right <= b.left ? b.left : a.left
+    // Diagonal anchoring rule: measures ORIGINATE FROM THE SELECTION, so both
+    // segments ride a's center lines. The far endpoint then floats off b's box
+    // — inherent to any single straight line between diagonal rects (Figma adds
+    // dashed extension lines for this; deferred).
     const y = yOverlap
       ? (Math.max(a.top, b.top) + Math.min(a.bottom, b.bottom)) / 2
-      : (a.top + a.bottom) / 2 // diagonal — anchor on the selection's center line
+      : (a.top + a.bottom) / 2
     push(x1, y, x2, y)
   }
   if (!yOverlap) {

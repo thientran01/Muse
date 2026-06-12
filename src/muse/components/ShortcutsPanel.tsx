@@ -19,6 +19,7 @@ const SHORTCUTS: Array<{ keys: string[]; what: string }> = [
   // symbol only inside the paired "⌘/Ctrl" chip (spelling out Cmd doubles it).
   { keys: ['Shift', 'Click'], what: 'flag an element for your agent' },
   { keys: ['Alt', 'Click'], what: 'step out to the parent' },
+  { keys: ['Alt', 'Hover'], what: 'measure from the selection to the hovered element' },
   { keys: ['Dbl-click'], what: 'edit text in place' },
   { keys: ['Drag'], what: 'reorder among siblings, scroll mid-drag to reach farther' },
   // The handler accepts both axes so it works in rows AND columns.
