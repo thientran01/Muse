@@ -715,22 +715,28 @@ function PanelShell({ children }: { children: React.ReactNode }) {
 // opacity below 100, a radius) — what makes collapsed-by-default safe: the header
 // says when it's load-bearing, so nothing is silently hidden. Only sections where
 // "all defaults" is the common case pass it; an always-on dot would be noise.
-function Section({ label, open, dot, onToggle, children }: { label: string; open: boolean; dot?: boolean; onToggle: () => void; children: React.ReactNode }) {
+// `action` is an optional control docked to the header's right edge, OUTSIDE the
+// toggle button (a nested button is invalid markup) — visible even collapsed,
+// e.g. the Classes section's :hov pin.
+function Section({ label, open, dot, action, onToggle, children }: { label: string; open: boolean; dot?: boolean; action?: React.ReactNode; onToggle: () => void; children: React.ReactNode }) {
   const showDot = !!dot && !open
   return (
     <div className="space-y-1.5">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center justify-between text-left transition hover:opacity-80"
-        aria-expanded={open}
-        aria-label={showDot ? `${label}, has values set` : label}
-      >
-        <span className="flex items-center gap-1.5">
-          <SectionLabel>{label}</SectionLabel>
-          {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
-        </span>
-        <span className={`text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={onToggle}
+          className="flex flex-1 items-center justify-between text-left transition hover:opacity-80"
+          aria-expanded={open}
+          aria-label={showDot ? `${label}, has values set` : label}
+        >
+          <span className="flex items-center gap-1.5">
+            <SectionLabel>{label}</SectionLabel>
+            {showDot && <span aria-hidden className="h-1 w-1 rounded-full bg-accent" title="Has values set" />}
+          </span>
+          <span className={`text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
+        </button>
+        {action}
+      </div>
       {open && children}
     </div>
   )
@@ -788,6 +794,26 @@ function ClassChip({ token }: { token: string }) {
       {variants && <span className="shrink-0 text-accent-hover">{variants}:</span>}
       <span className="truncate">{base}</span>
     </span>
+  )
+}
+
+// The Classes section's ":hov" pin — forces the selected element's hover styles
+// on (forcedState.ts clones the page's :hover rules behind an attribute), so
+// hover-governed values render, read, and scrub without the cursor parked on
+// the element. Pressed state carries the accent treatment (a mode, like the
+// ScopeToggle's "All" — loud enough that you can't forget it's forced).
+function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!pinned)}
+      aria-pressed={pinned}
+      title={pinned ? 'Release the forced hover state' : "Force this element's :hover styles on"}
+      className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-4 ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+        pinned ? 'bg-accent/15 text-accent-hover ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
+      }`}
+    >
+      :hov
+    </button>
   )
 }
 
@@ -904,6 +930,8 @@ export function PropertiesPanel({
   sharedConst,
   scope = 'element',
   onScopeChange,
+  hoverPinned = false,
+  onHoverPinChange,
   onPreview,
   onCommit,
 }: {
@@ -915,6 +943,8 @@ export function PropertiesPanel({
   sharedConst?: SharedConst | null // set when style={X} resolves to a shared const
   scope?: 'element' | 'const'
   onScopeChange?: (s: 'element' | 'const') => void
+  hoverPinned?: boolean // the :hov forced-state pin (see HoverPinChip)
+  onHoverPinChange?: (on: boolean) => void
 } & EditProps) {
   const [open, setOpen] = useState<Set<SectionKey>>(() => initialOpen(values))
   const toggle = (k: SectionKey) =>
@@ -977,7 +1007,12 @@ export function PropertiesPanel({
           design): it's REFERENCE, not controls — collapsed by default, no fields,
           and unconditional because "no classes" is itself an answer about the
           element. The defensive ?.node?. survives a future node-optional type. */}
-      <Section label="Classes" open={open.has('classes')} onToggle={() => toggle('classes')}>
+      <Section
+        label="Classes"
+        open={open.has('classes')}
+        onToggle={() => toggle('classes')}
+        action={onHoverPinChange ? <HoverPinChip pinned={hoverPinned} onChange={onHoverPinChange} /> : undefined}
+      >
         <ClassChips classNames={chain.find((c) => c.key === selectedKey)?.node?.getAttribute('class') ?? ''} />
       </Section>
     </PanelShell>

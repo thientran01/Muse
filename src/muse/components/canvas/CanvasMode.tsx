@@ -8,7 +8,8 @@ import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
-import { isVarColorToken, parseShadowLayer, SHADOW, shadowSignature } from '../../style/tailwindScales'
+import { pinHover } from '../../forcedState'
+import { familyMatcher, isVarColorToken, parseShadowLayer, SHADOW, shadowSignature, splitVariants } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
@@ -344,6 +345,34 @@ export function CanvasMode({
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
     }
   }, [selected])
+  // Forced-:hover pin (the Classes section's ":hov" chip). Per-selection: the
+  // pin belongs to the element and never outlives it. Toggling bumps revision so
+  // readValues re-reads — hover-governed values become scrubable while pinned.
+  const [hoverPinned, setHoverPinned] = useState(false)
+  const pinRef = useRef<(() => void) | null>(null)
+  const setHoverPin = (on: boolean) => {
+    pinRef.current?.()
+    pinRef.current = null
+    if (on && selected) pinRef.current = pinHover(selected.node)
+    setHoverPinned(on)
+    bump((v) => v + 1)
+  }
+  useEffect(() => {
+    setHoverPinned(false)
+    return () => {
+      pinRef.current?.()
+      pinRef.current = null
+    }
+  }, [selected])
+  useEffect(() => {
+    // The pin is a SNAPSHOT of the page's :hover rules. Anything that rewrites
+    // stylesheets under an active pin (commit → HMR repaint, undo/redo) lands
+    // here as a revision bump — rebuild the clones so they can't go stale.
+    if (!hoverPinned || !selected) return
+    pinRef.current?.()
+    pinRef.current = pinHover(selected.node)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision])
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
   // it only appears when a drop will actually commit. Probed per selection, container-
   // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
@@ -812,8 +841,26 @@ export function CanvasMode({
     }
     if (spaceBlocked.size > 0) mutations = mutations.filter((m) => !spaceBlocked.has(m.property))
 
+    // While the :hov pin is active, an edit to a property the element styles
+    // with a hover: token targets THAT token (variant:'hover'), not the base —
+    // the user is looking at the hover state, so that's the value they scrubbed.
+    // Properties with no hover: token stay base edits (the engine warns if a
+    // variant would still win).
+    if (hoverPinned) {
+      const tokens = (selected.node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+      mutations = mutations.map((m) => {
+        if (m.variant) return m
+        const matchBase = familyMatcher(PROPERTIES[m.property])
+        const governed = tokens.some((t) => {
+          const { variants, base } = splitVariants(t)
+          return variants === 'hover' && matchBase(base)
+        })
+        return governed ? { ...m, variant: 'hover' } : m
+      })
+    }
+
     applyPreview(mutations) // make sure the final value is showing
-    const label = mutations.map((m) => `${m.property} ${m.value}`).join(', ').slice(0, 80)
+    const label = mutations.map((m) => `${m.variant ? `${m.variant}:` : ''}${m.property} ${m.value}`).join(', ').slice(0, 80)
 
     // EPHEMERAL: the inline preview IS the committed state. Record a DOM-snapshot
     // undo entry (before/after cssText, captured per peer node), keep the inline
@@ -1288,6 +1335,8 @@ export function CanvasMode({
                   sharedConst={styleScope}
                   scope={scope}
                   onScopeChange={setScope}
+                  hoverPinned={hoverPinned}
+                  onHoverPinChange={setHoverPin}
                   onPreview={applyPreview}
                   onCommit={commit}
                 />
