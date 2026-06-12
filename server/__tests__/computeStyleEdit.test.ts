@@ -96,6 +96,16 @@ describe('tailwind-first', () => {
     expect(r.newContent).not.toMatch(/[^\r]\n/)
   })
 
+  it('preserves a color alpha byte end to end (picker → arbitrary token)', () => {
+    const src = `export const C = () => (\n  <div className="bg-white">hi</div>\n)\n`
+    const r = edit(src, '<div', 'div', [{ property: 'backgroundColor', value: '#11223380' }])
+    expect(r.newContent).toContain('className="bg-[#11223380]"')
+    const r2 = edit(src, '<div', 'div', [{ property: 'backgroundColor', value: 'rgba(17, 34, 51, 0.5)' }])
+    expect(r2.newContent).toContain('className="bg-[#11223380]"')
+    const r3 = edit(src, '<div', 'div', [{ property: 'backgroundColor', value: '#112233ff' }])
+    expect(r3.newContent).toContain('className="bg-[#112233]"') // redundant ff drops — no churn
+  })
+
   it('recolors an <svg> root via the color property (the currentColor icon idiom)', () => {
     const src = `export const Icon = () => (\n  <svg className="h-4 w-4 text-gray-500" viewBox="0 0 16 16"><path fill="currentColor" d="M0 0h16v16z" /></svg>\n)\n`
     const r = edit(src, '<svg', 'svg', [{ property: 'color', value: '#112233' }])

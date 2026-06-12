@@ -15,7 +15,7 @@
 // ============================================================
 import { contrastRatio, normalizeHexInput } from './colorMath'
 
-export type TokenSwatch = { name: string; value: string } // value normalized to #rrggbb
+export type TokenSwatch = { name: string; value: string } // value normalized to #rrggbb (or #rrggbbaa)
 
 export const TOKEN_SWATCH_LIMIT = 5
 

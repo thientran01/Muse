@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eyedropper } from '@phosphor-icons/react'
 import {
+  alphaFromHex,
+  composeHexAlpha,
   contrastRatio,
   hexToHsv,
   hsvToHex,
@@ -65,27 +67,29 @@ const getEyeDropper = (): EyeDropperCtor | null =>
   typeof window !== 'undefined' && 'EyeDropper' in window ? (window as unknown as { EyeDropper: EyeDropperCtor }).EyeDropper : null
 
 // A self-contained color picker in Muse styling (no dependency): a
-// saturation/brightness square + hue slider + hex & R/G/B inputs + an eyedropper +
-// an optional WCAG contrast check.
+// saturation/brightness square + hue slider + ALPHA slider + hex & R/G/B inputs
+// + an eyedropper + an optional WCAG contrast check.
 // Drives `onPreview` live while dragging, `onCommit` on release / typed entry —
 // same contract as the native input it replaces. HSV-driven internally (so the SV
-// square stays stable while you slide hue), emits #rrggbb (the engine drops alpha,
-// so there's no alpha channel).
+// square stays stable while you slide hue); emits #rrggbb at full opacity and
+// #rrggbbaa otherwise (the engine preserves the byte; bg-[#11223380] is valid
+// Tailwind).
 export function ColorPicker({
   value,
   contrastAgainst,
   onPreview,
   onCommit,
 }: {
-  value: string // current #rrggbb
+  value: string // current #rrggbb or #rrggbbaa
   contrastAgainst?: string // the color this sits on/under, for the WCAG check (e.g. the fill behind text)
   onPreview: (hex: string) => void
   onCommit: (hex: string) => void
 }) {
-  // HSV is the source of truth while the picker is open, so dragging value to 0
-  // (black) doesn't lose the hue. Seed from the incoming value; re-seed if the
-  // upstream value changes from OUTSIDE (not from our own edits).
+  // HSV (+ alpha) is the source of truth while the picker is open, so dragging
+  // value to 0 (black) doesn't lose the hue. Seed from the incoming value;
+  // re-seed if the upstream value changes from OUTSIDE (not from our own edits).
   const [hsv, setHsv] = useState<Hsv>(() => hexToHsv(value) ?? { h: 0, s: 0, v: 0 })
+  const [alpha, setAlpha] = useState(() => alphaFromHex(value))
   const selfEdit = useRef(false)
   useEffect(() => {
     if (selfEdit.current) {
@@ -93,23 +97,31 @@ export function ColorPicker({
       return
     }
     const next = hexToHsv(value)
-    if (next) setHsv(next)
+    if (next) {
+      setHsv(next)
+      setAlpha(alphaFromHex(value))
+    }
   }, [value])
 
   const hex = hsvToHex(hsv)
+  const composed = composeHexAlpha(hex, alpha)
   const rgb = hsvToRgb(hsv)
   const hueHex = hsvToHex({ h: hsv.h, s: 100, v: 100 }) // pure-hue backdrop for the SV square
 
-  // Push an HSV change out: mark self-edit so the sync effect won't fight it,
-  // preview live, and (on release) commit.
-  const emit = (next: Hsv, commit: boolean) => {
+  // Push a change out: mark self-edit so the sync effect won't fight it,
+  // preview live, and (on release) commit. One emitter for both axes.
+  const emit = (nextHsv: Hsv, nextAlpha: number, commit: boolean) => {
     selfEdit.current = true
-    setHsv(next)
-    const h = hsvToHex(next)
-    onPreview(h)
-    if (commit) onCommit(h)
+    setHsv(nextHsv)
+    setAlpha(nextAlpha)
+    const out = composeHexAlpha(hsvToHex(nextHsv), nextAlpha)
+    onPreview(out)
+    if (commit) onCommit(out)
   }
-  const setHex = (h: string) => { const hv = hexToHsv(h); if (hv) emit(hv, true) }
+  const setHex = (h: string) => {
+    const hv = hexToHsv(h)
+    if (hv) emit(hv, alphaFromHex(h), true)
+  }
 
   // Eyedropper: sample any pixel on screen (Chromium). Hidden where unsupported.
   const EyeDropper = getEyeDropper()
@@ -123,6 +135,8 @@ export function ColorPicker({
     }
   }
 
+  // Contrast deliberately checks the OPAQUE channel (WCAG defines no composited-
+  // alpha formula) — the verdict speaks to the intended color, not the blend.
   const contrast = contrastAgainst ? contrastRatio(hex, contrastAgainst) : null
   const swatches = useTokenSwatches(contrastAgainst)
 
@@ -147,7 +161,7 @@ export function ColorPicker({
         </div>
       )}
 
-      <SVSquare hsv={hsv} hueHex={hueHex} onChange={(s, v, commit) => emit({ ...hsv, s, v }, commit)} />
+      <SVSquare hsv={hsv} hueHex={hueHex} onChange={(s, v, commit) => emit({ ...hsv, s, v }, alpha, commit)} />
 
       {/* Eyedropper (if supported) + hue slider on one row, so the slider doesn't
           stretch full-width unnecessarily and the dropper sits where Figma's does. */}
@@ -162,14 +176,20 @@ export function ColorPicker({
             <Eyedropper size={15} />
           </button>
         )}
-        <HueSlider hue={hsv.h} onChange={(h, commit) => emit({ ...hsv, h }, commit)} />
+        <HueSlider hue={hsv.h} onChange={(h, commit) => emit({ ...hsv, h }, alpha, commit)} />
       </div>
+
+      {/* Alpha 0–100%: the current hue fades over a checkerboard so "less" reads
+          as see-through, not darker. */}
+      <AlphaSlider hex={hex} alpha={alpha} onChange={(a, commit) => emit(hsv, a, commit)} />
 
       {/* Hex (with leading swatch) + R/G/B on one compact grid. No duplicate
           swatch/hex readout — this row IS the readout. */}
       <div className="flex items-center gap-1.5">
-        <span className="h-6 w-6 shrink-0 rounded border border-line/20" style={{ backgroundColor: hex }} />
-        <HexInput value={hex} onCommit={setHex} />
+        <span className="h-6 w-6 shrink-0 rounded border border-line/20" style={{ backgroundImage: CHECKER }}>
+          <span className="block h-full w-full rounded" style={{ backgroundColor: composed }} />
+        </span>
+        <HexInput value={composed} onCommit={setHex} />
       </div>
       <div className="grid grid-cols-3 gap-1.5">
         {(['r', 'g', 'b'] as const).map((ch) => (
@@ -180,7 +200,7 @@ export function ColorPicker({
             onCommit={(n) => {
               const next: Rgb = { ...roundRgb(rgb), [ch]: n }
               const hv = hexToHsv(rgbToHex(next))
-              if (hv) emit(hv, true)
+              if (hv) emit(hv, alpha, true)
             }}
           />
         ))}
@@ -203,9 +223,9 @@ export function ColorPicker({
                 onClick={() => setHex(s.value)}
                 title={`${s.name} · ${s.value}`}
                 aria-label={`Use ${s.name}, ${s.value}`}
-                aria-pressed={s.value === hex}
+                aria-pressed={s.value === composed}
                 className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100 ${
-                  s.value === hex ? 'border-accent ring-1 ring-accent/60' : 'border-line/20'
+                  s.value === composed ? 'border-accent ring-1 ring-accent/60' : 'border-line/20'
                 }`}
                 style={{ backgroundColor: s.value }}
               />
@@ -279,6 +299,47 @@ function HueSlider({ hue, onChange }: { hue: number; onChange: (h: number, commi
       style={{ backgroundImage: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)' }}
     >
       <Knob left={`${(hue / 360) * 100}%`} top="50%" />
+    </div>
+  )
+}
+
+// A small transparency checkerboard (CSS-only, no asset) shared by the alpha
+// slider track and the swatch — the universal "this part is see-through" read.
+const CHECKER =
+  'repeating-conic-gradient(rgba(127,127,127,0.35) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px'
+
+// Alpha 0–100% slider: current hue over the checkerboard. role=slider PROMISES
+// keyboard per the APG, so it delivers: focusable, arrows ±1% (Shift ±10%),
+// Home/End — each press commits (a keyboard step is a deliberate value, not a
+// drag in flight).
+function AlphaSlider({ hex, alpha, onChange }: { hex: string; alpha: number; onChange: (a: number, commit: boolean) => void }) {
+  const { ref, handlers } = useRectDrag((x, _y, commit) => onChange(x, commit))
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 0.1 : 0.01
+    let next: number | null = null
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') next = Math.min(1, alpha + step)
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') next = Math.max(0, alpha - step)
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = 1
+    if (next === null) return
+    e.preventDefault()
+    onChange(next, true)
+  }
+  return (
+    <div
+      ref={ref}
+      {...handlers}
+      onKeyDown={onKeyDown}
+      tabIndex={0}
+      role="slider"
+      aria-label="Alpha"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(alpha * 100)}
+      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      style={{ background: `linear-gradient(to right, transparent, ${hex}), ${CHECKER}` }}
+    >
+      <Knob left={`${alpha * 100}%`} top="50%" />
     </div>
   )
 }
