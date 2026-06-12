@@ -57,8 +57,8 @@ export function snapshotMutations(v: CanvasValues): StyleMutation[] {
   if (!v.colorThemed.background && v.color.ownBackground) {
     out.push({ property: 'backgroundColor', value: v.color.ownBackground })
   }
-  if (!v.colorThemed.border && v.appearance.borderWidth > 0) {
-    out.push({ property: 'borderColor', value: v.color.border })
+  if (!v.colorThemed.border && v.appearance.borderWidth > 0 && !v.appearance.borderStyleNone) {
+    out.push({ property: 'borderColor', value: v.color.border }) // same gate as borderStyle — no color without a painted border
   }
 
   if (v.rendersText) {
@@ -85,12 +85,19 @@ export function snapshotMutations(v: CanvasValues): StyleMutation[] {
 
 // The paste batch: source values that (a) apply to the target's shape — Type
 // props need rendered text, container props need a flex/grid layout — and
-// (b) actually differ from the target's current value.
+// (b) actually differ from the target's current value. A color channel the
+// TARGET paints through a theme variable is dropped too: the engine would
+// defer such an edit to the variable's DEFINITION, repainting every element
+// that shares it — the panel's read-only guard for themed channels, upheld
+// here so a paste can't bypass it.
 export function pasteDiff(source: StyleMutation[], target: CanvasValues): StyleMutation[] {
   const current = new Map(snapshotMutations(target).map((m) => [m.property, m.value]))
   return source.filter((m) => {
     if (TYPE_PROPS.has(m.property) && !target.rendersText) return false
     if (CONTAINER_PROPS.has(m.property) && !target.layout) return false
+    if (m.property === 'color' && target.colorThemed.text) return false
+    if (m.property === 'backgroundColor' && target.colorThemed.background) return false
+    if (m.property === 'borderColor' && target.colorThemed.border) return false
     return current.get(m.property) !== m.value
   })
 }

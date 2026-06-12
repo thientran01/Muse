@@ -77,12 +77,14 @@ function readValues(node: HTMLElement): CanvasValues {
       background: effectiveBgHex(node),
       border: rgbToHex(cs.borderColor),
       // The element's OWN background (the swatch's `background` is the
-      // ancestor-composited backdrop) — null when fully transparent, so a
-      // style copy can't turn a see-through element's backdrop into paint.
+      // ancestor-composited backdrop) — null when not FULLY opaque: a
+      // transparent bg must never copy as the backdrop color, and rgbToHex
+      // drops alpha, so bg-white/10 would paste as solid white. Alpha-aware
+      // copy unlocks when the picker grows an alpha channel.
       ownBackground: (() => {
         const own = cs.backgroundColor
         const alpha = /rgba\([^)]*,\s*([\d.]+)\s*\)$/.exec(own)?.[1]
-        return own === 'transparent' || (alpha !== undefined && parseFloat(alpha) === 0) ? null : rgbToHex(own)
+        return own === 'transparent' || (alpha !== undefined && parseFloat(alpha) < 1) ? null : rgbToHex(own)
       })(),
     },
     // A var-themed channel reads its color from a CSS variable in the source class
@@ -869,7 +871,7 @@ export function CanvasMode({
         return
       }
       if (!styleClipboard) {
-        flashHint(r.left, r.top, 'Nothing copied yet — Ctrl+Alt+C copies styles')
+        flashHint(r.left, r.top, 'Nothing copied yet — ⌘/Ctrl+Alt+C copies styles')
         return
       }
       const muts = pasteDiff(styleClipboard, values)
@@ -878,7 +880,10 @@ export function CanvasMode({
         return
       }
       void commit(muts)
-      flashHint(r.left, r.top, `Styles pasted (${muts.length})`)
+      // No count: mutations ≠ the properties a user thinks in (4 padding sides
+      // read as one), and commit may still filter (space-y guard) — a number
+      // here would lie twice.
+      flashHint(r.left, r.top, 'Styles pasted')
     }
     document.addEventListener('keydown', onCopyPaste, true)
     return () => document.removeEventListener('keydown', onCopyPaste, true)

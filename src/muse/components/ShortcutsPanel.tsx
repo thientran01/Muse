@@ -23,6 +23,8 @@ const SHORTCUTS: Array<{ keys: string[]; what: string }> = [
   { keys: ['Drag'], what: 'reorder among siblings, scroll mid-drag to reach farther' },
   // The handler accepts both axes so it works in rows AND columns.
   { keys: ['⌘/Ctrl', '↑↓←→'], what: 'reorder by keyboard' },
+  { keys: ['⌘/Ctrl', 'Alt', 'C'], what: 'copy the selection’s styles' },
+  { keys: ['⌘/Ctrl', 'Alt', 'V'], what: 'paste styles onto the selection' },
   { keys: ['⌘/Ctrl', 'Z'], what: 'undo' },
   { keys: ['⌘/Ctrl', 'Shift', 'Z'], what: 'redo' },
   { keys: ['Esc'], what: 'deselect, then close' },

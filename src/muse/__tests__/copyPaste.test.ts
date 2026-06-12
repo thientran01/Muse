@@ -99,6 +99,13 @@ describe('pasteDiff', () => {
     expect(props).not.toContain('justifyContent')
   })
 
+  it('drops color channels the TARGET paints through a theme variable (no var clobber)', () => {
+    const source = snapshotMutations(base({ color: { ...base().color, text: '#ff0000' } }))
+    const themedTarget = base({ colorThemed: { text: true, background: false, border: false } })
+    const props = pasteDiff(source, themedTarget).map((m) => m.property)
+    expect(props).not.toContain('color') // the engine would defer this to the VAR DEFINITION — global repaint
+  })
+
   it('resets a target value the source holds at default (opacity)', () => {
     const source = snapshotMutations(base()) // opacity 100%
     const faded = base({ appearance: { ...base().appearance, opacity: 50 } })
