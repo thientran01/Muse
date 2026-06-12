@@ -25,7 +25,10 @@ export type CanvasElement = {
   column: number
   tag: string
   key: string // fileName:line:col:tag
-  node: HTMLElement
+  // An <svg> ROOT is selectable too (icon recolor/resize) — every consumer
+  // uses the shared Element surface (getAttribute/getBoundingClientRect/
+  // style/classList), which both implement.
+  node: HTMLElement | SVGSVGElement
 }
 
 // One deterministic style change, in the shared property vocabulary. `variant`

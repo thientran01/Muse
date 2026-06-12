@@ -17,6 +17,7 @@ const base = (over: Partial<CanvasValues> = {}): CanvasValues => ({
   size: { width: 200, height: 100 },
   type: { fontSize: 16, fontWeight: 400, lineHeight: 24, letterSpacing: 0, align: 'left' },
   rendersText: true,
+  isSvg: false,
   color: { text: '#111111', background: '#ffffff', border: '#000000', ownBackground: '#ffffff' },
   colorThemed: { text: false, background: false, border: false },
   appearance: {
@@ -110,5 +111,17 @@ describe('pasteDiff', () => {
     const source = snapshotMutations(base()) // opacity 100%
     const faded = base({ appearance: { ...base().appearance, opacity: 50 } })
     expect(pasteDiff(source, faded)).toContainEqual({ property: 'opacity', value: '100%' })
+  })
+
+  it('an svg SOURCE donates only its color — its computed zeros never wipe a target', () => {
+    const svgSource = snapshotMutations(base({ isSvg: true, rendersText: false }))
+    expect(svgSource).toEqual([{ property: 'color', value: '#111111' }])
+  })
+
+  it('an svg TARGET takes only color — box classes would be dead tokens', () => {
+    const source = snapshotMutations(base())
+    const svgTarget = base({ isSvg: true, rendersText: false, color: { ...base().color, text: '#999999' } })
+    const props = pasteDiff(source, svgTarget).map((m) => m.property)
+    expect(props).toEqual(['color'])
   })
 })

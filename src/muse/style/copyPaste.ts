@@ -22,6 +22,14 @@ export function snapshotMutations(v: CanvasValues): StyleMutation[] {
   const out: StyleMutation[] = []
   const px = (property: StyleMutation['property'], value: number) => out.push({ property, value: `${value}px` })
 
+  // An <svg> source has no box-model story to tell — its computed zeros would
+  // paste as p-0/shadow-none and WIPE the target's box styling. Color is the
+  // only thing an icon meaningfully donates.
+  if (v.isSvg) {
+    if (!v.colorThemed.text) out.push({ property: 'color', value: v.color.text })
+    return out
+  }
+
   px('paddingTop', v.padding.top)
   px('paddingRight', v.padding.right)
   px('paddingBottom', v.padding.bottom)
@@ -93,6 +101,9 @@ export function snapshotMutations(v: CanvasValues): StyleMutation[] {
 export function pasteDiff(source: StyleMutation[], target: CanvasValues): StyleMutation[] {
   const current = new Map(snapshotMutations(target).map((m) => [m.property, m.value]))
   return source.filter((m) => {
+    // An <svg> target only takes color — box-model classes on an svg root are
+    // dead tokens (size transfer is excluded for everyone already).
+    if (target.isSvg && m.property !== 'color') return false
     if (TYPE_PROPS.has(m.property) && !target.rendersText) return false
     if (CONTAINER_PROPS.has(m.property) && !target.layout) return false
     if (m.property === 'color' && target.colorThemed.text) return false

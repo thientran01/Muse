@@ -69,11 +69,13 @@ export function Troubleshooting() {
         would rather have it as a class, flag the element and let your agent refactor it.
       </P>
 
-      <H2 id="svg">SVG elements do not select</H2>
+      <H2 id="svg">SVG shapes select as their icon</H2>
       <P>
-        Canvas selection currently covers HTML elements. Icons and illustrations inside an{' '}
-        <Code>svg</Code> do not take a selection box yet; select the wrapping element to move or
-        restyle the icon as a unit.
+        Clicking an icon selects its <Code>svg</Code> root — resize it and recolor it (the color
+        flows through <Code>currentColor</Code>, which covers virtually every icon set). The
+        shapes <em>inside</em> an svg (<Code>path</Code>, <Code>circle</Code>) don't take their
+        own selection; the icon edits as a unit, and reordering still happens on the wrapping
+        element.
       </P>
 
       <H2 id="flag">When Canvas can't reach it, flag it</H2>
