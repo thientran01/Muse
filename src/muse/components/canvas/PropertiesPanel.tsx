@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
 import { isSafeClassToken, SHADOW, splitVariants } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
@@ -673,12 +673,16 @@ const DISPLAY_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: str
   { name: 'flex', label: 'Flex' },
   { name: 'grid', label: 'Grid' },
 ]
+// Phosphor components, not text glyphs — the text-align row's idiom; unicode
+// arrows render thin and platform-dependent at the chip's 10px.
 const DIRECTION_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: string }> = [
-  { name: 'row', label: '→', title: 'Row' },
-  { name: 'column', label: '↓', title: 'Column' },
-  { name: 'row-reverse', label: '←', title: 'Row reverse' },
-  { name: 'column-reverse', label: '↑', title: 'Column reverse' },
+  { name: 'row', label: <ArrowRight size={13} />, title: 'Row' },
+  { name: 'column', label: <ArrowDown size={13} />, title: 'Column' },
+  { name: 'row-reverse', label: <ArrowLeft size={13} />, title: 'Row reverse' },
+  { name: 'column-reverse', label: <ArrowUp size={13} />, title: 'Column reverse' },
 ]
+// wrap-reverse stays off the row (the inline-flex precedent): the engine writes
+// it fine, but a computed wrap-reverse simply selects no chip.
 const WRAP_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: string }> = [
   { name: 'nowrap', label: 'No wrap' },
   { name: 'wrap', label: 'Wrap' },
