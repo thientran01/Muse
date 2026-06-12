@@ -16,6 +16,7 @@ import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
 import { GapOverlay } from './GapOverlay'
+import { MeasureOverlay } from './MeasureOverlay'
 import { PropertiesPanel, type CanvasValues, type Sides } from './PropertiesPanel'
 import { ReorderOverlay, resolveMembers, SETTLE_CAP_MS } from './ReorderOverlay'
 import { ResizeHandles } from './ResizeHandles'
@@ -355,7 +356,7 @@ export function CanvasMode({
   const onFlag = useCallback((el: CanvasElement, at: { x: number; y: number }) => {
     setFlagDraft({ draft: draftFromElement(el), x: at.x, y: at.y })
   }, [])
-  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss, shiftHeld } =
+  const { active, setActive, hoverRect, hoverInfo, cursor, selected, selectElement, editing, exitEditing, miss, shiftHeld, altHeld } =
     useCanvasMode({ suspended: reordering, onFlag })
   const [revision, bump] = useState(0)
   const [values, setValues] = useState<CanvasValues | null>(null)
@@ -1431,8 +1432,18 @@ export function CanvasMode({
   return (
     <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
       {/* Hover affordance while no edit is in flight — lets you retarget. While Shift is
-          held the flag chip replaces the element tooltip (don't stack both over the target). */}
-      {hoverRect && <HoverHighlight rect={hoverRect} cursor={cursor} info={shiftHeld ? null : hoverInfo} />}
+          held the flag chip replaces the element tooltip (don't stack both over the target).
+          Alt + a selection turns hover into the MEASUREMENT overlay instead (distance
+          readouts) — hover-only; Alt-CLICK still steps out to the parent. Known limit:
+          the hover lock clears hoverRect over the selection's own DESCENDANTS, so
+          selection→child measuring never fires — the box-model bands already carry
+          the inside story (padding), so the measure overlay only speaks to peers. */}
+      {hoverRect &&
+        (altHeld && selected && selected.node.isConnected ? (
+          <MeasureOverlay node={selected.node} hoverRect={hoverRect} />
+        ) : (
+          <HoverHighlight rect={hoverRect} cursor={cursor} info={shiftHeld ? null : hoverInfo} />
+        ))}
 
       {/* Shift-held discoverability cue: tells the user the hover target will be flagged
           (the gesture is otherwise invisible). Follows the cursor like the hover tooltip. */}

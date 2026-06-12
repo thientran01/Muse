@@ -104,6 +104,10 @@ export function useCanvasMode(opts?: {
   // True while Shift is held — surfaces the "shift-click to flag" affordance (the
   // gesture is otherwise undiscoverable). Reset on keyup / blur / leaving canvas.
   const [shiftHeld, setShiftHeld] = useState(false)
+  // True while Alt is held — with a selection, hover becomes the measurement
+  // overlay (distance readouts to the hovered element). Hover-only: Alt-CLICK
+  // still steps out to the parent, untouched. Same reset discipline as Shift.
+  const [altHeld, setAltHeld] = useState(false)
   // A click that couldn't be mapped to source (no _debugSource — a non-React node,
   // an SVG, etc.). Surfaced so the UI can show a quiet "can't edit this" hint
   // instead of silently doing nothing. `id` makes each miss distinct so a repeat
@@ -137,6 +141,7 @@ export function useCanvasMode(opts?: {
       setHoverInfo(null)
       setCursor(null)
       setShiftHeld(false)
+      setAltHeld(false)
       return
     }
 
@@ -195,6 +200,7 @@ export function useCanvasMode(opts?: {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setShiftHeld(true)
+      if (e.key === 'Alt') setAltHeld(true)
       if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
         // Esc steps back: a selected element first, then canvas mode itself.
@@ -204,8 +210,12 @@ export function useCanvasMode(opts?: {
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setShiftHeld(false)
+      if (e.key === 'Alt') setAltHeld(false)
     }
-    const onBlur = () => setShiftHeld(false)
+    const onBlur = () => {
+      setShiftHeld(false)
+      setAltHeld(false)
+    }
 
     // Double-click an element → enter text edit on it (CanvasMode gates on whether
     // it actually renders editable text, so a double-click on a non-text element is
@@ -250,5 +260,5 @@ export function useCanvasMode(opts?: {
     }
   }, [active, selectElement])
 
-  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss, shiftHeld }
+  return { active, setActive, hoverRect, hoverInfo, cursor, selected, setSelected, selectElement, clearSelected, editing, exitEditing, miss, shiftHeld, altHeld }
 }
