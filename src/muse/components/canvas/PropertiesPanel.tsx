@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
+import { componentNameFor } from '../../sourceLocation'
 import { isSafeClassToken, SHADOW, splitVariants } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
 import { useTransientSurface } from '../../hooks/useTransientSurface'
@@ -298,24 +299,36 @@ export function Breadcrumb({
   onPick: (c: CanvasElement) => void
 }) {
   const crumbs = [...chain].reverse()
+  // Component names where the OWNER CHANGES along the chain (root → leaf):
+  // every element inside Card is owned by Card, so repeating the name per crumb
+  // would read Card › Card › Card. A crumb shows its component when it's the
+  // outermost element that component rendered here; the rest (and the leaf,
+  // which should read as the concrete element) keep the tag.class label. The
+  // class attr stays on title either way.
+  const names = crumbs.map((c) => componentNameFor(c.node))
   return (
     <div className="flex flex-wrap items-center gap-0.5 text-[10px] leading-tight">
-      {crumbs.map((c, i) => (
-        <Fragment key={c.key}>
-          {i > 0 && <span className="text-fg-faint/40">›</span>}
-          <button
-            onClick={() => onPick(c)}
-            title={c.node.getAttribute('class') || c.tag}
-            className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
-              c.key === selectedKey
-                ? 'bg-accent/15 text-accent'
-                : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
-            }`}
-          >
-            {crumbLabel(c)}
-          </button>
-        </Fragment>
-      ))}
+      {crumbs.map((c, i) => {
+        const ownName = names[i]
+        const isBoundary = ownName !== null && (i === 0 || names[i - 1] !== ownName)
+        const label = isBoundary && i < crumbs.length - 1 ? ownName : crumbLabel(c)
+        return (
+          <Fragment key={c.key}>
+            {i > 0 && <span className="text-fg-faint/40">›</span>}
+            <button
+              onClick={() => onPick(c)}
+              title={c.node.getAttribute('class') || c.tag}
+              className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
+                c.key === selectedKey
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
+              }`}
+            >
+              {label}
+            </button>
+          </Fragment>
+        )
+      })}
     </div>
   )
 }

@@ -77,10 +77,39 @@ export function getSourceLocation(el: Element | null): SourceLocation | null {
   return null
 }
 
+// The nearest COMPONENT (capitalized owner) that rendered this element, or null.
+// Fuels the breadcrumb's component names. try/catch + optional chaining: only
+// _debugSource died in React 19 — __reactFiber$/_debugOwner survive in dev — but
+// fiber internals are semi-private, so a future shift degrades to tag.class
+// instead of throwing mid-render.
+export function componentNameFor(el: Element): string | null {
+  try {
+    let owner = getFiber(el)?._debugOwner
+    let guard = 0
+    while (owner && guard++ < 40) {
+      const name = componentName(owner.type ?? owner.elementType)
+      if (name && /^[A-Z]/.test(name)) return name
+      owner = owner._debugOwner
+    }
+  } catch {
+    /* fiber shape shifted — fall back */
+  }
+  return null
+}
+
 export function getElementInfo(el: Element | null): ElementInfo | null {
   if (!el) return null
   const tag = el.tagName.toLowerCase()
-  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 36)
+  // DIRECT text children only (the same predicate the panel's rendersText uses):
+  // a container's tooltip must not concatenate its whole subtree ("MuseOverview
+  // Install How it works…") — that's DOM noise, not identity.
+  const text = [...el.childNodes]
+    .filter((n) => n.nodeType === Node.TEXT_NODE)
+    .map((n) => n.textContent ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 36)
 
   // Walk the owner chain for the components that rendered this element.
   const crumbs: string[] = []
