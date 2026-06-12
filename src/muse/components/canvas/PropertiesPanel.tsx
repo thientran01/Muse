@@ -299,7 +299,9 @@ export function Breadcrumb({
   onPick: (c: CanvasElement) => void
 }) {
   const crumbs = [...chain].reverse()
-  // Component names where the OWNER CHANGES along the chain (root → leaf):
+  // Component names where the OWNER CHANGES along the chain (root → leaf).
+  // Known limit: two DIFFERENT components sharing a name adjacent in the chain
+  // read as one (name-string comparison — fiber identity isn't worth the cost):
   // every element inside Card is owned by Card, so repeating the name per crumb
   // would read Card › Card › Card. A crumb shows its component when it's the
   // outermost element that component rendered here; the rest (and the leaf,

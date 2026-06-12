@@ -102,14 +102,20 @@ export function getElementInfo(el: Element | null): ElementInfo | null {
   const tag = el.tagName.toLowerCase()
   // DIRECT text children only (the same predicate the panel's rendersText uses):
   // a container's tooltip must not concatenate its whole subtree ("MuseOverview
-  // Install How it works…") — that's DOM noise, not identity.
-  const text = [...el.childNodes]
-    .filter((n) => n.nodeType === Node.TEXT_NODE)
-    .map((n) => n.textContent ?? '')
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 36)
+  // Install How it works…") — that's DOM noise, not identity. One fallback for
+  // the wrapped-label idiom (<button><span>Save</span></button>, ubiquitous in
+  // design systems): an element with exactly ONE child element reads that
+  // child's direct text — still never a multi-child container's subtree.
+  const directText = (node: Element) =>
+    [...node.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent ?? '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  let text = directText(el)
+  if (!text && el.childNodes.length === 1 && el.firstElementChild) text = directText(el.firstElementChild)
+  text = text.slice(0, 36)
 
   // Walk the owner chain for the components that rendered this element.
   const crumbs: string[] = []
