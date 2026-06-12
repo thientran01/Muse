@@ -859,11 +859,11 @@ export function CanvasMode({
         setError(warnings[0] ?? "Couldn't apply that change.")
         return
       }
-      // The edit landed but the engine had something to say (a skipped sub-edit, a
-      // "variant still wins at its state" note) — surface it by the panel instead
-      // of letting it die in the console.
-      if (warnings.length) showNotice(warnings)
       await museWrite(edits)
+      // The edit landed (write confirmed) but the engine had something to say (a
+      // skipped sub-edit, a "variant still wins at its state" note) — surface it
+      // by the panel instead of letting it die in the console.
+      if (warnings.length) showNotice(warnings)
       // Build the undo entry only if every file's pre-edit content is known —
       // an empty `before` would zero the file on undo. (Keys always align today;
       // this guards against a future server/key drift rather than silently
@@ -890,6 +890,10 @@ export function CanvasMode({
       else bump((v) => v + 1)
     } catch (e) {
       clearPreview()
+      // A prior commit's notice must not resurface once this error clears — the
+      // failed write supersedes it.
+      setNotice(null)
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
       setError((e as Error).message)
     }
   }
@@ -1288,21 +1292,22 @@ export function CanvasMode({
                   onCommit={commit}
                 />
                 {error && (
-                  <p className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
+                  <p role="status" className="mt-1.5 w-[208px] rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">
                     {error}
                   </p>
                 )}
                 {/* Engine notices (edit landed, with a caveat) — amber to the error's
-                    rose, same strip idiom as TokenList's status row. Latest batch
-                    only; the full list rides the title. Errors take the slot. */}
+                    rose, same strip idiom as TokenList's status row. The full batch
+                    is the text (screen readers get it all; line-clamp only trims the
+                    paint), so nothing hides behind a hover-only title. Errors take
+                    the slot. */}
                 {!error && notice && notice.length > 0 && (
                   <p
                     role="status"
                     title={notice.join('\n')}
-                    className="mt-1.5 w-[208px] animate-muse-step rounded-lg bg-note/10 px-2.5 py-1.5 text-[11px] text-note-text ring-1 ring-note/25 motion-reduce:animate-none"
+                    className="mt-1.5 line-clamp-3 w-[208px] animate-muse-step break-words rounded-lg bg-note/10 px-2.5 py-1.5 text-[11px] text-note-text ring-1 ring-note/20 motion-reduce:animate-none"
                   >
-                    {notice[0]}
-                    {notice.length > 1 && <span className="text-note-text/70"> · +{notice.length - 1} more</span>}
+                    {notice.join(' · ')}
                   </p>
                 )}
               </div>
