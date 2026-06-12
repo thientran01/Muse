@@ -4,6 +4,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsOutSimple, ArrowsInSim
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
 import { isSafeClassToken, SHADOW, splitVariants } from '../../style/tailwindScales'
 import { usePresence } from '../../hooks/usePresence'
+import { useTransientSurface } from '../../hooks/useTransientSurface'
 import { ScrubField } from './ScrubField'
 import { ColorPicker } from './ColorPicker'
 
@@ -82,6 +83,9 @@ export function ColorRow({
   onClose?: () => void // fires when the picker popover closes (token editor uses it to drop a live preview)
 }) {
   const [open, setOpen] = useState(false)
+  // One-transient-surface discipline (shared with the toolbar popovers): an
+  // opening picker closes any other transient, and vice versa.
+  useTransientSurface(open, () => setOpen(false))
   const rowRef = useRef<HTMLButtonElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number; side: 'right' | 'left' } | null>(null)

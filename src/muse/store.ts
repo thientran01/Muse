@@ -47,6 +47,9 @@ export type MuseState = {
   // (md:p-6). SESSION-ONLY by design — a sticky hidden md-mode across refreshes
   // is a mode-error trap, so this deliberately does NOT join prefs.
   bpTarget: BpTarget
+  // The one open TRANSIENT surface (a toolbar popover, a color picker) — see
+  // hooks/useTransientSurface. Stale after a natural close; only ever compared.
+  activeSurface: string | null
 }
 
 const initialState: MuseState = {
@@ -60,6 +63,7 @@ const initialState: MuseState = {
   prefs: loadPrefs(),
   flags: [],
   bpTarget: '',
+  activeSurface: null,
 }
 
 let state: MuseState = initialState

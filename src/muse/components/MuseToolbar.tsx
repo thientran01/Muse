@@ -3,6 +3,7 @@ import { Flag, GearSix, Palette, PaperPlaneTilt, Pause, Play, X } from '@phospho
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
 import { usePresence } from '../hooks/usePresence'
+import { useTransientSurface } from '../hooks/useTransientSurface'
 import { useMuseStore } from '../store'
 import { computeSessionChanges } from '../sessionChanges'
 import { UfoIcon } from './UfoIcon'
@@ -105,6 +106,9 @@ export function MuseToolbar({
   portalContainer?: React.RefObject<HTMLElement>
 }) {
   const [pop, setPop] = useState<Pop>('none')
+  // One-transient-surface discipline: the open popover claims the shared slot,
+  // so a panel color picker opening closes it (and vice versa).
+  useTransientSurface(pop !== 'none', () => setPop('none'))
   // The content kept rendered through the popover's EXIT (when `pop` is already 'none'),
   // so it doesn't flash the other panel while it scales back into the bar.
   const [shownPop, setShownPop] = useState<Exclude<Pop, 'none'>>('tokens')
