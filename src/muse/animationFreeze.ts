@@ -11,6 +11,8 @@
  *     smooth scroll off) — everything outside [data-muse-ui].
  *  2. Neuter interactive-state selectors (:hover/:active/:focus*) in every
  *     accessible stylesheet via CSSOM, so the state styles never match at all.
+ *     Pre-freeze selectors are exposed to other CSSOM consumers via the
+ *     getFrozenOriginal registry (the forced-:hover pin builds from them).
  *  3. Pause pure-WAAPI animations (element.animate). CSS-originated animations
  *     are deliberately SKIPPED: calling WAAPI pause()/play() on a CSSAnimation
  *     permanently overrides `animation-play-state`, which would make the
@@ -33,6 +35,8 @@
  * `behavior: 'smooth'` argument.
  */
 
+import { walkCssRules } from './cssom'
+
 // Interactive-state pseudo-classes neutered while frozen. :focus* is included
 // deliberately: a canvas mousedown still focuses host elements (only click is
 // preventDefault'd), and the UA-stylesheet focus ring isn't in CSSOM so
@@ -40,6 +44,17 @@
 // prefix of :focus-visible/:focus-within; the lookbehind protects escaped
 // idents like Tailwind's `.hover\:bg-x` (only the real trailing :hover matches).
 export const FROZEN_PSEUDOS = /(?<!\\):(hover|active|focus-visible|focus-within|focus)(?![\w-])/g
+
+// Selectors neutered by the ACTIVE freeze, keyed by rule — so other CSSOM
+// consumers (the forced-:hover pin, see forcedState.ts) can read a rule's
+// pre-freeze selector instead of the `:not(*)` placeholder. Populated by
+// freezePage, entries deleted on restore; at most one freeze is live at a
+// time (a toolbar toggle). A WeakMap so rules orphaned by an HMR sheet swap
+// mid-freeze are GC'd instead of accumulating for the freeze's lifetime.
+const frozenOriginals = new WeakMap<CSSStyleRule, string>()
+export function getFrozenOriginal(rule: CSSStyleRule): string | undefined {
+  return frozenOriginals.get(rule)
+}
 
 // Substitute the pseudo-class predicate with constant-false. `:not(*)` never
 // matches, and because selector logic composes booleans the token swap is
@@ -102,27 +117,26 @@ export function freezePage(): () => void {
   // sweep re-checks them with the same count bookkeeping.
   const importedSheets = new Set<CSSStyleSheet>()
 
+  // Traversal lives in cssom.ts (shared with the forced-:hover pin); only the
+  // neuter action is ours. Behavior identical to the pre-extraction walk.
   const neuterRules = (rules: CSSRuleList) => {
-    for (let i = 0; i < rules.length; i++) {
-      const rule = rules[i]
-      if (rule instanceof CSSStyleRule) {
+    walkCssRules(
+      rules,
+      (rule) => {
         const next = neuterSelectorText(rule.selectorText)
         if (next !== null) {
           try {
             const original = rule.selectorText
             rule.selectorText = next
             neutered.push({ rule, original })
+            frozenOriginals.set(rule, original)
           } catch {
             /* unparseable assignment — that one rule stays live */
           }
         }
-      }
-      if (rule instanceof CSSImportRule && rule.styleSheet) importedSheets.add(rule.styleSheet)
-      // Generic recursion: grouping rules (media/supports/layer/container/
-      // scope) and CSS-nesting children of style rules all expose cssRules.
-      const children = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined
-      if (children && children.length) neuterRules(children)
-    }
+      },
+      (sheet) => importedSheets.add(sheet),
+    )
   }
 
   const sweepSheets = () => {
@@ -211,6 +225,7 @@ export function freezePage(): () => void {
       } catch {
         /* sheet was HMR-replaced — nothing to restore */
       }
+      frozenOriginals.delete(rule)
     }
     for (const anim of pausedAnims) {
       // Only resume what's still in OUR paused state — play() on a finished or

@@ -8,7 +8,8 @@ import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
-import { isVarColorToken, parseShadowLayer, SHADOW, shadowSignature } from '../../style/tailwindScales'
+import { pinHover } from '../../forcedState'
+import { familyMatcher, isVarColorToken, parseShadowLayer, SHADOW, shadowSignature, splitVariants } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
 import { BoxModelOverlay } from './BoxModelOverlay'
@@ -344,6 +345,39 @@ export function CanvasMode({
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
     }
   }, [selected])
+  // Forced-:hover pin (the Classes section's ":hov" chip). Per-selection: the
+  // pin belongs to the element and never outlives it. The [revision] effect is
+  // the SOLE pinner — toggling just flips the ref + bumps, so the pin is built
+  // exactly once per state change (no pin-dispose-repin flicker) and rebuilt on
+  // every later bump (an HMR sheet swap can't leave stale clones). The ref is
+  // the effect's truth — state alone would be STALE when selection + revision
+  // change in one commit (a reorder re-select), ghost-pinning the new element.
+  const [hoverPinned, setHoverPinned] = useState(false)
+  const hoverPinnedRef = useRef(false)
+  const pinRef = useRef<(() => void) | null>(null)
+  const setHoverPin = (on: boolean) => {
+    hoverPinnedRef.current = on
+    setHoverPinned(on)
+    bump((v) => v + 1)
+  }
+  useEffect(() => {
+    hoverPinnedRef.current = false
+    setHoverPinned(false)
+    return () => {
+      pinRef.current?.()
+      pinRef.current = null
+    }
+  }, [selected])
+  useEffect(() => {
+    pinRef.current?.()
+    pinRef.current = null
+    // A node detached by an HMR remount can take the attribute but never paint —
+    // skip; the next re-select brings a live node.
+    if (hoverPinnedRef.current && selected && selected.node.isConnected) {
+      pinRef.current = pinHover(selected.node)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision])
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
   // it only appears when a drop will actually commit. Probed per selection, container-
   // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
@@ -812,8 +846,30 @@ export function CanvasMode({
     }
     if (spaceBlocked.size > 0) mutations = mutations.filter((m) => !spaceBlocked.has(m.property))
 
+    // While the :hov pin is active, an edit to a property the element styles
+    // with a hover: token targets THAT token's variant chain, not the base —
+    // the user is looking at the hover state, so that's the value they scrubbed.
+    // Chain choice: a plain hover: token wins; else dark:hover when the page is
+    // dark (the chain that's painting). Other compounds (md:hover) stay base
+    // edits v1 — the engine's "variant still wins" warning keeps that honest.
+    if (hoverPinned) {
+      const tokens = (selected.node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
+      mutations = mutations.map((m) => {
+        if (m.variant) return m
+        const matchBase = familyMatcher(PROPERTIES[m.property])
+        const chains = new Set<string>()
+        for (const t of tokens) {
+          const { variants, base } = splitVariants(t)
+          if (variants && variants.split(':').includes('hover') && matchBase(base)) chains.add(variants)
+        }
+        const dark = document.documentElement.classList.contains('dark')
+        const chosen = chains.has('hover') ? 'hover' : dark && chains.has('dark:hover') ? 'dark:hover' : null
+        return chosen ? { ...m, variant: chosen } : m
+      })
+    }
+
     applyPreview(mutations) // make sure the final value is showing
-    const label = mutations.map((m) => `${m.property} ${m.value}`).join(', ').slice(0, 80)
+    const label = mutations.map((m) => `${m.variant ? `${m.variant}:` : ''}${m.property} ${m.value}`).join(', ').slice(0, 80)
 
     // EPHEMERAL: the inline preview IS the committed state. Record a DOM-snapshot
     // undo entry (before/after cssText, captured per peer node), keep the inline
@@ -1288,6 +1344,8 @@ export function CanvasMode({
                   sharedConst={styleScope}
                   scope={scope}
                   onScopeChange={setScope}
+                  hoverPinned={hoverPinned}
+                  onHoverPinChange={setHoverPin}
                   onPreview={applyPreview}
                   onCommit={commit}
                 />
