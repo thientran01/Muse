@@ -999,6 +999,74 @@ export function CanvasMode({
     }
   }
 
+  // The Classes section's freeform field — add/remove class tokens verbatim,
+  // through the same write + history + undo pipeline as a property commit.
+  // EPHEMERAL applies via classList with a className-attribute snapshot entry
+  // (the cssText-snapshot twin). After a real write there's no inline preview to
+  // strip, so the panel re-read waits on the node's class attribute actually
+  // changing (HMR repaint), with the shared settle cap as the fallback.
+  async function commitClassPatch(add: string[], remove: string[]) {
+    if (!selected) return
+    const label = ['classes', ...add.map((t) => `+${t}`), ...remove.map((t) => `−${t}`)].join(' ').slice(0, 80)
+    if (EPHEMERAL) {
+      const node = selected.node
+      const before = node.getAttribute('class') ?? ''
+      for (const t of remove) node.classList.remove(t)
+      for (const t of add) node.classList.add(t)
+      const after = node.getAttribute('class') ?? ''
+      if (before !== after) {
+        const set = (v: string) => {
+          if (node.isConnected) node.setAttribute('class', v)
+        }
+        museStore.pushEphemeral({ label, undo: () => set(before), redo: () => set(after) })
+      }
+      bump((v) => v + 1)
+      return
+    }
+    try {
+      const { edits, originals, warnings } = await museStyleEdit([
+        {
+          fileName: selected.fileName,
+          line: selected.line,
+          column: selected.column,
+          tag: selected.tag,
+          classNames: selected.node.getAttribute('class') ?? '',
+          mutations: [],
+          classPatch: { add, remove },
+        },
+      ])
+      if (warnings.length) console.warn('[muse] class-edit:', warnings.join(' · '))
+      if (edits.length === 0) {
+        setError(warnings[0] ?? "Couldn't apply that class edit.")
+        return
+      }
+      await museWrite(edits)
+      if (warnings.length) showNotice(warnings)
+      const haveAllOriginals = edits.every((e) => typeof originals[e.fileName] === 'string')
+      if (haveAllOriginals) {
+        const entry: HistoryEntry = {
+          files: edits.map((e) => ({ fileName: e.fileName, before: originals[e.fileName], after: e.newContent })),
+          elements: [asSelected(selected)],
+          label,
+        }
+        museStore.setState((cur) => ({ past: [...cur.past, entry], future: [] }))
+      }
+      const node = selected.node
+      let bumped = false
+      const rebump = () => {
+        if (bumped) return
+        bumped = true
+        obs.disconnect()
+        bump((v) => v + 1)
+      }
+      const obs = new MutationObserver(rebump)
+      obs.observe(node, { attributes: true, attributeFilter: ['class'] })
+      window.setTimeout(rebump, SETTLE_CAP_MS)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   // Write a committed text change to source (same deterministic write + history as
   // styles). The DOM already shows the typed text (contentEditable), so there's no
   // inline-preview strip — HMR repaints the same text. Restores the original on a
@@ -1391,6 +1459,7 @@ export function CanvasMode({
                   onScopeChange={setScope}
                   hoverPinned={hoverPinned}
                   onHoverPinChange={setHoverPin}
+                  onClassPatch={commitClassPatch}
                   onPreview={applyPreview}
                   onCommit={commit}
                 />

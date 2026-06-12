@@ -36,7 +36,7 @@ import type {
   TemplateLiteral,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
-import { isVariantChain, splitVariants } from '../src/muse/style/tailwindScales'
+import { isSafeClassToken, isVariantChain, splitVariants } from '../src/muse/style/tailwindScales'
 import { resolveStyleWriter, type StyleWriter } from '../src/muse/style/writers'
 import { extractVarName, isVarValue } from '../src/muse/style/cssVarEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
@@ -52,6 +52,12 @@ const traverse = ((_traverse as unknown as { default?: typeof _traverse }).defau
 // at every state.
 export type Mutation = { property: StyleProperty; value: string; variant?: string }
 export type StyleStrategy = 'tailwind-first' | 'inline'
+
+// The freeform class field's verbatim add/remove op — applied to the element's
+// className AFTER the property mutations. Removes match whole tokens exactly
+// (variants included); adds are deduped and individually gated by
+// isSafeClassToken (the user-text → source-file security boundary).
+export type ClassPatch = { add: string[]; remove: string[] }
 
 // A property whose value is painted through a CSS variable: rather than hardcode
 // a literal over the theme binding, the engine emits this intent and the server
@@ -875,8 +881,12 @@ export function computeStyleEdit(
   // rewrites the shared `const X = {…}` the element's `style={X}` points at, changing
   // every instance. Ignored unless the target actually resolves to a const (ConstRef).
   scope: 'element' | 'const' = 'element',
+  // Verbatim class add/remove (the freeform field) — may arrive with an empty
+  // mutations array. Element-scope only.
+  classPatch?: ClassPatch,
 ): StyleEditResult {
   const warnings: string[] = []
+  const hasPatch = !!classPatch && (classPatch.add.length > 0 || classPatch.remove.length > 0)
   const valid = mutations.filter((m) => {
     if (!isStyleProperty(m.property) || typeof m.value !== 'string') return false
     // A variant chain is embedded into the className verbatim — gate it here so a
@@ -888,7 +898,7 @@ export function computeStyleEdit(
     }
     return true
   })
-  if (valid.length === 0)
+  if (valid.length === 0 && !hasPatch)
     return { newContent: source, changed: false, warnings: warnings.length ? warnings : ['no valid mutations'], varEdits: [], moduleEdits: [], styledEdits: [] }
 
   // The host's class writer (Tailwind today) — owns how a value becomes a class
@@ -922,7 +932,9 @@ export function computeStyleEdit(
 
   // 'const' scope: rewrite the shared const's DEFINITION (all instances) and leave this
   // element's JSX untouched. Short-circuits the per-element routing below entirely.
+  // A classPatch is element-scope by contract — it can't ride a const edit.
   if (scope === 'const' && styleConst) {
+    if (hasPatch) warnings.push('classes: a class edit is per-element — not applied with scope=const')
     // The mutation edits (camelCase css key → value), and the merged prop list used only
     // to test whether a shorthand expansion would restructure the object.
     const edits: Array<[string, string]> = []
@@ -1228,6 +1240,28 @@ export function computeStyleEdit(
       )
     } else {
       routeInline(m, spec)
+    }
+  }
+
+  // The freeform field's verbatim class add/remove — AFTER the mutation loop so
+  // a combined request's property edits see the original token list. Removes
+  // match whole tokens exactly (variants included); adds dedupe, each gated by
+  // the safety predicate (defense in depth — the client validates too).
+  if (hasPatch && classPatch) {
+    if (classInfo !== null && !classEditable) {
+      warnings.push('classes: className is a dynamic expression — class edits left unchanged')
+    } else {
+      const before = classTokens.join(' ')
+      const removeSet = new Set(classPatch.remove)
+      classTokens = classTokens.filter((c) => !removeSet.has(c))
+      for (const a of classPatch.add) {
+        if (!isSafeClassToken(a)) {
+          warnings.push(`classes: "${a.slice(0, 40)}" isn't a safe class token — skipped`)
+          continue
+        }
+        if (!classTokens.includes(a)) classTokens.push(a)
+      }
+      if (classTokens.join(' ') !== before) classTouched = true
     }
   }
 

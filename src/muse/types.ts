@@ -54,6 +54,10 @@ export type StyleEditRequest = {
   // 'element' (default) edits this element; 'const' rewrites the shared
   // `const X = {…}` an element's `style={X}` points at, changing every instance.
   scope?: 'element' | 'const'
+  // The freeform class field's verbatim add/remove — may ride alone (mutations
+  // empty). Removes match whole tokens exactly (variants included); every added
+  // token must pass isSafeClassToken (the server re-validates).
+  classPatch?: { add: string[]; remove: string[] }
 }
 
 // A target whose style is `style={X}` where X is a static same-file const — surfaced
