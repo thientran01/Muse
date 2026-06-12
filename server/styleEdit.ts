@@ -36,6 +36,7 @@ import type {
   TemplateLiteral,
 } from '@babel/types'
 import { PROPERTIES, isStyleProperty, type StyleProperty } from '../src/muse/style/properties'
+import { isVariantChain, splitVariants } from '../src/muse/style/tailwindScales'
 import { resolveStyleWriter, type StyleWriter } from '../src/muse/style/writers'
 import { extractVarName, isVarValue } from '../src/muse/style/cssVarEdit'
 import { setTemplateProperty } from '../src/muse/style/styledEdit'
@@ -44,7 +45,12 @@ import { setTemplateProperty } from '../src/muse/style/styledEdit'
 const traverse = ((_traverse as unknown as { default?: typeof _traverse }).default ??
   _traverse) as typeof _traverse
 
-export type Mutation = { property: StyleProperty; value: string }
+// `variant` targets a Tailwind variant chain, colon-joined without the trailing
+// colon ('hover', 'md', 'dark:hover'); absent/'' = the base value. Variant edits
+// are Tailwind-class-only: every other route (inline, CSS var, CSS module,
+// styled) refuses them with a warning rather than write a value that would apply
+// at every state.
+export type Mutation = { property: StyleProperty; value: string; variant?: string }
 export type StyleStrategy = 'tailwind-first' | 'inline'
 
 // A property whose value is painted through a CSS variable: rather than hardcode
@@ -871,8 +877,19 @@ export function computeStyleEdit(
   scope: 'element' | 'const' = 'element',
 ): StyleEditResult {
   const warnings: string[] = []
-  const valid = mutations.filter((m) => isStyleProperty(m.property) && typeof m.value === 'string')
-  if (valid.length === 0) return { newContent: source, changed: false, warnings: ['no valid mutations'], varEdits: [], moduleEdits: [], styledEdits: [] }
+  const valid = mutations.filter((m) => {
+    if (!isStyleProperty(m.property) || typeof m.value !== 'string') return false
+    // A variant chain is embedded into the className verbatim — gate it here so a
+    // malformed/hostile chain can never reach the splice (defense in depth: the
+    // client validates too, but the server never trusts the wire).
+    if (m.variant != null && m.variant !== '' && !isVariantChain(m.variant)) {
+      warnings.push(`${m.property}: unsupported variant "${m.variant}" — skipped`)
+      return false
+    }
+    return true
+  })
+  if (valid.length === 0)
+    return { newContent: source, changed: false, warnings: warnings.length ? warnings : ['no valid mutations'], varEdits: [], moduleEdits: [], styledEdits: [] }
 
   // The host's class writer (Tailwind today) — owns how a value becomes a class
   // token, how to recognize an existing one, and which tokens are theme-bound.
@@ -912,6 +929,12 @@ export function computeStyleEdit(
     const props = [...styleConst.props]
     const touched = new Set<string>()
     for (const m of valid) {
+      // A shared style const is plain CSS — there's no state/breakpoint slot to
+      // write a variant value into.
+      if (m.variant) {
+        warnings.push(`${m.property}: ${m.variant}: edits are supported for Tailwind classes only — left unchanged`)
+        continue
+      }
       for (const key of PROPERTIES[m.property].css) {
         edits.push([key, m.value])
         const i = props.findIndex(([k]) => k === key)
@@ -941,7 +964,7 @@ export function computeStyleEdit(
       out = source.slice(0, styleConst.object.start!) + renderStyleObject(expanded, spreads) + source.slice(styleConst.object.end!)
     }
     const changed = out !== source
-    return { newContent: out, changed, warnings: changed ? [] : ['nothing to change'], varEdits: [], moduleEdits: [], styledEdits: [], sharedConst }
+    return { newContent: out, changed, warnings: [...warnings, ...(changed ? [] : ['nothing to change'])], varEdits: [], moduleEdits: [], styledEdits: [], sharedConst }
   }
   // scope='const' was asked for but the style didn't resolve to a shared const (e.g. the
   // file changed between the client's probe and this commit). Don't silently pretend it
@@ -995,6 +1018,28 @@ export function computeStyleEdit(
     touchedStyleKeys.add(key)
   }
 
+  // The variant chains (hover, md, dark:hover) of this family's variant-prefixed
+  // tokens, minus the mutation's own target chain. A base edit uses this to warn
+  // (the variant still wins at its state) — scanning the PRE-EDIT tokens, so a
+  // batch that deliberately sets md: and base together doesn't warn about its own
+  // write. An inline write uses it to REFUSE (inline overrides EVERY state — the
+  // silent-destruction path this fixes) — scanning the LIVE tokens, so even a
+  // variant token added earlier in this batch is protected.
+  const originalClassTokens = classTokens.slice()
+  const familyVariantChains = (
+    spec: (typeof PROPERTIES)[StyleProperty],
+    excluding: string,
+    tokens: string[] = classTokens,
+  ): string[] => {
+    const matchBase = writer.family(spec)
+    const found: string[] = []
+    for (const c of tokens) {
+      const { variants, base } = splitVariants(c)
+      if (variants && variants !== excluding && matchBase(base) && !found.includes(variants)) found.push(variants)
+    }
+    return found
+  }
+
   // Write a mutation as inline style, stripping the dueling Tailwind class when
   // className is editable so the two can't fight. Returns false if there's no
   // writable style object (present-but-dynamic) — the caller warns and skips.
@@ -1004,6 +1049,21 @@ export function computeStyleEdit(
     if (styleInfo?.editable === false && !styleSpread) {
       warnings.push(`skipped ${m.property}: ${styleInfo.reason}`)
       return false
+    }
+    // The value is ALSO set by variant-prefixed classes: an inline style would
+    // override all of them at every state/viewport — refuse rather than silently
+    // destroy the hover/breakpoint design. Exception: when this edit's css keys
+    // are already inline, the variants were already overridden before this edit;
+    // updating the existing value in place adds no new damage.
+    const chains = familyVariantChains(spec, '')
+    if (chains.length > 0) {
+      const alreadyInline = spec.css.every((k) => styleProps.some(([pk]) => pk === k))
+      if (!alreadyInline) {
+        warnings.push(
+          `${m.property}: set by ${chains.map((v) => v + ':').join(', ')} — an inline style would override every state; left unchanged`,
+        )
+        return false
+      }
     }
     for (const key of spec.css) setStyleProp(key, m.value)
     if (classEditable) {
@@ -1019,7 +1079,11 @@ export function computeStyleEdit(
 
   for (const m of valid) {
     const spec = PROPERTIES[m.property]
-    const matchesFamily = writer.family(spec)
+    const variant = m.variant ?? ''
+    // Variant-EXACT matcher: a base edit only sees base tokens, a hover edit only
+    // hover tokens — so an edit can never claim (or append a duplicate against) a
+    // token living under a different state/breakpoint.
+    const matchesFamily = writer.family(spec, variant)
     // A value painted through a CSS variable — as a themed class token
     // (text-[color:var(--x)]) OR an inline value (color: var(--x)) — defers to a
     // stylesheet edit of --x rather than hardcoding a literal over the theme
@@ -1039,6 +1103,12 @@ export function computeStyleEdit(
       ? classTokens.find((c) => matchesFamily(c) && writer.themed(c))
       : undefined
     if (anyInlineVar || themedToken) {
+      // A var-bound value defers to editing the var's DEFINITION — which applies at
+      // every state/theme, so a variant-targeted edit can't ride it.
+      if (variant) {
+        warnings.push(`${m.property}: value is theme-bound via a CSS variable — ${variant}: edits apply to plain Tailwind classes only; left unchanged`)
+        continue
+      }
       if (anyInlineVar) {
         const distinct = [...new Set(inlineVarNames.filter((n): n is string => n != null))]
         const allKeysVar = inlineVarNames.every((n) => n != null)
@@ -1060,6 +1130,10 @@ export function computeStyleEdit(
     // file and sets the declaration. (An inline var binding above still wins the
     // cascade if the element happens to carry one.)
     if (moduleBinding) {
+      if (variant) {
+        warnings.push(`${m.property}: ${variant}: edits are supported for Tailwind classes only — left unchanged`)
+        continue
+      }
       for (const key of spec.css) {
         moduleEdits.push({ specifier: moduleBinding.specifier, className: moduleBinding.className, cssProp: key, value: m.value })
       }
@@ -1074,6 +1148,10 @@ export function computeStyleEdit(
     // form (interpolated template / dynamic object) fails closed to inline — styled
     // forwards `style`, so an inline value still applies (and overrides it).
     if (styledTarget && !classEditable) {
+      if (variant) {
+        warnings.push(`${m.property}: ${variant}: edits are supported for Tailwind classes only — left unchanged`)
+        continue
+      }
       if (styledTarget.kind === 'template') {
         for (const key of spec.css) {
           const r = setTemplateProperty(styledBody, key, m.value)
@@ -1118,18 +1196,36 @@ export function computeStyleEdit(
     // A value that can't be expressed as a safe class token (writer.build → null)
     // falls back to inline even under tailwind-first, so we never emit a broken
     // className.
-    const token = useTailwind ? writer.build(spec, m.value) : null
+    const baseToken = useTailwind ? writer.build(spec, m.value) : null
+    // The variant chain goes OUTSIDE a negative utility's leading dash: md:-mt-4.
+    const token = baseToken !== null && variant ? `${variant}:${baseToken}` : baseToken
     if (useTailwind && token !== null) {
-      const matches = writer.family(spec)
-      // Replace the family's existing utility IN PLACE (minimal diff); append
-      // only if the element didn't have one. Drop any extra duplicates.
-      const idx = classTokens.findIndex((c) => matches(c))
+      // Replace the family's existing utility (under the SAME variant) IN PLACE
+      // (minimal diff); append only if the element didn't have one. Drop any
+      // extra duplicates of that variant only.
+      const idx = classTokens.findIndex((c) => matchesFamily(c))
       if (idx === -1) classTokens.push(token)
       else {
         classTokens[idx] = token
-        classTokens = classTokens.filter((c, i) => i === idx || !matches(c))
+        classTokens = classTokens.filter((c, i) => i === idx || !matchesFamily(c))
       }
       classTouched = true
+      // Mobile-first semantics make editing the base CORRECT here, but the user is
+      // looking at a value that a variant may govern right now — say so. Scans the
+      // pre-edit tokens: a variant written by THIS batch was asked for, not a surprise.
+      if (!variant) {
+        const chains = familyVariantChains(spec, '', originalClassTokens)
+        if (chains.length > 0) {
+          warnings.push(`${m.property}: also set by ${chains.map((v) => v + ':').join(', ')} — edited the base value; the variant still wins at its state`)
+        }
+      }
+    } else if (variant) {
+      // Never divert a variant-targeted edit to inline — inline has no variant slot.
+      warnings.push(
+        useTailwind
+          ? `${m.property}: couldn't express the ${variant}: edit as a class token — left unchanged`
+          : `${m.property}: ${variant}: edits are supported for Tailwind classes only — left unchanged`,
+      )
     } else {
       routeInline(m, spec)
     }
