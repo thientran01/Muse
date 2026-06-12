@@ -96,6 +96,12 @@ describe('tailwind-first', () => {
     expect(r.newContent).not.toMatch(/[^\r]\n/)
   })
 
+  it('recolors an <svg> root via the color property (the currentColor icon idiom)', () => {
+    const src = `export const Icon = () => (\n  <svg className="h-4 w-4 text-gray-500" viewBox="0 0 16 16"><path fill="currentColor" d="M0 0h16v16z" /></svg>\n)\n`
+    const r = edit(src, '<svg', 'svg', [{ property: 'color', value: '#112233' }])
+    expect(r.newContent).toContain('className="h-4 w-4 text-[#112233]"')
+  })
+
   it('handles a paste-sized batch (15+ mixed mutations) in one call', () => {
     const src = `export const C = () => (\n  <div className="p-4 text-sm">hi</div>\n)\n`
     const r = edit(src, '<div', 'div', [

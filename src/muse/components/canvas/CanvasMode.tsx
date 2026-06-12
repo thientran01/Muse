@@ -36,6 +36,11 @@ const BP_TARGETS: BpTarget[] = ['', 'sm', 'md', 'lg', 'xl', '2xl']
 // permissions, no serialization surface).
 let styleClipboard: StyleMutation[] | null = null
 
+// The selectable-node surface — HTML, or an <svg> ROOT (PR: svg-select). Both
+// implement everything the shared paths touch: getComputedStyle, getAttribute,
+// classList, getBoundingClientRect, and ElementCSSInlineStyle for previews.
+type CanvasNode = HTMLElement | SVGSVGElement
+
 const px = (v: string) => {
   const n = parseFloat(v)
   return Number.isFinite(n) ? n : 0
@@ -47,7 +52,7 @@ const sidesOf = (cs: CSSStyleDeclaration, p: 'padding' | 'margin'): Sides => ({
   left: px(cs[`${p}Left` as 'paddingLeft']),
 })
 
-function readValues(node: HTMLElement): CanvasValues {
+function readValues(node: CanvasNode): CanvasValues {
   const cs = getComputedStyle(node)
   const isFlexGrid = /(^|\s|-)(flex|grid)$/.test(cs.display)
   const classTokens = (node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
@@ -73,6 +78,9 @@ function readValues(node: HTMLElement): CanvasValues {
     },
     // Direct text content (not just descendants) → this element styles visible text.
     rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
+    // An <svg> root gets the slim panel: Size + Color (recolor/resize an icon);
+    // box-model sections are HTML concepts and hide.
+    isSvg: node instanceof SVGSVGElement,
     color: {
       text: rgbToHex(cs.color),
       background: effectiveBgHex(node),
@@ -209,9 +217,9 @@ function rgbToHex(c: string): string {
 // a misleading solid #ffffff / #000000. Walk ancestors collecting background layers
 // until an opaque one, then composite them bottom-up so the result is what's on
 // screen at that spot.
-function effectiveBgHex(node: HTMLElement): string {
+function effectiveBgHex(node: CanvasNode): string {
   const layers: Array<{ r: number; g: number; b: number; a: number }> = []
-  let el: HTMLElement | null = node
+  let el: Element | null = node
   while (el) {
     const c = parseRgba(getComputedStyle(el).backgroundColor)
     if (c && c.a > 0) {
@@ -234,8 +242,8 @@ function effectiveBgHex(node: HTMLElement): string {
 // the same JSX element instantiated N times (a component in a list). A source edit
 // changes all of them on commit, so the live preview should too, or the siblings
 // visibly lag behind the one being scrubbed.
-function peerNodes(el: CanvasElement): HTMLElement[] {
-  const peers: HTMLElement[] = [el.node]
+function peerNodes(el: CanvasElement): CanvasNode[] {
+  const peers: CanvasNode[] = [el.node]
   document.querySelectorAll<HTMLElement>('*').forEach((n) => {
     if (n === el.node) return
     const loc = getSourceLocation(n)
@@ -254,7 +262,7 @@ function peerNodes(el: CanvasElement): HTMLElement[] {
 // owns margin-left → blocks marginLeft/marginX. The `margin` shorthand touches the
 // controlled side too, so it's blocked by either. The first child is unaffected
 // (the `+ *` selector skips it), so we only block non-first children.
-function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): Set<string> {
+function spaceControlledMargins(node: CanvasNode, mutations: StyleMutation[]): Set<string> {
   const blocked = new Set<string>()
   const parent = node.parentElement
   if (!parent) return blocked
@@ -286,7 +294,7 @@ function spaceControlledMargins(node: HTMLElement, mutations: StyleMutation[]): 
 // mobile), so we supplement with a scan for breakpoint-prefixed placement utilities in the
 // class string. Together: viewport-independent. Scoped to THIS element only — a pinned
 // sibling (a decorative absolute badge) must never lock its in-flow neighbours.
-function isPositionPinned(el: HTMLElement): boolean {
+function isPositionPinned(el: CanvasNode): boolean {
   // getComputedStyle on a DETACHED node (e.g. mid-HMR, between select and probe) returns
   // empty strings, and `'' !== 'auto'` would read as a false-positive "pinned" → wrongly
   // refusing a valid reorder. A disconnected node isn't laid out, so treat it as not pinned.
@@ -490,7 +498,7 @@ export function CanvasMode({
   // was created — the EPHEMERAL undo baseline (it captures all prior committed
   // inline edits, so undo lands on the state right before THIS scrub). Unused in
   // the normal server path (where undo restores file content).
-  const previewRef = useRef<{ anchor: HTMLElement; nodes: HTMLElement[]; keys: Set<string>; before: Map<HTMLElement, string> } | null>(null)
+  const previewRef = useRef<{ anchor: CanvasNode; nodes: CanvasNode[]; keys: Set<string>; before: Map<CanvasNode, string> } | null>(null)
   const clearTimerRef = useRef<number | null>(null)
   const stripObsRef = useRef<MutationObserver | null>(null)
   // Canvas renders its OWN [data-muse-ui] root (separate from the dock's),
@@ -532,7 +540,7 @@ export function CanvasMode({
   }, [flagDraft])
 
   // Remove a specific set of inline overrides from specific nodes.
-  const stripInline = (nodes: HTMLElement[], keys: Iterable<string>) => {
+  const stripInline = (nodes: CanvasNode[], keys: Iterable<string>) => {
     const cssKeys = [...keys].map(camelToKebab)
     for (const node of nodes) for (const k of cssKeys) node.style.removeProperty(k)
   }
@@ -556,7 +564,7 @@ export function CanvasMode({
   // the node being replaced/removed (RSC) — and strip then. The preview value equals
   // the committed value, so it stays visually correct while we wait; a generous
   // fallback strips anyway so it can't linger if no re-render ever fires.
-  const stripAfterRerender = (snap: { nodes: HTMLElement[]; keys: Set<string> }) => {
+  const stripAfterRerender = (snap: { nodes: CanvasNode[]; keys: Set<string> }) => {
     cancelStripWatch()
     const nodes = snap.nodes
     const finish = () => {
@@ -677,6 +685,11 @@ export function CanvasMode({
     // position is pinned by explicit CSS placement (grid lines/area, flex/grid order,
     // absolute/fixed) — a source reorder shuffles DOM order but wouldn't move it, so a
     // silent no-effect shuffle is worse than no handle. Never gate on a sibling's pinning.
+    if (!(selected.node instanceof HTMLElement)) {
+      // SVG v1: recolor/resize via the panel only — reorder stays off.
+      setReorderable(null)
+      return
+    }
     if (isPositionPinned(selected.node)) {
       setReorderable({ reorderable: false, reason: 'this element is placed by CSS — reordering the source won’t move it' })
       return
@@ -782,6 +795,7 @@ export function CanvasMode({
       if (dir === 0) return
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (!(selected.node instanceof HTMLElement)) return // SVG never probes reorderable
       const parent = selected.node.parentElement
       if (!parent) return
       // Same movable run the drag uses: matched members for self-anchor (skips the
@@ -994,7 +1008,7 @@ export function CanvasMode({
         // an undo step that visibly does nothing.
         const changed = nodes.some((n) => (before.get(n) ?? '') !== (after.get(n) ?? ''))
         if (changed) {
-          const apply = (snap: Map<HTMLElement, string>) => {
+          const apply = (snap: Map<CanvasNode, string>) => {
             for (const n of nodes) if (n.isConnected) n.style.cssText = snap.get(n) ?? ''
           }
           museStore.pushEphemeral({ label, undo: () => apply(before), redo: () => apply(after) })
@@ -1206,6 +1220,7 @@ export function CanvasMode({
   // changes structure, so after HMR repaints we re-select the element at its new
   // index (best-effort) to keep the panel anchored to what the user just moved.
   async function commitReorder(el: CanvasElement, toIndex: number) {
+    if (!(el.node instanceof HTMLElement)) return // SVG never probes reorderable
     const parent = el.node.parentElement
     // Capture the self-anchor key-list NOW: the post-HMR re-select reads it ~200ms later
     // inside a setTimeout, by which point the live `reorderSelfKeys` could belong to a
@@ -1310,7 +1325,10 @@ export function CanvasMode({
   useEffect(() => {
     if (!editing) return
     const el = editing
-    const node = el.node
+    // dblclick only ever sets an HTMLElement (useCanvasMode guards) — narrow for
+    // the type system; an SVG root can't take a caret anyway.
+    if (!(el.node instanceof HTMLElement)) return
+    const node: HTMLElement = el.node
     const rendersText = [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0)
     if (!node.isConnected || !rendersText) {
       exitEditing()
@@ -1510,15 +1528,21 @@ export function CanvasMode({
               pointerEvents: reordering ? 'none' : undefined,
             }}
           >
-            <BoxModelOverlay
-              node={selected.node}
-              padding={values.padding}
-              margin={values.margin}
-              onPreview={applyPreview}
-              onCommit={commit}
-            />
-            {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
-            <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+            {/* Box bands / gap / corner handles are HTML-box chrome — an SVG root
+                edits via the panel only (Size + Color). */}
+            {selected.node instanceof HTMLElement && (
+              <>
+                <BoxModelOverlay
+                  node={selected.node}
+                  padding={values.padding}
+                  margin={values.margin}
+                  onPreview={applyPreview}
+                  onCommit={commit}
+                />
+                {values.gap && <GapOverlay node={selected.node} onPreview={applyPreview} onCommit={commit} />}
+                <ResizeHandles node={selected.node} onPreview={applyPreview} onCommit={commit} />
+              </>
+            )}
             {/* The properties card reveals on selection, positioned beside the element.
                 It mounts on reveal, so animate-muse-step gives it the system's "appears
                 on action" entrance. */}
@@ -1578,7 +1602,7 @@ export function CanvasMode({
 
           {/* ReorderOverlay lives OUTSIDE the fading wrapper — its listeners + the
               insertion bar must stay fully live through the drag, never faded. */}
-          {reorderable?.reorderable && (
+          {reorderable?.reorderable && selected.node instanceof HTMLElement && (
             <ReorderOverlay
               node={selected.node}
               expectedCount={reorderable.count}

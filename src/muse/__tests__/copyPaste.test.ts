@@ -17,6 +17,7 @@ const base = (over: Partial<CanvasValues> = {}): CanvasValues => ({
   size: { width: 200, height: 100 },
   type: { fontSize: 16, fontWeight: 400, lineHeight: 24, letterSpacing: 0, align: 'left' },
   rendersText: true,
+  isSvg: false,
   color: { text: '#111111', background: '#ffffff', border: '#000000', ownBackground: '#ffffff' },
   colorThemed: { text: false, background: false, border: false },
   appearance: {

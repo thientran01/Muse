@@ -26,6 +26,7 @@ export type CanvasValues = {
   size: { width: number; height: number }
   type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
   rendersText: boolean // the element directly shows text — gates the Type controls
+  isSvg: boolean // an <svg> root — Size + Color only (see ColorFields / the section gating)
   color: { text: string; background: string; border: string; ownBackground: string | null } // current values as #hex
   colorThemed: { text: boolean; background: boolean; border: boolean } // source uses a CSS var → read-only
   appearance: {
@@ -387,6 +388,19 @@ export function ColorFields({
   onPreview,
   onCommit,
 }: { values: CanvasValues; portalContainer?: React.RefObject<HTMLElement> } & EditProps) {
+  // An <svg> root paints through `color` (the universal fill="currentColor"
+  // icon idiom) — one row, labeled plainly; Fill/Border rows are HTML-box
+  // concepts and stay off.
+  if (values.isSvg) {
+    return (
+      <div className="space-y-1.5">
+        <ColorRow label="Color" value={values.color.text} themed={values.colorThemed.text}
+          portalContainer={portalContainer}
+          onPreview={(v) => onPreview([{ property: 'color', value: v }])}
+          onCommit={(v) => onCommit([{ property: 'color', value: v }])} />
+      </div>
+    )
+  }
   return (
     <div className="space-y-1.5">
       {values.rendersText && (
@@ -1117,7 +1131,8 @@ export function PropertiesPanel({
       {sharedConst && onScopeChange && (sharedConst.exported || sharedConst.sameFileCount > 1) && (
         <ScopeToggle shared={sharedConst} scope={scope} onChange={onScopeChange} />
       )}
-      <Legend hasGap={!!values.gap} />
+      {/* The band legend explains chrome an <svg> root doesn't get. */}
+      {!values.isSvg && <Legend hasGap={!!values.gap} />}
 
       <Section label="Size" open={open.has('size')} onToggle={() => toggle('size')}>
         <SizeFields values={values} onPreview={onPreview} onCommit={onCommit} />
@@ -1137,20 +1152,26 @@ export function PropertiesPanel({
         <ColorFields values={values} portalContainer={portalContainer} onPreview={onPreview} onCommit={onCommit} />
       </Section>
 
-      {divider}
-      <Section label="Appearance" open={open.has('appearance')} dot={appearanceSet(values)} onToggle={() => toggle('appearance')}>
-        <AppearanceFields values={values} onPreview={onPreview} onCommit={onCommit} />
-      </Section>
+      {/* HTML-box sections — an <svg> root keeps the slim panel (Size + Color +
+          Classes): appearance/spacing/layout speak the HTML box model. */}
+      {!values.isSvg && (
+        <>
+          {divider}
+          <Section label="Appearance" open={open.has('appearance')} dot={appearanceSet(values)} onToggle={() => toggle('appearance')}>
+            <AppearanceFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          </Section>
 
-      {divider}
-      <Section label="Spacing" open={open.has('spacing')} onToggle={() => toggle('spacing')}>
-        <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
-      </Section>
+          {divider}
+          <Section label="Spacing" open={open.has('spacing')} onToggle={() => toggle('spacing')}>
+            <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          </Section>
 
-      {divider}
-      <Section label="Layout" open={open.has('layout')} dot={layoutSet(values)} onToggle={() => toggle('layout')}>
-        <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
-      </Section>
+          {divider}
+          <Section label="Layout" open={open.has('layout')} dot={layoutSet(values)} onToggle={() => toggle('layout')}>
+            <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
+          </Section>
+        </>
+      )}
 
       {divider}
       {/* Classes is the deliberate exception to the 6-section cap (#120's density

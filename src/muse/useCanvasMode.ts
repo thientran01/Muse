@@ -15,9 +15,11 @@ function isMuseUI(el: Element | null): boolean {
 
 // Resolve a DOM node to an editable Canvas target. Returns null when the node has
 // no React source (can't be mapped to a file) — those can be highlighted but not
-// edited.
+// edited. SVG: the <svg> ROOT is admitted (a JSX-authored root carries the same
+// data-muse-loc stamp as any element; icon recolor/resize is the ask) — inner
+// shapes are not, so a click on a <path> walks up to the root via canvasChain.
 function toCanvas(el: Element): CanvasElement | null {
-  if (!(el instanceof HTMLElement)) return null
+  if (!(el instanceof HTMLElement) && !(el instanceof SVGSVGElement)) return null
   const loc = getSourceLocation(el)
   if (!loc || !loc.fileName) return null
   const tag = el.tagName.toLowerCase()
@@ -38,7 +40,9 @@ function toCanvas(el: Element): CanvasElement | null {
 // breadcrumb so any container is one click away.
 export function canvasChain(el: Element): CanvasElement[] {
   const out: CanvasElement[] = []
-  let cur: Element | null = el instanceof HTMLElement ? el : null
+  // Any Element walks (an inner SVG shape resolves to its <svg> root ancestor —
+  // toCanvas filters what's actually selectable).
+  let cur: Element | null = el
   while (cur && !isMuseUI(cur) && cur !== document.body && cur !== document.documentElement) {
     const c = toCanvas(cur)
     if (c && (out.length === 0 || out[out.length - 1].key !== c.key)) out.push(c)
@@ -173,7 +177,8 @@ export function useCanvasMode(opts?: {
       if (!el || isMuseUI(el)) return // let the controls popover handle its own clicks
       e.preventDefault()
       e.stopPropagation()
-      const chain = el instanceof HTMLElement ? canvasChain(el) : []
+      // Any Element starts the walk — an inner SVG shape climbs to its <svg> root.
+      const chain = canvasChain(el)
       if (chain.length === 0) {
         // Mappable-looking click that has no source — tell the user why nothing happened.
         setMiss({ x: e.clientX, y: e.clientY, id: ++missId.current })

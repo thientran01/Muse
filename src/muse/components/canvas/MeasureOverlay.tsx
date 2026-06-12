@@ -9,7 +9,7 @@ import { Fragment } from 'react'
 import { measureBetween } from '../../measure'
 import type { Rect } from '../../types'
 
-export function MeasureOverlay({ node, hoverRect }: { node: HTMLElement; hoverRect: Rect }) {
+export function MeasureOverlay({ node, hoverRect }: { node: Element; hoverRect: Rect }) {
   const a = node.getBoundingClientRect()
   const segs = measureBetween(
     { top: a.top, left: a.left, right: a.right, bottom: a.bottom },
