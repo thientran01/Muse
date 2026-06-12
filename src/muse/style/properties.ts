@@ -27,6 +27,7 @@ export type StyleProperty =
   | 'boxShadow'
   | 'textAlign'
   | 'justifyContent' | 'alignItems'
+  | 'display' | 'flexDirection' | 'flexWrap'
 
 // `kind` selects how a raw value becomes a Tailwind token. 'length' (w/h) shares
 // the spacing scale as 'spacing'; typography + color kinds have their own token
@@ -39,6 +40,7 @@ export type PropertySpec = {
     | 'spacing' | 'length' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'color'
     | 'radius' | 'borderWidth' | 'borderStyle' | 'opacity' | 'shadow'
     | 'textAlign' | 'justify' | 'alignItems'
+    | 'display' | 'flexDirection' | 'flexWrap'
   tw: string
   css: string[]
 }
@@ -82,6 +84,13 @@ export const PROPERTIES: Record<StyleProperty, PropertySpec> = {
   textAlign: { kind: 'textAlign', tw: 'text', css: ['textAlign'] },
   justifyContent: { kind: 'justify', tw: 'justify', css: ['justifyContent'] },
   alignItems: { kind: 'alignItems', tw: 'items', css: ['alignItems'] },
+  // Layout restructure — display's Tailwind tokens are BARE keywords (flex,
+  // grid, block…), so `tw` is unused by its builder; the matcher is a strict
+  // whitelist that must never claim the flex-grow shorthands (flex-1/auto/
+  // none/initial), which is why direction/wrap also use exact-set matchers.
+  display: { kind: 'display', tw: '', css: ['display'] },
+  flexDirection: { kind: 'flexDirection', tw: 'flex', css: ['flexDirection'] },
+  flexWrap: { kind: 'flexWrap', tw: 'flex', css: ['flexWrap'] },
 }
 
 export const isStyleProperty = (p: unknown): p is StyleProperty =>
