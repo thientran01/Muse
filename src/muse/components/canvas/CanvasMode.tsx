@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
-import { EPHEMERAL } from '../../config'
+import { EPHEMERAL, MOCK } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
@@ -9,6 +9,7 @@ import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable,
 import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
 import { pinHover } from '../../forcedState'
+import { composeVariant, currentBreakpoint, SCREEN_MIN, targetApplies, type BpTarget } from '../../style/screens'
 import { familyMatcher, isVarColorToken, parseShadowLayer, SHADOW, shadowSignature, splitVariants } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
@@ -20,6 +21,12 @@ import { ResizeHandles } from './ResizeHandles'
 
 const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
 const GAP = 12
+
+// The breakpoint-target switcher needs the real backend: ephemeral commits are
+// inline-style snapshots, where a responsive variant would be a lie. Same
+// gating idiom as the toolbar's SHARE_UI.
+const BP_UI = !EPHEMERAL && !MOCK
+const BP_TARGETS: BpTarget[] = ['', 'sm', 'md', 'lg', 'xl', '2xl']
 
 const px = (v: string) => {
   const n = parseFloat(v)
@@ -378,6 +385,24 @@ export function CanvasMode({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision])
+  // Breakpoint-target switcher (real backend only — see BP_UI). The target is
+  // store state (survives the panel, session-only by design); the live viewport
+  // width drives the current-breakpoint dot and the mismatch warning.
+  const bpTarget = useSyncExternalStore(
+    museStore.subscribe,
+    () => museStore.getState().bpTarget,
+    () => museStore.getState().bpTarget,
+  )
+  const [vw, setVw] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const curBp = currentBreakpoint(vw)
+  // Target set but the window is below it: the edit will write (mobile-first,
+  // the md: class just isn't painting here) — but live feedback would be a lie.
+  const bpMismatch = bpTarget !== '' && !targetApplies(bpTarget, vw)
   // Whether the selected element's siblings can be reordered. Gates the drag handle so
   // it only appears when a drop will actually commit. Probed per selection, container-
   // anchor first (the DOM parent), then self-anchor (the clicked element itself) as a
@@ -796,6 +821,11 @@ export function CanvasMode({
 
   const applyPreview = (mutations: StyleMutation[]) => {
     if (!selected) return
+    // A breakpoint-targeted edit below its breakpoint writes fine (mobile-first)
+    // but doesn't paint at this width — an inline preview would show a change
+    // the committed class won't make. No false feedback: skip the preview; the
+    // panel's mismatch strip explains why.
+    if (bpMismatch) return
     // Start (or continue) a preview entry for THIS target. A different target means
     // a fresh entry (the prior one's overrides are cleared by the selection-change
     // effect). Resolve the same-source peers once per entry — not per frame — so a
@@ -846,25 +876,29 @@ export function CanvasMode({
     }
     if (spaceBlocked.size > 0) mutations = mutations.filter((m) => !spaceBlocked.has(m.property))
 
-    // While the :hov pin is active, an edit to a property the element styles
-    // with a hover: token targets THAT token's variant chain, not the base —
-    // the user is looking at the hover state, so that's the value they scrubbed.
-    // Chain choice: a plain hover: token wins; else dark:hover when the page is
-    // dark (the chain that's painting). Other compounds (md:hover) stay base
-    // edits v1 — the engine's "variant still wins" warning keeps that honest.
-    if (hoverPinned) {
+    // Variant targeting. The breakpoint-target switcher prefixes every mutation
+    // with its breakpoint; the :hov pin routes a hover-governed property to its
+    // hover chain (plain hover: wins; else dark:hover when the page is dark —
+    // the chain that's painting; other compounds stay base v1, kept honest by
+    // the engine's "variant still wins" warning). Composed responsive-first
+    // (md:hover:), matching Tailwind's own variant order.
+    if (hoverPinned || bpTarget) {
       const tokens = (selected.node.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
       mutations = mutations.map((m) => {
         if (m.variant) return m
-        const matchBase = familyMatcher(PROPERTIES[m.property])
-        const chains = new Set<string>()
-        for (const t of tokens) {
-          const { variants, base } = splitVariants(t)
-          if (variants && variants.split(':').includes('hover') && matchBase(base)) chains.add(variants)
+        let stateChain: string | null = null
+        if (hoverPinned) {
+          const matchBase = familyMatcher(PROPERTIES[m.property])
+          const chains = new Set<string>()
+          for (const t of tokens) {
+            const { variants, base } = splitVariants(t)
+            if (variants && variants.split(':').includes('hover') && matchBase(base)) chains.add(variants)
+          }
+          const dark = document.documentElement.classList.contains('dark')
+          stateChain = chains.has('hover') ? 'hover' : dark && chains.has('dark:hover') ? 'dark:hover' : null
         }
-        const dark = document.documentElement.classList.contains('dark')
-        const chosen = chains.has('hover') ? 'hover' : dark && chains.has('dark:hover') ? 'dark:hover' : null
-        return chosen ? { ...m, variant: chosen } : m
+        const v = composeVariant(bpTarget, stateChain)
+        return v ? { ...m, variant: v } : m
       })
     }
 
@@ -1359,7 +1393,18 @@ export function CanvasMode({
                     is the text (screen readers get it all; line-clamp only trims the
                     paint), so nothing hides behind a hover-only title. Errors take
                     the slot. */}
-                {!error && notice && notice.length > 0 && (
+                {/* Breakpoint-target mismatch — STICKY (not the expiring notice): a
+                    mode the user must hold in mind while it's true. Outranks the
+                    transient notice for the slot; errors outrank both. */}
+                {!error && bpMismatch && (
+                  <p
+                    role="status"
+                    className="mt-1.5 w-[208px] break-words rounded-lg bg-note/10 px-2.5 py-1.5 text-[11px] text-note-text ring-1 ring-note/20"
+                  >
+                    Editing {bpTarget}: — changes apply at ≥{SCREEN_MIN[bpTarget as Exclude<BpTarget, ''>]}px (this window is narrower, so nothing moves here)
+                  </p>
+                )}
+                {!error && !bpMismatch && notice && notice.length > 0 && (
                   <p
                     role="status"
                     title={notice.join('\n')}
@@ -1393,6 +1438,43 @@ export function CanvasMode({
       {!zen && (
         <div className="absolute left-1/2 top-4 -translate-x-1/2">
           <div className="pointer-events-auto flex animate-muse-drop items-center gap-3 whitespace-nowrap rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+            {/* Breakpoint-target pills — a MODE, so it lives in the always-visible
+                banner, not a popover. The dot marks the window's CURRENT breakpoint
+                (Tailwind default screens — a custom theme.screens host only shifts
+                the dot, never what an edit writes); an active target below the
+                window's width turns note-amber (edits write, nothing paints here). */}
+            {BP_UI && (
+              <span role="group" aria-label="Breakpoint target for edits" className="flex items-center gap-0.5">
+                {BP_TARGETS.map((bp) => {
+                  const active = bpTarget === bp
+                  const mismatch = active && bp !== '' && !targetApplies(bp, vw)
+                  return (
+                    <button
+                      key={bp || 'base'}
+                      onClick={() => museStore.setState({ bpTarget: bp })}
+                      aria-pressed={active}
+                      title={
+                        bp === ''
+                          ? 'Edits write base classes'
+                          : `Edits write ${bp}: classes (≥${SCREEN_MIN[bp as Exclude<BpTarget, ''>]}px)`
+                      }
+                      className={`relative rounded-full px-1.5 py-0.5 text-[11px] leading-none transition ${
+                        active
+                          ? mismatch
+                            ? 'bg-note/10 text-note-text ring-1 ring-note/25'
+                            : 'bg-line/15 text-fg'
+                          : 'text-fg-faint hover:text-fg'
+                      }`}
+                    >
+                      {bp || 'Base'}
+                      {curBp === bp && (
+                        <span aria-hidden className="absolute -bottom-px left-1/2 h-0.5 w-0.5 -translate-x-1/2 rounded-full bg-accent" />
+                      )}
+                    </button>
+                  )
+                })}
+              </span>
+            )}
             <span>
               {editing
                 ? 'Editing text · Enter to save · Esc to cancel'

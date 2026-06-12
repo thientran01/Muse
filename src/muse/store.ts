@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { loadPrefs, savePrefs, type MusePrefs } from './prefs'
+import type { BpTarget } from './style/screens'
 import type { Flag, HistoryEntry } from './types'
 
 // In-memory only. State resets on full page refresh, or on HMR of THIS file.
@@ -42,6 +43,10 @@ export type MuseState = {
   // REACTIVE — the Flags panel, the toolbar count badge, and the on-element pins all
   // re-render on change (unlike the ephemeral undo stacks, whose effect is DOM mutation).
   flags: Flag[]
+  // The breakpoint-target switcher: '' = base, else edits write that prefix
+  // (md:p-6). SESSION-ONLY by design — a sticky hidden md-mode across refreshes
+  // is a mode-error trap, so this deliberately does NOT join prefs.
+  bpTarget: BpTarget
 }
 
 const initialState: MuseState = {
@@ -54,6 +59,7 @@ const initialState: MuseState = {
   eRedoCount: 0,
   prefs: loadPrefs(),
   flags: [],
+  bpTarget: '',
 }
 
 let state: MuseState = initialState
