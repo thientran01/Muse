@@ -10,6 +10,7 @@ import { FlagComposer } from '../FlagComposer'
 import { getSourceLocation } from '../../sourceLocation'
 import { pinHover } from '../../forcedState'
 import { composeVariant, currentBreakpoint, SCREEN_MIN, targetApplies, type BpTarget } from '../../style/screens'
+import { pasteDiff, snapshotMutations } from '../../style/copyPaste'
 import { familyMatcher, isVarColorToken, parseShadowLayer, SHADOW, shadowSignature, splitVariants } from '../../style/tailwindScales'
 import { asSelected, canvasChain, useCanvasMode } from '../../useCanvasMode'
 import { HoverHighlight } from '../SelectionOverlay'
@@ -27,6 +28,12 @@ const GAP = 12
 // gating idiom as the toolbar's SHARE_UI.
 const BP_UI = !EPHEMERAL && !MOCK
 const BP_TARGETS: BpTarget[] = ['', 'sm', 'md', 'lg', 'xl', '2xl']
+
+// The style clipboard (Ctrl/Cmd+Alt+C / V) — module-level off-state like the
+// ephemeral stacks: nothing renders it, it survives selection changes, and it
+// deliberately resets with the session (never the OS clipboard — no
+// permissions, no serialization surface).
+let styleClipboard: StyleMutation[] | null = null
 
 const px = (v: string) => {
   const n = parseFloat(v)
@@ -65,7 +72,19 @@ function readValues(node: HTMLElement): CanvasValues {
     },
     // Direct text content (not just descendants) → this element styles visible text.
     rendersText: [...node.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0),
-    color: { text: rgbToHex(cs.color), background: effectiveBgHex(node), border: rgbToHex(cs.borderColor) },
+    color: {
+      text: rgbToHex(cs.color),
+      background: effectiveBgHex(node),
+      border: rgbToHex(cs.borderColor),
+      // The element's OWN background (the swatch's `background` is the
+      // ancestor-composited backdrop) — null when fully transparent, so a
+      // style copy can't turn a see-through element's backdrop into paint.
+      ownBackground: (() => {
+        const own = cs.backgroundColor
+        const alpha = /rgba\([^)]*,\s*([\d.]+)\s*\)$/.exec(own)?.[1]
+        return own === 'transparent' || (alpha !== undefined && parseFloat(alpha) === 0) ? null : rgbToHex(own)
+      })(),
+    },
     // A var-themed channel reads its color from a CSS variable in the source class
     // (e.g. text-[color:var(--c-on-bg)]) — Muse leaves those alone, so mark read-only.
     colorThemed: {
@@ -829,6 +848,41 @@ export function CanvasMode({
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
   }, [])
+
+  // Copy/paste styles — Ctrl/Cmd+Alt+C / V on the selected element (Figma
+  // muscle memory). e.code, not e.key: macOS Alt+C types "ç" and the chord
+  // must stay layout-independent. Re-registered per render so the handler's
+  // commit/values closures are never stale; same input/contentEditable bail as
+  // undo so the chord can't fire while typing (also defuses Windows AltGr).
+  useEffect(() => {
+    const onCopyPaste = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.altKey) return
+      if (e.code !== 'KeyC' && e.code !== 'KeyV') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (!selected || !values) return
+      e.preventDefault()
+      const r = selected.node.getBoundingClientRect()
+      if (e.code === 'KeyC') {
+        styleClipboard = snapshotMutations(values)
+        flashHint(r.left, r.top, 'Styles copied')
+        return
+      }
+      if (!styleClipboard) {
+        flashHint(r.left, r.top, 'Nothing copied yet — Ctrl+Alt+C copies styles')
+        return
+      }
+      const muts = pasteDiff(styleClipboard, values)
+      if (muts.length === 0) {
+        flashHint(r.left, r.top, 'Styles already match')
+        return
+      }
+      void commit(muts)
+      flashHint(r.left, r.top, `Styles pasted (${muts.length})`)
+    }
+    document.addEventListener('keydown', onCopyPaste, true)
+    return () => document.removeEventListener('keydown', onCopyPaste, true)
+  })
 
   const applyPreview = (mutations: StyleMutation[]) => {
     if (!selected) return
