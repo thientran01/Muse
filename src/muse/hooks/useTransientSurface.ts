@@ -9,6 +9,9 @@ import { museStore } from '../store'
 // itself when a different id claims it. Outside-click/Esc handling stays
 // per-surface — this hook only guarantees AT MOST ONE transient is open.
 // Persistent controls (the breakpoint pills, section toggles) are not surfaces.
+// Note: a forced close goes through the surface's normal open→false transition,
+// so close-coupled side effects still fire (e.g. ColorRow's onClose dropping a
+// token row's live preview) — load-bearing for TokenList.
 export function useTransientSurface(open: boolean, close: () => void): void {
   const id = useId()
   const closeRef = useRef(close)
