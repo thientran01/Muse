@@ -521,6 +521,50 @@ export function alignItemsToken(value: string): string | null {
 export const isAlignItemsToken = (tok: string): boolean =>
   /^items-(?:start|end|center|baseline|stretch)$/.test(tok)
 
+// --- layout restructure (display / flex-direction / flex-wrap) -------------------
+// All three are CLOSED keyword families, so builders and matchers are exact
+// maps/sets — never prefix regexes. The discipline that matters: the `flex` and
+// `grid` display keywords must never be claimed by (or claim) the flex-GROW
+// shorthands flex-1/flex-auto/flex-none/flex-initial, and a direction token
+// (flex-row) must never be claimed by a wrap edit (flex-wrap) or vice versa.
+const DISPLAY_MAP: Record<string, string> = {
+  block: 'block',
+  'inline-block': 'inline-block',
+  inline: 'inline',
+  flex: 'flex',
+  'inline-flex': 'inline-flex',
+  grid: 'grid',
+  'inline-grid': 'inline-grid',
+}
+export function displayToken(value: string): string | null {
+  return DISPLAY_MAP[value.trim()] ?? null // `hidden` (none) deliberately unsupported — see the panel
+}
+const DISPLAY_TOKENS = new Set(Object.values(DISPLAY_MAP))
+export const isDisplayToken = (tok: string): boolean => DISPLAY_TOKENS.has(tok)
+
+const FLEX_DIRECTION_MAP: Record<string, string> = {
+  row: 'flex-row',
+  'row-reverse': 'flex-row-reverse',
+  column: 'flex-col',
+  'column-reverse': 'flex-col-reverse',
+}
+export function flexDirectionToken(value: string): string | null {
+  return FLEX_DIRECTION_MAP[value.trim()] ?? null
+}
+const FLEX_DIRECTION_TOKENS = new Set(Object.values(FLEX_DIRECTION_MAP))
+export const isFlexDirectionToken = (tok: string): boolean => FLEX_DIRECTION_TOKENS.has(tok)
+
+const FLEX_WRAP_MAP: Record<string, string> = {
+  wrap: 'flex-wrap',
+  'wrap-reverse': 'flex-wrap-reverse',
+  nowrap: 'flex-nowrap',
+}
+export function flexWrapToken(value: string): string | null {
+  return FLEX_WRAP_MAP[value.trim()] ?? null
+}
+const FLEX_WRAP_TOKENS = new Set(Object.values(FLEX_WRAP_MAP))
+export const isFlexWrapToken = (tok: string): boolean => FLEX_WRAP_TOKENS.has(tok)
+
 // --- kind-aware facade the engine calls ---------------------------------------
 // buildToken: value → Tailwind class token (or null → route inline). familyMatcher:
 // a predicate that finds the element's existing token of the SAME family to replace
@@ -557,6 +601,12 @@ export function buildToken(spec: PropertySpec, value: string): string | null {
       return justifyToken(value)
     case 'alignItems':
       return alignItemsToken(value)
+    case 'display':
+      return displayToken(value)
+    case 'flexDirection':
+      return flexDirectionToken(value)
+    case 'flexWrap':
+      return flexWrapToken(value)
     default:
       return null
   }
@@ -595,6 +645,12 @@ export function familyMatcher(spec: PropertySpec): (tok: string) => boolean {
       return isJustifyToken
     case 'alignItems':
       return isAlignItemsToken
+    case 'display':
+      return isDisplayToken
+    case 'flexDirection':
+      return isFlexDirectionToken
+    case 'flexWrap':
+      return isFlexWrapToken
     default:
       return () => false
   }

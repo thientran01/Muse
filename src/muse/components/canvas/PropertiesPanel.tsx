@@ -21,6 +21,8 @@ export type CanvasValues = {
   margin: Sides
   gap: { row: number; column: number } | null // null when not flex/grid
   layout: { justify: string; align: string } | null // flex/grid container alignment (normalized keywords)
+  display: string // computed display keyword (block/flex/grid/…; exotic values match no chip)
+  flex: { direction: string; wrap: string } | null // set when display is a flex container
   size: { width: number; height: number }
   type: { fontSize: number; fontWeight: number; lineHeight: number; letterSpacing: number; align: string }
   rendersText: boolean // the element directly shows text — gates the Type controls
@@ -659,31 +661,82 @@ const ALIGN_OPTIONS = [
   { name: 'stretch', label: 'Stretch', value: 'stretch' },
 ]
 
-// Container alignment + gap (flex/grid only): how this element arranges ITS
-// children — distinct from Spacing, which is the element's own box.
+// The display segment — the foundational restructure move (column → row, block
+// → flex container). Five chips is the readable cap: inline-flex/inline-grid
+// (and exotic computed values like table) simply select no chip. `hidden`
+// (display:none) is deliberately ABSENT — a one-click chip that makes the
+// selected element unselectable is a foot-gun, not a control.
+const DISPLAY_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: string }> = [
+  { name: 'block', label: 'Block' },
+  { name: 'inline-block', label: 'InlBlk', title: 'Inline block' },
+  { name: 'inline', label: 'Inline' },
+  { name: 'flex', label: 'Flex' },
+  { name: 'grid', label: 'Grid' },
+]
+const DIRECTION_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: string }> = [
+  { name: 'row', label: '→', title: 'Row' },
+  { name: 'column', label: '↓', title: 'Column' },
+  { name: 'row-reverse', label: '←', title: 'Row reverse' },
+  { name: 'column-reverse', label: '↑', title: 'Column reverse' },
+]
+const WRAP_OPTIONS: Array<{ name: string; label: React.ReactNode; title?: string }> = [
+  { name: 'nowrap', label: 'No wrap' },
+  { name: 'wrap', label: 'Wrap' },
+]
+
+// Layout: the display restructure + (for containers) how this element arranges
+// ITS children — distinct from Spacing, which is the element's own box. Always
+// rendered now: Display applies to every element; Direction/Wrap appear for
+// flex, Justify/Align/Gap for flex/grid. A display commit re-derives the whole
+// section (and the gap overlay) from the fresh computed values.
 export function LayoutFields({ values, onPreview, onCommit }: { values: CanvasValues } & EditProps) {
-  if (!values.layout) return null
   return (
     <div className="space-y-2">
       <SegmentRow
-        label="Justify"
-        options={JUSTIFY_OPTIONS}
-        current={values.layout.justify}
-        onPick={(name) => {
-          const v = JUSTIFY_OPTIONS.find((o) => o.name === name)
-          if (v) onCommit([{ property: 'justifyContent', value: v.value }])
-        }}
+        label="Display"
+        options={DISPLAY_OPTIONS}
+        current={values.display}
+        onPick={(name) => onCommit([{ property: 'display', value: name }])}
       />
-      <SegmentRow
-        label="Align"
-        options={ALIGN_OPTIONS}
-        current={values.layout.align}
-        onPick={(name) => {
-          const v = ALIGN_OPTIONS.find((o) => o.name === name)
-          if (v) onCommit([{ property: 'alignItems', value: v.value }])
-        }}
-      />
-      <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      {values.flex && (
+        <>
+          <SegmentRow
+            label="Direction"
+            options={DIRECTION_OPTIONS}
+            current={values.flex.direction}
+            onPick={(name) => onCommit([{ property: 'flexDirection', value: name }])}
+          />
+          <SegmentRow
+            label="Wrap"
+            options={WRAP_OPTIONS}
+            current={values.flex.wrap}
+            onPick={(name) => onCommit([{ property: 'flexWrap', value: name }])}
+          />
+        </>
+      )}
+      {values.layout && (
+        <>
+          <SegmentRow
+            label="Justify"
+            options={JUSTIFY_OPTIONS}
+            current={values.layout.justify}
+            onPick={(name) => {
+              const v = JUSTIFY_OPTIONS.find((o) => o.name === name)
+              if (v) onCommit([{ property: 'justifyContent', value: v.value }])
+            }}
+          />
+          <SegmentRow
+            label="Align"
+            options={ALIGN_OPTIONS}
+            current={values.layout.align}
+            onPick={(name) => {
+              const v = ALIGN_OPTIONS.find((o) => o.name === name)
+              if (v) onCommit([{ property: 'alignItems', value: v.value }])
+            }}
+          />
+          <GapFields values={values} onPreview={onPreview} onCommit={onCommit} />
+        </>
+      )}
     </div>
   )
 }
@@ -762,10 +815,12 @@ function appearanceSet(values: CanvasValues): boolean {
   )
 }
 function layoutSet(values: CanvasValues): boolean {
-  if (!values.layout) return false
+  // A container display is itself a load-bearing layout choice — dot it.
+  const containerDisplay = /(^|-)?(flex|grid)$/.test(values.display)
+  if (!values.layout) return containerDisplay
   const unsetAlign = values.layout.justify === 'normal' && values.layout.align === 'normal'
   const noGap = !values.gap || (values.gap.row === 0 && values.gap.column === 0)
-  return !(unsetAlign && noGap)
+  return containerDisplay || !(unsetAlign && noGap)
 }
 
 type SectionKey = 'size' | 'type' | 'color' | 'appearance' | 'spacing' | 'layout' | 'classes'
@@ -1088,14 +1143,10 @@ export function PropertiesPanel({
         <SpacingFields values={values} onPreview={onPreview} onCommit={onCommit} />
       </Section>
 
-      {values.layout && (
-        <>
-          {divider}
-          <Section label="Layout" open={open.has('layout')} dot={layoutSet(values)} onToggle={() => toggle('layout')}>
-            <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
-          </Section>
-        </>
-      )}
+      {divider}
+      <Section label="Layout" open={open.has('layout')} dot={layoutSet(values)} onToggle={() => toggle('layout')}>
+        <LayoutFields values={values} onPreview={onPreview} onCommit={onCommit} />
+      </Section>
 
       {divider}
       {/* Classes is the deliberate exception to the 6-section cap (#120's density

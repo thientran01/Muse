@@ -50,6 +50,11 @@ function readValues(node: HTMLElement): CanvasValues {
     layout: isFlexGrid
       ? { justify: alignKeyword(cs.justifyContent), align: alignKeyword(cs.alignItems) }
       : null,
+    // Layout restructure: the computed display keyword as-is (an exotic value —
+    // table, contents — simply matches no segment chip), plus direction/wrap
+    // when the element IS a flex container.
+    display: cs.display,
+    flex: cs.display.includes('flex') ? { direction: cs.flexDirection, wrap: cs.flexWrap } : null,
     size: { width: Math.round(px(cs.width)), height: Math.round(px(cs.height)) },
     type: {
       fontSize: Math.round(px(cs.fontSize) * 10) / 10,
