@@ -65,6 +65,8 @@ All canvas edits flow through `museStyleEdit`/`museTextEdit`/`museReorder` → `
 
 `server/styleEdit.ts` (`computeStyleEdit`, `computeTextEdit`, `computeReorder`) uses Babel to parse JSX/TSX and locate elements by file + line + column + tag + current className. Never regex. Supports: Tailwind classes, inline styles, CSS Modules (`ModuleEdit`), styled-components/emotion templates and object syntax (`StyledEdit`), CSS variables (`VarEdit`).
 
+Mutations carry an optional `variant` chain (`'hover'`, `'md'`, `'dark:hover'`) — matching is variant-EXACT (`splitVariants` in `tailwindScales.ts` is the one token parser), base edits warn when a variant still governs, and the inline fallback refuses rather than override every state. Variant edits are Tailwind-class-only. A style-edit may also carry `classPatch {add, remove}` (the panel's freeform class field) — verbatim tokens gated by `isSafeClassToken` (blocklist of string-escape characters; server re-validates).
+
 Strategy auto-detected per project (`detectStrategy` in `museCore.ts`): checks for `tailwind.config.*`, package deps, and `@tailwind`/`@import "tailwindcss"` in CSS files.
 
 ### Shadow DOM isolation
