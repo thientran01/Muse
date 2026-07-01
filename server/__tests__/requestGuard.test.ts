@@ -21,6 +21,7 @@ import {
   type MuseHandlers,
   type OriginPolicy,
 } from '../museCore'
+import { createMuseWebRouter } from '../webAdapter'
 
 const LOOPBACK: OriginPolicy = { allowAnyOrigin: false, extraOrigin: null }
 
@@ -88,6 +89,14 @@ describe('guardRequest', () => {
     expect(guardRequest('POST', { 'content-type': 'Application/JSON; charset=utf-8' } as IncomingMessage['headers'], LOOPBACK)).toEqual({ ok: true })
   })
 
+  it('rejects a non-json media type whose token merely starts with application/json', () => {
+    // `\b` would let these through; the media type must END at `application/json`.
+    for (const ct of ['application/json-patch+json', 'application/jsonx', 'application/json5']) {
+      const r = guardRequest('POST', { 'content-type': ct } as IncomingMessage['headers'], LOOPBACK)
+      expect(r).toEqual({ ok: false, status: 415, error: 'Content-Type must be application/json.' })
+    }
+  })
+
   it('applies the Origin check to GET but skips the content-type requirement', () => {
     expect(guardRequest('GET', {}, LOOPBACK)).toEqual({ ok: true }) // same-origin GET omits Origin
     expect(guardRequest('GET', { origin: 'http://evil.com' }, LOOPBACK)).toEqual({ ok: false, status: 403, error: 'Origin not allowed.' })
@@ -107,21 +116,26 @@ afterEach(() => {
   for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true })
 })
 
-function makeProject(env: Record<string, string | undefined> = {}): {
-  handlers: MuseHandlers
-  read: () => string
-  abs: string
-} {
+function newRoot(): { root: string; read: () => string; abs: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'muse-guard-'))
   roots.push(root)
   fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture', private: true }))
   fs.mkdirSync(path.join(root, 'src'), { recursive: true })
   fs.writeFileSync(path.join(root, 'src', 'App.tsx'), ORIGINAL)
   return {
-    handlers: createMuseHandlers(createMuseContext(env, root)),
+    root,
     read: () => fs.readFileSync(path.join(root, 'src', 'App.tsx'), 'utf8'),
     abs: path.join(root, 'src', 'App.tsx'),
   }
+}
+
+function makeProject(env: Record<string, string | undefined> = {}): {
+  handlers: MuseHandlers
+  read: () => string
+  abs: string
+} {
+  const r = newRoot()
+  return { handlers: createMuseHandlers(createMuseContext(env, r.root)), read: r.read, abs: r.abs }
 }
 
 const ORIGINAL = 'export const x = 1\n'
@@ -203,5 +217,36 @@ describe('createMuseHandlers wiring — a blocked write never reaches disk', () 
     const blocked = await callWrite(p2, { origin: 'http://192.168.1.6:5173', 'content-type': 'application/json' })
     expect(blocked.status).toBe(403)
     expect(p2.read()).toBe(ORIGINAL)
+  })
+})
+
+// ---- Next.js / Web adapter path (createMuseWebRouter → runHandlerWeb) -----------
+// The guard is wired in createMuseHandlers, so the web adapter inherits it. This
+// proves the rejection survives the Web Request → Node-shim → Web Response round-trip.
+
+describe('web adapter (Next) inherits the guard', () => {
+  const webWrite = async (env: Record<string, string | undefined>, origin: string) => {
+    const r = newRoot()
+    const router = createMuseWebRouter(createMuseContext(env, r.root))
+    const res = await router(
+      new Request('http://localhost/api/muse/write', {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json' },
+        body: JSON.stringify({ files: [{ fileName: r.abs, newContent: EDITED }] }),
+      }),
+    )
+    return { status: res.status, read: r.read }
+  }
+
+  it('returns a 403 Web Response for a cross-origin write and never touches disk', async () => {
+    const { status, read } = await webWrite({}, 'http://evil.com')
+    expect(status).toBe(403)
+    expect(read()).toBe(ORIGINAL)
+  })
+
+  it('lets a loopback write through to a 200 Web Response', async () => {
+    const { status, read } = await webWrite({}, 'http://localhost:5173')
+    expect(status).toBe(200)
+    expect(read()).toBe(EDITED)
   })
 })

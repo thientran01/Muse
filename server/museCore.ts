@@ -85,7 +85,10 @@ export function isAllowedOrigin(origin: string, policy: OriginPolicy): boolean {
   return false
 }
 
-// Node lowercases header names; a value is string | string[] (dup headers).
+// Node lowercases header names. It comma-JOINS a duplicate origin/content-type into one
+// string (a spoofed second Origin still fails the anchored allowlist below — never an
+// array here), and keeps only a few headers (e.g. set-cookie) as arrays; the array branch
+// is general defensiveness — take the first value.
 const firstHeaderValue = (v: string | string[] | undefined): string | undefined =>
   Array.isArray(v) ? v[0] : v
 
@@ -110,7 +113,9 @@ export function guardRequest(
   // that would otherwise skip the browser's preflight entirely.
   if (method === 'POST') {
     const ct = (firstHeaderValue(hdrs['content-type']) ?? '').trim()
-    if (!/^application\/json\b/i.test(ct)) {
+    // Exact media type: `application/json`, optionally followed by params (`; charset=…`).
+    // `\b` would also pass `application/json-patch+json`; the token must END at json.
+    if (!/^application\/json\s*(?:;|$)/i.test(ct)) {
       return { ok: false, status: 415, error: 'Content-Type must be application/json.' }
     }
   }
