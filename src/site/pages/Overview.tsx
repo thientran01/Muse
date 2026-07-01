@@ -139,8 +139,9 @@ export function Overview() {
       <p className="mt-4 text-[15px] leading-relaxed text-stone-600 dark:text-stone-400">
         Open the <strong>Design tokens</strong> popover from the toolbar to see every CSS custom property
         your app defines (<Code>--c-energy</Code>, <Code>--radius-lg</Code>, and the rest) with a live
-        swatch. Edit a value and Muse writes it straight back to the stylesheet that defines it, so a
-        single change repaints everywhere the token is used. No model call, no key.
+        swatch. Edit a value and a single change repaints everywhere the token is used — and when Muse
+        runs locally, it writes the new value straight back to the stylesheet that defines it. No model
+        call, no key.
       </p>
     </article>
   )
