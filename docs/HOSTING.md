@@ -188,6 +188,15 @@ Then point the overlay at it (see §3): `configureMuse({ apiBase: 'http://localh
 > remote dev box), and only on a trusted network. The same-origin Next route above is the
 > safer default when the host can serve it.
 
+> **Request guard (all backends).** Because Muse writes source on `POST`, every endpoint —
+> on the Vite plugin, the Next route, and the standalone server alike — rejects a request
+> whose `Origin` header is present and **not loopback** (403), and requires
+> `Content-Type: application/json` on writes (415). This blocks a random site you visit
+> while the dev server runs from silently `fetch`-ing the write endpoints (drive-by CSRF /
+> DNS-rebinding). If you serve your dev app from a **non-loopback origin** (a LAN IP, a
+> `*.local` host, a remote dev box), allow it explicitly with `MUSE_CORS_ORIGIN=<your-origin>`
+> (or `MUSE_CORS_ORIGIN='*'` to allow any — localhost is always allowed regardless).
+
 ---
 
 ## 3. Mount the overlay
@@ -225,6 +234,7 @@ export function DevMuse() {
 |---|---|
 | `MUSE_ROOT` | project root for the standalone server (defaults to cwd). |
 | `MUSE_API_BASE` | client default for `apiBase` (or call `configureMuse`). |
+| `MUSE_CORS_ORIGIN` | extra allowed request origin (or `'*'` for any). Default: loopback only. Needed only when the dev app is served from a non-loopback origin. |
 
 Canvas Mode (direct manipulation: spacing/type/color/text/reorder) and the design-token
 editor are fully deterministic — Muse needs **no API key and no model-backed services**.

@@ -42,21 +42,104 @@ import type { Flag, FlagDraft, FlagsFile, ShareChange } from '../src/muse/types'
 
 const MAX_WRITE_BYTES = 200_000
 
+// ---- Request guard (CSRF / DNS-rebinding defense) ------------------------------
+// Muse rewrites source files on POST, and it loads alongside a developer's dev
+// server. Without a guard, ANY website the developer visits while the server runs
+// could `fetch('http://localhost:5173/api/muse/write', …)` and rewrite their
+// source — a drive-by CSRF / DNS-rebinding write. Two standard, cheap defenses,
+// applied to every endpoint by createMuseHandlers so all three adapters (Vite
+// plugin, standalone server, Next web adapter) inherit them from one place:
+//   1. Origin allowlist. A cross-site — or DNS-rebound — page's request carries an
+//      Origin the browser sets and page JS cannot forge; a rebind keeps the
+//      attacker's own host in Origin, never loopback. Same-origin POSTs from the
+//      Muse client carry the loopback dev Origin, so they pass. Reject anything
+//      that is present and neither loopback nor operator-allowlisted.
+//   2. Content-Type must be application/json on bodied (POST) requests. This
+//      forces any cross-origin write into a CORS preflight (which none of the
+//      adapters answer), closing the "simple request" hole where a text/plain or
+//      form POST reaches the handler with no preflight at all.
+
+// http(s)://{localhost | 127.0.0.1 | [::1]} with an optional :port — the loopback
+// origins a dev server legitimately serves from.
+const LOOPBACK_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i
+
+export type OriginPolicy = {
+  // MUSE_CORS_ORIGIN='*' — operator opted into any origin (loopback still allowed).
+  allowAnyOrigin: boolean
+  // MUSE_CORS_ORIGIN=<url> — one extra exact origin (e.g. a LAN IP / remote dev box).
+  extraOrigin: string | null
+}
+
+function originPolicyFromEnv(env: Record<string, string | undefined>): OriginPolicy {
+  const cors = env.MUSE_CORS_ORIGIN ?? null
+  return {
+    allowAnyOrigin: cors === '*',
+    extraOrigin: cors && cors !== '*' ? cors : null,
+  }
+}
+
+export function isAllowedOrigin(origin: string, policy: OriginPolicy): boolean {
+  if (policy.allowAnyOrigin) return true
+  if (LOOPBACK_ORIGIN_RE.test(origin)) return true
+  if (policy.extraOrigin && origin === policy.extraOrigin) return true
+  return false
+}
+
+// Node lowercases header names. It comma-JOINS a duplicate origin/content-type into one
+// string (a spoofed second Origin still fails the anchored allowlist below — never an
+// array here), and keeps only a few headers (e.g. set-cookie) as arrays; the array branch
+// is general defensiveness — take the first value.
+const firstHeaderValue = (v: string | string[] | undefined): string | undefined =>
+  Array.isArray(v) ? v[0] : v
+
+export type GuardOutcome = { ok: true } | { ok: false; status: number; error: string }
+
+// Pure decision (no I/O) so it's unit-testable and identical across adapters.
+export function guardRequest(
+  method: string | undefined,
+  headers: IncomingMessage['headers'] | undefined,
+  policy: OriginPolicy,
+): GuardOutcome {
+  const hdrs = headers ?? {}
+  const origin = firstHeaderValue(hdrs.origin)
+  // Only reject when an Origin is PRESENT and disallowed. A missing Origin means a
+  // same-origin GET or a non-browser client (curl/native) — neither is a CSRF
+  // vector, since CSRF needs a browser to attach the victim's ambient authority.
+  // 'null' is an opaque origin (sandboxed iframe / file://) and fails the allowlist.
+  if (origin != null && origin !== '' && !isAllowedOrigin(origin, policy)) {
+    return { ok: false, status: 403, error: 'Origin not allowed.' }
+  }
+  // Bodied requests must be JSON — blocks the form-post / text-plain CSRF vector
+  // that would otherwise skip the browser's preflight entirely.
+  if (method === 'POST') {
+    const ct = (firstHeaderValue(hdrs['content-type']) ?? '').trim()
+    // Exact media type: `application/json`, optionally followed by params (`; charset=…`).
+    // `\b` would also pass `application/json-patch+json`; the token must END at json.
+    if (!/^application\/json\s*(?:;|$)/i.test(ct)) {
+      return { ok: false, status: 415, error: 'Content-Type must be application/json.' }
+    }
+  }
+  return { ok: true }
+}
+
 // ---- MuseContext ---------------------------------------------------------------
 
 export type MuseContext = {
   root: string
+  // Which origins may talk to Muse (from MUSE_CORS_ORIGIN; default loopback-only).
+  originPolicy: OriginPolicy
   // Mutable session state
   lineOffsetHint: OffsetHint
   detectedStrategy: StyleStrategy | null
 }
 
 export function createMuseContext(
-  _env: Record<string, string | undefined>,
+  env: Record<string, string | undefined>,
   root: string,
 ): MuseContext {
   return {
     root,
+    originPolicy: originPolicyFromEnv(env),
     lineOffsetHint: { value: null },
     detectedStrategy: null,
   }
@@ -85,22 +168,30 @@ export type MuseHandlers = {
 }
 
 export function createMuseHandlers(ctx: MuseContext): MuseHandlers {
+  // Every endpoint clears the origin + content-type guard before its handler runs.
+  // Wrapping here (not in each adapter) means the Vite plugin, standalone server,
+  // and Next web adapter all inherit the same CSRF / DNS-rebinding defense.
+  const guard = (h: Handler): Handler => async (req, res) => {
+    const outcome = guardRequest(req.method, req.headers, ctx.originPolicy)
+    if (!outcome.ok) return sendJson(res, outcome.status, { error: outcome.error })
+    return h(req, res)
+  }
   return {
-    write:          (req, res) => handleWrite(req, res, ctx),
-    styleEdit:      (req, res) => handleStyleEdit(req, res, ctx),
-    styleScope:     (req, res) => handleStyleScope(req, res, ctx),
-    textEdit:       (req, res) => handleTextEdit(req, res, ctx),
-    textEditable:   (req, res) => handleTextEditable(req, res, ctx),
-    reorder:        (req, res) => handleReorder(req, res, ctx),
-    reorderable:    (req, res) => handleReorderable(req, res, ctx),
-    tokens:         (req, res) => handleTokens(req, res, ctx),
-    tokenEdit:      (req, res) => handleTokenEdit(req, res, ctx),
-    flag:           (req, res) => handleFlag(req, res, ctx),
-    flags:          (req, res) => handleFlagsList(req, res, ctx),
-    flagResolve:    (req, res) => handleFlagResolve(req, res, ctx),
-    flagDelete:     (req, res) => handleFlagDelete(req, res, ctx),
-    shareProbe:     (req, res) => handleShareProbe(req, res, ctx),
-    share:          (req, res) => handleShare(req, res, ctx),
+    write:          guard((req, res) => handleWrite(req, res, ctx)),
+    styleEdit:      guard((req, res) => handleStyleEdit(req, res, ctx)),
+    styleScope:     guard((req, res) => handleStyleScope(req, res, ctx)),
+    textEdit:       guard((req, res) => handleTextEdit(req, res, ctx)),
+    textEditable:   guard((req, res) => handleTextEditable(req, res, ctx)),
+    reorder:        guard((req, res) => handleReorder(req, res, ctx)),
+    reorderable:    guard((req, res) => handleReorderable(req, res, ctx)),
+    tokens:         guard((req, res) => handleTokens(req, res, ctx)),
+    tokenEdit:      guard((req, res) => handleTokenEdit(req, res, ctx)),
+    flag:           guard((req, res) => handleFlag(req, res, ctx)),
+    flags:          guard((req, res) => handleFlagsList(req, res, ctx)),
+    flagResolve:    guard((req, res) => handleFlagResolve(req, res, ctx)),
+    flagDelete:     guard((req, res) => handleFlagDelete(req, res, ctx)),
+    shareProbe:     guard((req, res) => handleShareProbe(req, res, ctx)),
+    share:          guard((req, res) => handleShare(req, res, ctx)),
   }
 }
 

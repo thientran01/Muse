@@ -19,7 +19,7 @@
 // ============================================================
 import http from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createMuseContext, createMuseHandlers, type Handler } from './museCore'
+import { createMuseContext, createMuseHandlers, isAllowedOrigin, type Handler } from './museCore'
 
 const port = parseInt(process.env.MUSE_PORT ?? '4747', 10)
 // Bind to localhost by default. This server has NO authentication and rewrites
@@ -32,25 +32,28 @@ const host = process.env.MUSE_HOST ?? '127.0.0.1'
 // escape hatch on systems where `localhost` resolves to ::1 before 127.0.0.1.
 const isLoopback = host === '127.0.0.1' || host === '::1' || host === 'localhost'
 const root = process.env.MUSE_ROOT ?? process.cwd()
-// MUSE_CORS_ORIGIN overrides the default. Without it, only localhost/127.0.0.1 origins
-// are allowed — this prevents a malicious tab from writing to source files via the
-// write endpoints. Set MUSE_CORS_ORIGIN='*' to revert to permissive (old default).
-const corsOverride = process.env.MUSE_CORS_ORIGIN ?? null
-const LOCALHOST_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
+// Display-only echo of the operator's setting for the startup banner. The actual
+// allow/deny decision lives in ctx.originPolicy (below), so there is ONE source of
+// origin truth shared by this CORS layer and the server-side guard.
+const corsSetting = process.env.MUSE_CORS_ORIGIN ?? null
 
 const ctx = createMuseContext(process.env as Record<string, string | undefined>, root)
 const handlers = createMuseHandlers(ctx)
 
+// Echo Access-Control-Allow-Origin only for origins the shared policy allows (from
+// MUSE_CORS_ORIGIN; loopback — incl. [::1] — always allowed). A disallowed origin gets
+// no ACAO (browser blocks the response) AND is rejected server-side by createMuseHandlers'
+// guard, so the two layers agree. Muse sends no cookies, so '*' for the same-origin /
+// non-browser (no Origin) case is safe.
 function addCors(req: IncomingMessage, res: ServerResponse) {
-  const origin = req.headers.origin ?? ''
-  if (corsOverride) {
-    // Explicit env override: use as-is (e.g. MUSE_CORS_ORIGIN='*' for permissive dev).
-    res.setHeader('Access-Control-Allow-Origin', corsOverride)
-  } else if (!origin || LOCALHOST_RE.test(origin)) {
-    // Default: allow localhost origins only; no-origin (same-origin) requests pass too.
-    res.setHeader('Access-Control-Allow-Origin', origin || '*')
+  const origin = req.headers.origin
+  if (ctx.originPolicy.allowAnyOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  } else if (!origin) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  } else if (isAllowedOrigin(origin, ctx.originPolicy)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
   }
-  // No ACAO header for other origins → browser blocks the request.
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
@@ -109,8 +112,8 @@ server.listen(port, host, () => {
   console.log(`[muse] standalone server  http://${host}:${port}`)
   console.log(`[muse] bind              ${host}${isLoopback ? ' (localhost only)' : ''}`)
   console.log(`[muse] root              ${root}`)
-  console.log(`[muse] cors origin       ${corsOverride ?? 'localhost-only (default)'}`)
-  if (!corsOverride) console.log(`[muse] tip: set MUSE_CORS_ORIGIN='*' to allow any dev origin`)
+  console.log(`[muse] cors origin       ${corsSetting ?? 'localhost-only (default)'}`)
+  if (!corsSetting) console.log(`[muse] tip: set MUSE_CORS_ORIGIN='*' to allow any dev origin`)
   if (!isLoopback) {
     console.log(`[muse] warning: bound to ${host} — no auth + writes to disk; expose only on trusted networks`)
   }
