@@ -52,7 +52,8 @@ export function getSourceLocation(el: Element | null): SourceLocation | null {
   if (!el) return null
 
   // --- Strategy 1: data-muse-loc attribute (Phase 6, preferred) ---------------
-  // Format: "absPath:line:col" — parse from the right so Windows drive colons
+  // Format: "path:line:col" — repo-relative when the file sits under the project
+  // root, absolute otherwise. Parse from the right so Windows drive colons
   // (e.g. "C:/…") don't break the split. line is 1-based, col is 0-based.
   const attr = el.getAttribute('data-muse-loc')
   if (attr) {
