@@ -1717,7 +1717,11 @@ export function CanvasMode({
                     ? 'reorder'
                     : 'text'
                   : 'select'
-              const retired = prefs.hintUses[gesture] >= HINT_RETIRES
+              // On the demo (EPHEMERAL) every visitor is effectively first-run, so
+              // the teaching text must never collapse to a lone "?" — that reads as
+              // a glitch to someone seeing Muse for the first time. Hints only retire
+              // in a real, persistent session where the user has genuinely learned them.
+              const retired = !EPHEMERAL && prefs.hintUses[gesture] >= HINT_RETIRES
               const message = editing ? (
                 'Editing text · Enter to save · Esc to cancel'
               ) : selected ? (
