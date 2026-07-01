@@ -208,6 +208,15 @@ export function useCanvasMode(opts?: {
       if (e.key === 'Alt') setAltHeld(true)
       if (editingRef.current) return // the editor owns the keyboard (Enter/Esc handled on the node)
       if (e.key === 'Escape') {
+        // Escape pressed INSIDE Muse chrome belongs to Muse's own components —
+        // a ScrubField cancels its typed value, the class input clears, a popover
+        // closes. This listener is capture-phase on document, so it fires BEFORE
+        // those field handlers (their stopPropagation can't reach us); skip here
+        // or the whole element deselects mid-edit. composedPath()[0] sees the
+        // real target inside the (open) shadow root — e.target is retargeted to
+        // the shadow host at the boundary, which carries no data-muse-ui.
+        const inner = (e.composedPath?.()[0] ?? e.target) as Element | null
+        if (inner instanceof Element && isMuseUI(inner)) return
         // Esc steps back: a selected element first, then canvas mode itself.
         if (selectedRef.current) setSelected(null)
         else setActive(false)
