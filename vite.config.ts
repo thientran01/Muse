@@ -1,7 +1,40 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { musePlugin } from './server/musePlugin'
 import { museLoc } from './server/babelPluginMuseLoc'
+
+// Demo-only: relativize any absolute project path in the emitted chunks. The
+// museLoc stamp is already repo-relative, but the dev jsx runtime the demo build
+// keeps (see below) injects _debugSource objects whose fileName is the ABSOLUTE
+// build path — shipping "C:/Users/<name>/…" on every element of the hosted demo.
+// Prefix-stripping to a relative path keeps _debugSource usable as the locator
+// fallback (resolveInSrc anchors relative names at the project root) while the
+// bundle no longer says anything about the machine that built it.
+function stripAbsolutePaths(): Plugin {
+  // Windows drive letters can arrive case-mismatched between process.cwd() and
+  // the paths baked into chunks (from Vite module ids), so strip BOTH case
+  // variants — a missed variant silently ships the absolute path.
+  const base = process.cwd().replace(/\\/g, '/').replace(/\/+$/, '') + '/'
+  const roots = [
+    ...new Set([
+      base,
+      base.replace(/^[A-Za-z]:/, (m) => m.toUpperCase()),
+      base.replace(/^[A-Za-z]:/, (m) => m.toLowerCase()),
+    ]),
+  ]
+  return {
+    name: 'muse-demo-strip-abs-paths',
+    apply: 'build',
+    // NOTE: returns a bare string (no sourcemap) — fine while the demo build
+    // ships no sourcemaps (build.sourcemap unset); if maps are ever enabled for
+    // the demo, this hook must return { code, map } via magic-string instead.
+    renderChunk(code) {
+      let out = code
+      for (const root of roots) if (out.includes(root)) out = out.split(root).join('')
+      return out === code ? null : out
+    },
+  }
+}
 
 // musePlugin() adds the /api/muse/* endpoints to the dev server.
 // museLoc stamps data-muse-loc="file:line:col" on every JSX opening element in
@@ -25,7 +58,17 @@ export default defineConfig(({ command, mode }) => {
   // Include museLoc in dev server and demo builds; strip from prod builds.
   const isDev = command === 'serve' || demo
   return {
-    plugins: [react({ babel: { plugins: isDev ? [museLoc] : [] } }), musePlugin()],
+    plugins: [
+      react({ babel: { plugins: isDev ? [museLoc] : [] } }),
+      musePlugin(),
+      ...(demo ? [stripAbsolutePaths()] : []),
+    ],
     ...(demo ? { define: { 'process.env.NODE_ENV': '"development"' } } : {}),
+    // The demo bundle is still esbuild-minified (small transfer), but component
+    // function names must survive: Canvas reads the fiber's component .name for
+    // the hover tooltip + breadcrumb, and a mangled name (Overview -> "K5") makes
+    // every element read as the same cryptic crumb. keepNames re-tags each
+    // function with its real name via a tiny __name() helper. Demo-only.
+    ...(demo ? { esbuild: { keepNames: true } } : {}),
   }
 })

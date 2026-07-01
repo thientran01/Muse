@@ -14,9 +14,13 @@
 //  An SWC plugin would only cover the SWC/webpack path (not Turbopack, not Vite),
 //  so a Babel plugin is deliberately the most portable choice. See docs/HOSTING.md.
 //
-//  Format: "<absPath>:<line>:<col>" — line 1-based (Babel AST), col 0-based (raw
-//  Babel AST column). Parse by taking the last two colon-separated tokens as
-//  col/line and rejoining the rest as the path (Windows-safe: one drive colon).
+//  Format: "<path>:<line>:<col>" — line 1-based (Babel AST), col 0-based (raw
+//  Babel AST column). The path is REPO-RELATIVE when the file sits under the
+//  Babel cwd (project root), falling back to absolute when it can't be
+//  relativized — the server's resolveInSrc handles both, and a shipped bundle no
+//  longer bakes in the builder's absolute disk path. Parse by taking the last two
+//  colon-separated tokens as col/line and rejoining the rest as the path
+//  (Windows-safe: one drive colon).
 //
 //  Dev-only: this plugin self-gates to non-production so a host can wire it once
 //  and never leak the attribute into a production build (NODE_ENV='production').
@@ -26,6 +30,22 @@
 // ============================================================
 
 /** @typedef {{ types: typeof import('@babel/types') }} BabelAPI */
+
+// Make the stamped path repo-relative when the file lives under the Babel cwd
+// (the project root). Degrades to the absolute path if the prefix doesn't match,
+// so resolution never regresses. Both inputs normalized to forward slashes first.
+// Windows drive letters can arrive case-mismatched between Babel's cwd and the
+// bundler's module id ("c:/…" vs "C:/…"), so the drive letter is uppercased on
+// both sides before comparing — scoped to the drive letter ONLY; the rest of the
+// path stays case-sensitive (Linux/macOS). Exported for the twin drift-guard
+// test (must behave identically to server/babelPluginMuseLoc.ts).
+function relativizeLoc(filename, cwd) {
+  const normDrive = (p) => p.replace(/^[a-z]:/, (m) => m.toUpperCase())
+  const file = normDrive(filename.replace(/\\/g, '/'))
+  const root = normDrive((cwd || '').replace(/\\/g, '/').replace(/\/+$/, ''))
+  if (root && (file === root || file.startsWith(root + '/'))) return file.slice(root.length + 1)
+  return file
+}
 
 function museLoc({ types: t }) {
   return {
@@ -54,8 +74,8 @@ function museLoc({ types: t }) {
         const filename = (state && state.filename) || ''
         if (!filename) return
 
-        // Normalize to forward slashes so Windows paths parse cleanly.
-        const file = filename.replace(/\\/g, '/')
+        // Repo-relative when possible (see relativizeLoc); forward-slashed either way.
+        const file = relativizeLoc(filename, state && state.cwd)
         const line = node.loc.start.line // 1-based (Babel AST convention)
         const col = node.loc.start.column // 0-based
 
@@ -84,3 +104,4 @@ function museLoc({ types: t }) {
 module.exports = museLoc
 module.exports.museLoc = museLoc
 module.exports.default = museLoc
+module.exports.relativizeLoc = relativizeLoc
