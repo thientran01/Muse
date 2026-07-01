@@ -11,12 +11,27 @@ import { museLoc } from './server/babelPluginMuseLoc'
 // fallback (resolveInSrc anchors relative names at the project root) while the
 // bundle no longer says anything about the machine that built it.
 function stripAbsolutePaths(): Plugin {
-  const root = process.cwd().replace(/\\/g, '/').replace(/\/+$/, '') + '/'
+  // Windows drive letters can arrive case-mismatched between process.cwd() and
+  // the paths baked into chunks (from Vite module ids), so strip BOTH case
+  // variants — a missed variant silently ships the absolute path.
+  const base = process.cwd().replace(/\\/g, '/').replace(/\/+$/, '') + '/'
+  const roots = [
+    ...new Set([
+      base,
+      base.replace(/^[A-Za-z]:/, (m) => m.toUpperCase()),
+      base.replace(/^[A-Za-z]:/, (m) => m.toLowerCase()),
+    ]),
+  ]
   return {
     name: 'muse-demo-strip-abs-paths',
     apply: 'build',
+    // NOTE: returns a bare string (no sourcemap) — fine while the demo build
+    // ships no sourcemaps (build.sourcemap unset); if maps are ever enabled for
+    // the demo, this hook must return { code, map } via magic-string instead.
     renderChunk(code) {
-      return code.includes(root) ? code.split(root).join('') : null
+      let out = code
+      for (const root of roots) if (out.includes(root)) out = out.split(root).join('')
+      return out === code ? null : out
     },
   }
 }

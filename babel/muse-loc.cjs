@@ -34,9 +34,15 @@
 // Make the stamped path repo-relative when the file lives under the Babel cwd
 // (the project root). Degrades to the absolute path if the prefix doesn't match,
 // so resolution never regresses. Both inputs normalized to forward slashes first.
+// Windows drive letters can arrive case-mismatched between Babel's cwd and the
+// bundler's module id ("c:/…" vs "C:/…"), so the drive letter is uppercased on
+// both sides before comparing — scoped to the drive letter ONLY; the rest of the
+// path stays case-sensitive (Linux/macOS). Exported for the twin drift-guard
+// test (must behave identically to server/babelPluginMuseLoc.ts).
 function relativizeLoc(filename, cwd) {
-  const file = filename.replace(/\\/g, '/')
-  const root = (cwd || '').replace(/\\/g, '/').replace(/\/+$/, '')
+  const normDrive = (p) => p.replace(/^[a-z]:/, (m) => m.toUpperCase())
+  const file = normDrive(filename.replace(/\\/g, '/'))
+  const root = normDrive((cwd || '').replace(/\\/g, '/').replace(/\/+$/, ''))
   if (root && (file === root || file.startsWith(root + '/'))) return file.slice(root.length + 1)
   return file
 }
@@ -98,3 +104,4 @@ function museLoc({ types: t }) {
 module.exports = museLoc
 module.exports.museLoc = museLoc
 module.exports.default = museLoc
+module.exports.relativizeLoc = relativizeLoc
