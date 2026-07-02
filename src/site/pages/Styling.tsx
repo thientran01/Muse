@@ -41,9 +41,9 @@ export function Styling() {
       <H2 id="inline">Inline styles</H2>
       <P>
         The plainest case: values written straight into <Code>style={'{{…}}'}</Code>. Muse merges the
-        edit into the object literal. The two stamps below share one <Code>const</Code> — run Muse
-        locally and selecting either offers <strong>apply to all</strong>, which rewrites the shared
-        object so both stamps move together. In this hosted demo edits land on the element you
+        edit into the object literal. The two stamps below share one <Code>const</Code> — and when
+        Muse runs locally, selecting either offers <strong>apply to all</strong>, which rewrites the
+        shared object so both stamps move together. In this hosted demo edits land on the element you
         selected, so the twins can drift apart until you refresh.
       </P>
       <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
@@ -64,12 +64,11 @@ export function Styling() {
 
       <H2 id="vars">CSS variables</H2>
       <P>
-        These chips paint through <Code>var(--zoo-*)</Code> tokens defined in <Code>zoo.css</Code>.
-        Run Muse locally and recoloring one edits the <em>token's definition</em>, not the element, so
-        everything using it repaints together — the difference between overriding one element and
-        retuning a theme. In this hosted demo a chip scrub recolors just that chip; to see the
-        repaint-together behavior here, edit the token in the toolbar's <strong>Design tokens</strong>{' '}
-        popover instead.
+        These chips paint through <Code>var(--zoo-*)</Code> tokens defined in <Code>zoo.css</Code> —
+        and when Muse runs locally, recoloring one edits the <em>token's definition</em>, not the
+        element, so everything using it repaints together. That's the difference between overriding
+        one element and retuning a theme. In this hosted demo a chip scrub recolors just that chip;
+        the toolbar's <strong>Design tokens</strong> popover shows the repaint-together behavior live.
       </P>
       <div className="mt-6 rounded-[var(--radius-lg)] border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-[#201d16] dark:shadow-none">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
