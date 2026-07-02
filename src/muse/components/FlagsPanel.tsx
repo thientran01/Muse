@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Crosshair, X } from '@phosphor-icons/react'
 import { dismissFlag, refreshFlags, resolveFlag } from '../flagsActions'
 import { revealFlag } from '../flagLocate'
+import { EPHEMERAL, MOCK } from '../config'
 import { useMuseStore } from '../store'
 import type { Flag } from '../types'
 
@@ -32,7 +33,9 @@ export function FlagsPanel() {
       <p className="px-1 py-6 text-center text-[12px] leading-relaxed text-fg-faint">
         No flags yet.
         <br />
-        Shift-click an element to hand one to your agent.
+        {EPHEMERAL || MOCK
+          ? 'Shift-click an element to flag it. In this demo flags stay in your browser; run Muse locally and your own coding agent picks them up.'
+          : 'Shift-click an element to hand one to your agent.'}
       </p>
     )
   }

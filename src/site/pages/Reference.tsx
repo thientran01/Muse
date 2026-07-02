@@ -41,6 +41,9 @@ export function Reference() {
         <Code>theme.screens</Code> only shifts the dot, never what an edit writes), and an active
         target wider than the window turns amber: the edit still writes, it just can't paint at this
         width. Editing the base while a variant governs the value warns instead of failing silently.
+        Breakpoint targeting needs the real class write, so the pills appear when Muse runs locally —
+        this hosted demo's in-browser edits can't express them, and it hides the pills rather than
+        offer a target that wouldn't stick.
       </P>
 
       <H2 id="config">Configuration</H2>
@@ -63,7 +66,8 @@ export function Reference() {
         again after more edits adds to the same branch and the pull request updates in place. Needs{' '}
         <Code>git</Code> on the machine; uses the <Code>gh</Code> CLI for the pull request when
         present, and falls back to a GitHub compare link without it. When something is missing the
-        panel says so plainly instead of offering a button that would fail.
+        panel says so plainly instead of offering a button that would fail — which is why this hosted
+        demo, with no git or backend behind it, doesn't show the paper-plane at all.
       </P>
 
       <H2 id="limits">Limitations</H2>
