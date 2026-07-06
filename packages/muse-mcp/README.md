@@ -22,7 +22,8 @@ claude mcp add muse -- npx muse-mcp
 
 Then, in Claude Code: _"address the muse flags"_ → it calls `list_flags`, edits each file, and calls `resolve_flag`.
 
-> Until `muse-mcp` is published to npm, point Claude Code at a local build instead:
+> Developing `muse-mcp` itself? Point Claude Code at your local build instead of the
+> published package:
 > ```bash
 > claude mcp add muse -- node /absolute/path/to/Muse/packages/muse-mcp/dist/index.js
 > ```
