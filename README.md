@@ -26,6 +26,16 @@ The paper-plane button on the toolbar lists every file the session touched, with
 
 The pipeline is git plumbing against a temporary index — it **never checks out a branch and never touches your working tree, your staged files, or your other in-flight changes**. Repo hooks and commit signing don't run, so a host's husky/gpg setup can't wedge it. Sharing again after more edits appends to the same branch and the PR updates in place. If a piece of the environment is missing — no git, no remote, push auth — the panel says so in plain words and the local branch is kept as the floor.
 
+**Flags — hand off what Canvas can't reach:**
+
+Some changes need judgment: restructure a layout, rewrite data-bound text, retune a theme-aware color. Those are exactly the edits Canvas refuses — and the moment to hand off. **Shift-click** an element to drop a **flag** instead: an annotation carrying the exact source location, the element's tag / className / current text, and a plain-English note about the change you want. Flags are written to `.muse/flags.json`, and [`muse-mcp`](https://www.npmjs.com/package/muse-mcp) — a tiny stdio MCP server — hands them to **your own Claude Code**, which makes the edits with its own tools. Muse routes **zero inference**; the flag is a precise work-order, the thinking is yours.
+
+```bash
+claude mcp add muse -- npx muse-mcp
+```
+
+Then, in Claude Code: *"address the muse flags."* Capture and fulfillment decouple — flag during a session, resolve later even with the app closed.
+
 ---
 
 ## Run it

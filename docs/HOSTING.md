@@ -170,6 +170,12 @@ process**, so whatever process hosts the adapter needs `git` on its PATH and a
 worth checking for the standalone server. Without `gh`, Share still pushes the branch
 and falls back to a GitHub compare link.
 
+The **Flags** endpoints only *capture* annotations to `.muse/flags.json`. To resolve them,
+your own Claude Code reads that file through the published
+[`muse-mcp`](https://www.npmjs.com/package/muse-mcp) server — run
+`claude mcp add muse -- npx muse-mcp` from the repo root. See
+[`packages/muse-mcp`](../packages/muse-mcp) for the tools it exposes.
+
 ### Universal — standalone `muse-server`
 
 For any host whose bundler can't serve the backend in-process,
