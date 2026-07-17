@@ -48,3 +48,20 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm run build
+
+  # The publishable overlay (@thientran01/muse) — bundles the repo's src/muse +
+  # server + babel into a self-contained dist and proves a clean-room install of
+  # the tarball resolves every export (. / vite / next / babel).
+  overlay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/overlay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build
+      - run: node smoke.mjs
