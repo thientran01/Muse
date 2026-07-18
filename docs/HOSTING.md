@@ -25,6 +25,13 @@ Each piece is bundler-independent, so you mix and match. The table is the short 
 > and needs a Rust/WASM build whose `swc_core` ABI must match each host's bundled SWC.
 > One small Babel plugin reaches more hosts with less to maintain.
 
+> **Installed from npm?** `npm i -D @thientran01/muse` exposes these same three pieces as
+> package subpaths — `@thientran01/muse/babel` (locator), `@thientran01/muse/vite` · `/next`
+> · `/standalone` (backend), and `<MuseOverlay/>` from `@thientran01/muse`. The steps below
+> reference the repo's own file paths (`babel/muse-loc.cjs`, `server/…`) — read them as
+> concepts and swap in the matching package subpath. Condensed npm wiring lives in the
+> [package README](https://www.npmjs.com/package/@thientran01/muse).
+
 ---
 
 ## 1. Element locator — `data-muse-loc`
