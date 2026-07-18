@@ -130,6 +130,19 @@ export function startStandaloneServer(opts: StandaloneOptions = {}): http.Server
     }
   })
 
+  // A bind failure (e.g. EADDRINUSE from a stale server already on this port) emits
+  // 'error'. With no listener Node rethrows it as an uncaught exception — which, now
+  // that this runs IN-PROCESS as a library call, would crash the host app (not just a
+  // disposable script). Log a clear hint instead; a caller can still attach its own
+  // 'error' listener on the returned server for custom handling.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[muse] port ${port} is already in use — is another muse-server running? Set MUSE_PORT to use a different port.`)
+    } else {
+      console.error(`[muse] standalone server error: ${err.message}`)
+    }
+  })
+
   server.listen(port, host, () => {
     console.log(`[muse] standalone server  http://${host}:${port}`)
     console.log(`[muse] bind              ${host}${isLoopback ? ' (localhost only)' : ''}`)
