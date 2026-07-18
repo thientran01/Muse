@@ -2,7 +2,7 @@
 
 **Point at anything in your running React app, shape it like a design tool, and Muse rewrites the real source code.** A dev-only visual editing overlay — every edit is a deterministic AST rewrite, so it needs **no API key and no model call**.
 
-This is the npm package. For the vendored (skill) install or to wire a host by hand, see [`docs/HOSTING.md`](https://github.com/thientran01/Muse/blob/main/docs/HOSTING.md) in the repo.
+This is the npm package. **[Try the live demo](https://muse-tau-virid.vercel.app)** first if you want a feel for it — Muse running on its own docs site, edits in-browser only. For the vendored (skill) install or to wire a host by hand, see [`docs/HOSTING.md`](https://github.com/thientran01/Muse/blob/main/docs/HOSTING.md) in the repo.
 
 > **Dev-only.** Muse reads and rewrites source on disk. The Vite plugin is `apply: 'serve'`, the Next route and locator self-gate to development, and the overlay is dev-gated — nothing reaches a production build.
 
