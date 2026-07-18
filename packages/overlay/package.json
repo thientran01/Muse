@@ -1,0 +1,83 @@
+{
+  "name": "@thientran01/muse",
+  "version": "0.1.0",
+  "description": "Point at anything in your running React app, shape it like a design tool, and Muse rewrites the real source. A dev-only visual editing overlay — deterministic, keyless, no model call.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.js"
+    },
+    "./babel": {
+      "types": "./dist/muse-loc.d.ts",
+      "default": "./dist/muse-loc.cjs"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && node copyBabel.mjs",
+    "prepublishOnly": "npm --prefix ../.. run build:overlay-css && npm run build"
+  },
+  "keywords": [
+    "react",
+    "design",
+    "visual-editor",
+    "devtools",
+    "tailwind",
+    "vite",
+    "nextjs"
+  ],
+  "license": "MIT",
+  "author": "Thien Tran",
+  "homepage": "https://github.com/thientran01/Muse/tree/main/packages/overlay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thientran01/Muse.git",
+    "directory": "packages/overlay"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19",
+    "vite": "^5 || ^6 || ^7"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.7",
+    "@babel/types": "^7.29.7"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^20.19.41",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}

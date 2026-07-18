@@ -10,6 +10,7 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 *.log
+*.tgz
 
 # Muse flags — local capture handed to your own Claude Code via muse-mcp (not shared)
 .muse/
