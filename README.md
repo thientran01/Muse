@@ -2,6 +2,10 @@
 
 **Point at anything in your running app, shape it the way you would in a design tool, and Muse rewrites the real source code.** A visual editing layer for design engineers — change the rendered product, get a mergeable diff.
 
+![Muse selecting a heading in a running app and scrubbing its type, spacing, and color from the properties panel](docs/muse-demo.gif)
+
+**[Try the live demo](https://muse-tau-virid.vercel.app)** — Muse running on its own docs site. Edits apply in your browser and reset on refresh; run it locally to write real source.
+
 Muse is a floating overlay that loads alongside a **React** app in development. You click an element on the running page and shape it directly — **Canvas (direct manipulation).** Drag the spacing, scrub the size, pick a color, rewrite the copy in place, or drag an element among its siblings to reorder it. Each gesture is a known transform, so Muse applies it **without a model call** — instant, key-free, and reversible.
 
 The change lands in the source file and HMR reloads the app. Full undo / redo / revert history is kept for the session.
@@ -45,7 +49,7 @@ npm install
 npm run dev
 ```
 
-Open the localhost URL it prints (default http://localhost:5173). The repo ships its own docs site as the demo surface — the page you're reading **is** the editable surface, so you can open Muse and reshape anything on it.
+Open the localhost URL it prints (default http://localhost:5173). The repo ships its own docs site as the demo surface — the page you're reading **is** the editable surface, so you can open Muse and reshape anything on it. The same site is hosted at [muse-tau-virid.vercel.app](https://muse-tau-virid.vercel.app) if you just want to try Muse without cloning.
 
 To add Muse to **your** app, install the package:
 
