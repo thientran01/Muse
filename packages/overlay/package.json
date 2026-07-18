@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "build": "tsup && node copyBabel.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm --prefix ../.. run build:overlay-css && npm run build"
   },
   "keywords": [
     "react",

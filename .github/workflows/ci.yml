@@ -35,12 +35,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      # The overlay's injected CSS is a committed generated artifact that the
-      # published @thientran01/muse package bundles. `npm run build` regenerated
-      # it above; fail if the committed copy had drifted (a class was changed
-      # without re-running build:overlay-css) so we can never publish stale CSS.
-      - name: overlay CSS committed fresh
-        run: git diff --exit-code -- src/muse/generated/overlayCss.ts
 
   muse-mcp:
     runs-on: ubuntu-latest
@@ -56,18 +50,23 @@ jobs:
       - run: npm run build
 
   # The publishable overlay (@thientran01/muse) — bundles the repo's src/muse +
-  # server + babel into a self-contained dist and proves a clean-room install of
-  # the tarball resolves every export (. / vite / next / babel).
+  # server + babel into a self-contained dist, then smoke-tests that the built
+  # entries export the expected surface (. / vite / next / babel).
   overlay:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/overlay
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      # The bundled source lives under the repo root (src/muse, server), so its
+      # imports (react, @phosphor-icons, @babel/*) resolve from the ROOT
+      # node_modules — install those first, then the package's own build deps.
+      - run: npm ci
       - run: npm install
+        working-directory: packages/overlay
       - run: npm run build
+        working-directory: packages/overlay
       - run: node smoke.mjs
+        working-directory: packages/overlay
