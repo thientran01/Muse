@@ -16,6 +16,10 @@
       "types": "./dist/next.d.ts",
       "import": "./dist/next.js"
     },
+    "./standalone": {
+      "types": "./dist/standalone.d.ts",
+      "import": "./dist/standalone.js"
+    },
     "./babel": {
       "types": "./dist/muse-loc.d.ts",
       "default": "./dist/muse-loc.cjs"

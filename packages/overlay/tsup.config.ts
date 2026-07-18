@@ -6,9 +6,10 @@ import { defineConfig } from 'tsup'
 // (so the host never sees the 48MB barrel). Node built-ins auto-externalize.
 export default defineConfig({
   entry: {
-    index: 'src/index.ts', // .        — <MuseOverlay/> + configureMuse (client)
-    vite: 'src/vite.ts', //   ./vite   — musePlugin (Vite dev middleware)
-    next: 'src/next.ts', //   ./next   — createMuseWebRouter (+ createMuseContext)
+    index: 'src/index.ts', //           .           — <MuseOverlay/> + configureMuse (client)
+    vite: 'src/vite.ts', //             ./vite       — musePlugin (Vite dev middleware)
+    next: 'src/next.ts', //             ./next       — createMuseWebRouter (+ createMuseContext)
+    standalone: 'src/standalone.ts', // ./standalone — startStandaloneServer (Node http)
   },
   format: ['esm'],
   dts: true,
