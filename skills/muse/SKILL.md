@@ -21,8 +21,10 @@ with no API key:
 Every Canvas edit is a surgical, reviewable source splice that flows through the
 same undo/redo history.
 
-Muse is not yet an npm package, so this skill **vendors** the engine (copies it
-into the project) and wires three pieces into the host:
+Muse ships on npm as **`@thientran01/muse`** — `npm i -D @thientran01/muse` is the
+simplest install (see the package README + `docs/HOSTING.md`). This skill instead
+**vendors** the engine (copies the source into the project) and wires three pieces
+into the host — use it when you want the engine in-tree to read or customize:
 
 1. **Locator** — a Babel plugin that stamps `data-muse-loc="file:line:col"` so a
    clicked DOM node maps back to source. Works on **React 18 and 19**.

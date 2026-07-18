@@ -47,13 +47,15 @@ npm run dev
 
 Open the localhost URL it prints (default http://localhost:5173). The repo ships its own docs site as the demo surface — the page you're reading **is** the editable surface, so you can open Muse and reshape anything on it.
 
-To add Muse to **your** app, install the skill and point your coding agent at your project:
+To add Muse to **your** app, install the package:
 
 ```bash
-npx skills add thientran01/Muse
+npm i -D @thientran01/muse
 ```
 
-It detects your bundler (Vite, Next.js, or webpack), copies the engine in, and wires the three pieces Muse needs. To wire it by hand, [`docs/HOSTING.md`](docs/HOSTING.md) covers every host step by step.
+Then wire the three pieces Muse needs — the Babel locator (`@thientran01/muse/babel`), the dev backend (`@thientran01/muse/vite`, `/next`, or `/standalone`), and `<MuseOverlay/>` from `@thientran01/muse`. [`docs/HOSTING.md`](docs/HOSTING.md) covers every host (Vite, Next.js, webpack) step by step.
+
+Prefer the engine in your own tree to customize it? Vendor it instead — `npx skills add thientran01/Muse` copies the source in and wires your bundler automatically.
 
 **Canvas needs no API key and no configuration** — every edit is a deterministic AST rewrite. The toolbar also has a **Design tokens** popover that lists your host's CSS custom properties (`--c-energy`, `--radius-lg`, and the rest) and lets you retune any of them in place, written straight back to the defining stylesheet.
 
