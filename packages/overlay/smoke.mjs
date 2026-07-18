@@ -20,7 +20,12 @@ const ctx = nx.createMuseContext({}, process.cwd())
 assert.ok(ctx.originPolicy, '/next → createMuseContext(...).originPolicy')
 assert.equal(typeof nx.createMuseWebRouter(ctx), 'function', '/next → createMuseWebRouter')
 
+// Importing the standalone entry must NOT start a server (the module's main-guard
+// only fires when run directly) — just assert the factory export resolves.
+const sa = await import('./dist/standalone.js')
+assert.equal(typeof sa.startStandaloneServer, 'function', '/standalone → startStandaloneServer')
+
 const babel = require('./dist/muse-loc.cjs')
 assert.equal(typeof (babel.default ?? babel), 'function', '/babel → plugin')
 
-console.log('[overlay] smoke OK — . / vite / next / babel all export the expected surface')
+console.log('[overlay] smoke OK — . / vite / next / standalone / babel all export the expected surface')
