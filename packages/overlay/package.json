@@ -16,7 +16,10 @@
       "types": "./dist/next.d.ts",
       "import": "./dist/next.js"
     },
-    "./babel": "./dist/muse-loc.cjs"
+    "./babel": {
+      "types": "./dist/muse-loc.d.ts",
+      "default": "./dist/muse-loc.cjs"
+    }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
