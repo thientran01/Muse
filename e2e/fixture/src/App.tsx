@@ -1,6 +1,8 @@
+import ColorTarget from './ColorTarget'
 import { EPHEMERAL, MOCK } from '../../../src/muse/config'
 import { MuseOverlay } from '../../../src/muse/MuseOverlay'
 import ScrubTarget from './ScrubTarget'
+import TextTarget from './TextTarget'
 
 // Both flags are module-level consts in the overlay, resolved once at import and
 // never exposed to the page. Re-publishing them here is what lets preflight.spec
@@ -26,6 +28,8 @@ export default function App() {
       <main>
         <h1>Muse E2E fixture</h1>
         <ScrubTarget />
+        <ColorTarget />
+        <TextTarget />
       </main>
       <MuseOverlay />
     </>
