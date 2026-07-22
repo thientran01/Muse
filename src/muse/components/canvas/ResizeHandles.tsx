@@ -104,7 +104,7 @@ export function ResizeHandles({
       {knob('sw', { top: r.bottom + off, left: r.left + off }, 'cursor-nesw-resize')}
       {drag && (
         <div
-          className="absolute -translate-x-1/2 rounded bg-fg px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-surface shadow-md"
+          className="absolute -translate-x-1/2 rounded bg-fg px-1.5 py-0.5 text-chip font-semibold tabular-nums text-surface shadow-md"
           style={{ top: r.top - 22, left: r.left + r.width / 2 }}
         >
           {drag.w} × {drag.h}

@@ -152,7 +152,7 @@ export function BoxModelOverlay({
     return (
       <div
         key={`lbl-${box}-${side}`}
-        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded px-1 text-[9px] font-semibold tabular-nums ${tone}`}
+        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded px-1 text-badge font-semibold tabular-nums ${tone}`}
         style={{ left: x, top: y }}
       >
         {Math.round(value)}

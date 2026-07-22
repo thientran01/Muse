@@ -146,12 +146,12 @@ export function ColorPicker({
           verdict reads first, before you start adjusting. Only when a comparison
           color is provided (Text vs Fill, etc.). */}
       {contrast && (
-        <div className="flex items-center justify-between text-[11px]">
+        <div className="flex items-center justify-between text-field">
           <span className="flex items-center gap-1.5 text-fg-muted">
             <span className="font-mono tabular-nums">{contrast.ratio.toFixed(2)}:1</span>
             <span className="text-fg-faint">contrast</span>
           </span>
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+          <span className={`rounded px-1.5 py-0.5 text-chip font-semibold ${
             contrast.aa ? 'bg-emerald-500/15 text-emerald-400'
             : contrast.aaLarge ? 'bg-amber-500/15 text-amber-400'
             : 'bg-rose-500/15 text-rose-400'
@@ -215,7 +215,7 @@ export function ColorPicker({
         <div className="space-y-1">
           {/* Same micro-label treatment as the spacing sub-labels, same term as
               the toolbar popover. */}
-          <div className="text-[10px] uppercase tracking-wide text-fg-faint">Design tokens</div>
+          <div className="text-eyebrow uppercase text-fg-faint">Design tokens</div>
           <div className="flex items-center gap-1.5">
             {swatches.map((s) => (
               <button
@@ -374,7 +374,7 @@ function HexInput({ value, onCommit }: { value: string; onCommit: (hex: string) 
       onBlur={commit}
       spellCheck={false}
       aria-label="Hex color"
-      className="w-full rounded-md border border-line/15 bg-surface px-2 py-1 font-mono text-[11px] uppercase tabular-nums text-fg outline-none transition-colors focus:border-accent/60 motion-reduce:transition-none"
+      className="w-full rounded-md border border-line/15 bg-surface px-2 py-1 font-mono text-field uppercase tabular-nums text-fg outline-none transition-colors focus:border-accent/60 motion-reduce:transition-none"
     />
   )
 }
@@ -391,7 +391,7 @@ function RgbInput({ label, value, onCommit }: { label: string; value: number; on
     else setText(String(value))
   }
   return (
-    <label className="flex items-center gap-1 rounded-md border border-line/15 bg-surface px-1.5 py-1 text-[11px] transition-colors focus-within:border-accent/60 motion-reduce:transition-none">
+    <label className="flex items-center gap-1 rounded-md border border-line/15 bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-accent/60 motion-reduce:transition-none">
       <span className="shrink-0 select-none text-fg-faint">{label}</span>
       <input
         value={text}
