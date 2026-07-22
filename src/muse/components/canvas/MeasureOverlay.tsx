@@ -35,7 +35,7 @@ export function MeasureOverlay({ node, hoverRect }: { node: Element; hoverRect: 
             />
             {/* white-on-accent reads on both themes — the accent triplet is constant */}
             <div
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-accent px-1 py-px font-mono text-[10px] leading-4 text-white"
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-accent px-1 py-px font-mono text-chip text-white"
               style={{ left: (s.x1 + s.x2) / 2, top: (s.y1 + s.y2) / 2 }}
             >
               {s.label}
