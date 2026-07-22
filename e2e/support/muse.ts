@@ -72,6 +72,74 @@ export async function dismissPanel(page: Page): Promise<void> {
 }
 
 /**
+ * Expand a collapsed section in the properties panel.
+ *
+ * Only 'type' or 'size' is open on first mount, so anything else has to be
+ * opened. Guarded on aria-expanded rather than clicked blindly, because the
+ * open-section set lives in a module-scoped variable that survives every
+ * selection change — a blind click on an already-open section CLOSES it.
+ *
+ * Safe for Color, Spacing, Size, Type and Classes. Appearance and Layout pass a
+ * "set values" dot, and a dotted section's accessible name becomes
+ * `${label}, has values set` while collapsed — so those need a different matcher.
+ */
+export async function expandSection(page: Page, name: string): Promise<void> {
+  const header = page.getByRole('button', { name, exact: true })
+  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click()
+  await expect(header).toHaveAttribute('aria-expanded', 'true')
+}
+
+/**
+ * Set a colour through the panel's picker via its hex field.
+ *
+ * The hex input is the only drag-free path into the picker: the saturation
+ * square and hue slider are bare divs with no role, no label and no test hook,
+ * so they are unaddressable without adding one.
+ *
+ * The commit rides on BLUR, not on Enter — Enter's handler merely calls blur(),
+ * and that indirection is the picker's own duplicate-commit guard. Clicking away
+ * would commit identically.
+ */
+export async function setColorViaHex(page: Page, rowLabel: string, hex: string): Promise<void> {
+  await page.getByRole('button', { name: `Edit ${rowLabel} color` }).click()
+
+  const field = page.getByLabel('Hex color')
+  await expect(field).toBeVisible()
+  await field.fill(hex)
+
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/muse/write') && r.status() === 200),
+    field.press('Enter'),
+  ])
+}
+
+/**
+ * Replace an element's text in place.
+ *
+ * A real dblclick, not two timed clicks — the handler listens for the actual DOM
+ * event and has no detail===2 heuristic. It targets the leaf under the cursor
+ * rather than the current selection, so double-clicking after Alt-clicking to a
+ * parent still edits the leaf.
+ *
+ * The properties panel unmounts the moment editing starts, which is BEFORE the
+ * /text-editable probe resolves — so panel-gone is not proof the caret is live.
+ * Wait for contentEditable on the node itself.
+ */
+export async function editTextInPlace(page: Page, selector: string, next: string): Promise<void> {
+  const node = page.locator(selector)
+  await node.dblclick()
+  await expect(node).toHaveAttribute('contenteditable', 'plaintext-only')
+
+  await node.selectText()
+  await page.keyboard.insertText(next)
+
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/muse/write') && r.status() === 200),
+    page.keyboard.press('Enter'),
+  ])
+}
+
+/**
  * Nudge a numeric field with the keyboard and commit.
  *
  * The keyboard path is chosen over dragging the label because it needs no
