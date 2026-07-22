@@ -1489,7 +1489,26 @@ export function CanvasMode({
   }, [editing])
 
   return (
-    <div ref={rootRef} data-muse-ui className="pointer-events-none fixed inset-0 z-[999998] font-sans">
+    <div
+      ref={rootRef}
+      data-muse-ui
+      // Two observable states, for automation only — nothing reads them at runtime.
+      // Reorder is otherwise unobservable from outside: the drag affordance is the
+      // element body itself (no handle is rendered), and the only cues are an inline
+      // cursor:grab and a hint banner that the zen pref, a narrow viewport, or hint
+      // retirement can each suppress.
+      //
+      // 'ready' marks the async /reorderable probe as resolved. Until then there is no
+      // pointerdown listener at all, so a press is a silent no-op — and the probe re-runs
+      // on EVERY selection, even re-selecting the same element.
+      //
+      // 'dragging' → 'idle' flips only after write + real repaint + re-select + 2×rAF,
+      // which is precisely the settled condition. Waiting on it replaces sleeping through
+      // a settle window that is HMR-dependent and capped at 2.5s.
+      data-muse-reorder-ready={reorderable?.reorderable ? '' : undefined}
+      data-muse-reorder-state={reordering ? 'dragging' : 'idle'}
+      className="pointer-events-none fixed inset-0 z-[999998] font-sans"
+    >
       {/* Hover affordance while no edit is in flight — lets you retarget. While Shift is
           held the flag chip replaces the element tooltip (don't stack both over the target).
           Alt + a selection turns hover into the MEASUREMENT overlay instead (distance

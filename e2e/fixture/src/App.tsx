@@ -1,8 +1,11 @@
 import ColorTarget from './ColorTarget'
+import GapTarget from './GapTarget'
 import { EPHEMERAL, MOCK } from '../../../src/muse/config'
 import { MuseOverlay } from '../../../src/muse/MuseOverlay'
+import ReorderTarget from './ReorderTarget'
 import ScrubTarget from './ScrubTarget'
 import TextTarget from './TextTarget'
+import UndoTarget from './UndoTarget'
 
 // Both flags are module-level consts in the overlay, resolved once at import and
 // never exposed to the page. Re-publishing them here is what lets preflight.spec
@@ -30,6 +33,9 @@ export default function App() {
         <ScrubTarget />
         <ColorTarget />
         <TextTarget />
+        <ReorderTarget />
+        <GapTarget />
+        <UndoTarget />
       </main>
       <MuseOverlay />
     </>

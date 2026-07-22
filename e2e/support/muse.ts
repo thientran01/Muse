@@ -72,6 +72,65 @@ export async function dismissPanel(page: Page): Promise<void> {
 }
 
 /**
+ * Select an element and wait until it is actually draggable.
+ *
+ * This wait is the single most important line in the reorder specs. The
+ * /reorderable probe re-runs on EVERY selection — re-clicking the same element
+ * still re-runs it — and while it is in flight the overlay is unmounted, so the
+ * element carries no pointerdown listener whatsoever. Pressing during that
+ * window does nothing, silently. This is the documented flakiness that the
+ * suite's zero-retry policy exists to keep honest.
+ */
+export async function selectForReorder(page: Page, selector: string): Promise<void> {
+  await dismissPanel(page)
+  await page.locator(selector).click()
+  await expect(page.locator('[data-muse-reorder-ready]')).toHaveCount(1)
+}
+
+/**
+ * Drag one element past another and wait for the reorder to settle.
+ *
+ * Geometry note: the drop slot is computed from the DRAGGED element's frozen
+ * midpoint displaced by the pointer delta — not from the cursor position. So the
+ * travel required is the distance between the two elements' centres, and where
+ * inside the element the press landed is irrelevant.
+ *
+ * Three details that are not optional:
+ *  - A separate small move first, to cross the 5px engage threshold while the
+ *    geometry is still read at rest.
+ *  - Many intermediate steps rather than one jump. Each move re-asserts pointer
+ *    capture after the synchronous ghost-measure detaches and reattaches the
+ *    node; a single move gives no re-assert before pointerup.
+ *  - Boxes measured AFTER any scrolling and BEFORE pointerdown. A scroll during
+ *    the drag feeds into the drop maths through a capture-phase scroll listener.
+ */
+export async function dragPast(page: Page, fromSel: string, toSel: string): Promise<void> {
+  const from = page.locator(fromSel)
+  const to = page.locator(toSel)
+  await from.scrollIntoViewIfNeeded()
+
+  const a = await from.boundingBox()
+  const b = await to.boundingBox()
+  if (!a || !b) throw new Error('reorder drag: could not measure both elements')
+
+  const startX = a.x + a.width / 2
+  const startY = a.y + a.height / 2
+  // Overshoot past the neighbour's far edge so the projected midpoint clears its
+  // centre with margin, rather than landing exactly on the boundary.
+  const endY = b.y + b.height + 4
+
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX, startY + 8) // cross THRESHOLD (5px)
+  await page.mouse.move(startX, endY, { steps: 12 })
+  await page.mouse.up()
+
+  // 'dragging' clears only after write + real repaint + re-select + 2 frames.
+  // The settle is HMR-dependent and capped at 2.5s, so this replaces a sleep.
+  await expect(page.locator('[data-muse-reorder-state="idle"]')).toHaveCount(1)
+}
+
+/**
  * Expand a collapsed section in the properties panel.
  *
  * Only 'type' or 'size' is open on first mount, so anything else has to be
@@ -84,9 +143,37 @@ export async function dismissPanel(page: Page): Promise<void> {
  * `${label}, has values set` while collapsed — so those need a different matcher.
  */
 export async function expandSection(page: Page, name: string): Promise<void> {
-  const header = page.getByRole('button', { name, exact: true })
+  // Matched by prefix, not exact text: a section that has values set renders its
+  // accessible name as `${label}, has values set` — but ONLY while collapsed, so
+  // it changes the moment the click lands. Appearance and Layout both do this.
+  const header = page.getByRole('button', { name: new RegExp(`^${name}(,|$)`) })
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click()
   await expect(header).toHaveAttribute('aria-expanded', 'true')
+}
+
+/** Step out to the parent element. Alt-click; the panel re-renders for the parent. */
+export async function selectParent(page: Page, selector: string): Promise<void> {
+  await page.locator(selector).click({ modifiers: ['Alt'] })
+  await expect(page.locator('[data-muse-panel]')).toBeVisible()
+}
+
+/**
+ * Type a value into a numeric field and commit it.
+ *
+ * Preferred over N arrow presses when the target is far from the current value.
+ * The commit is on blur, which Enter triggers; Escape would discard instead.
+ * Note an empty field is NOT a cancel — Number('') is 0, which commits as the
+ * field's minimum.
+ */
+export async function setScrubField(page: Page, testId: string, value: number): Promise<void> {
+  const field = page.locator(`[data-testid="${testId}"]`)
+  await field.click()
+  await field.fill(String(value))
+
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/muse/write') && r.status() === 200),
+    field.press('Enter'),
+  ])
 }
 
 /**
