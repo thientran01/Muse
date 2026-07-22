@@ -1527,7 +1527,7 @@ export function CanvasMode({
             <button
               type="button"
               onClick={() => setFlagDraft({ draft: hint.draft!, x: hint.x, y: hint.y })}
-              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent transition hover:bg-accent/20 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent-fg transition hover:bg-accent/20 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               Flag it for your agent
             </button>

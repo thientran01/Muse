@@ -70,7 +70,7 @@ function IconBtn({ label, onClick, children, active, expanded, badge }: { label:
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
       className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
-        active || expanded ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
+        active || expanded ? 'bg-accent/10 text-accent-fg' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
       }`}
     >
       {children}
