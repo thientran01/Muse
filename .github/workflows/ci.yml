@@ -25,6 +25,36 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  # The gesture suite — the CLIENT half of the chain (gesture → request → write),
+  # which the vitest harness above deliberately does not reach. Ubuntu only: the
+  # CRLF handling that justifies the Windows matrix lives entirely in the engine,
+  # and the `test` job already covers it there.
+  #
+  # retries: 0 is set in playwright.config.ts ON PURPOSE. The reorder drag
+  # affordance is documented as unreliably mounted at press time, so a retry
+  # would convert a known product flake into a green check. If this job goes red
+  # intermittently, that is the suite doing its job — read it as a product bug
+  # before touching the test.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Chromium only — the suite asserts on source bytes and computed style, so
+      # cross-browser rendering differences are out of its remit.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   build:
     runs-on: ubuntu-latest
     steps:

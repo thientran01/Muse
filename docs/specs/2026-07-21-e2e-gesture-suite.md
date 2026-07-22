@@ -53,17 +53,32 @@ would break on every copy or layout tweak, and edits would mutate real repo sour
 deliberately single-strategy (Tailwind only) because multi-strategy coverage is the engine harness's
 job, not this suite's.
 
-**Isolation.** `e2e/fixture/` is copied to `e2e/.tmp/<spec-name>/` **once per spec file**, before its
-first test, and the Vite dev server is pointed at the copy. Per-spec rather than per-test: a spec's
-tests share one mutation timeline, which keeps the dev server and its HMR channel stable across a
-file, while no spec can ever observe another spec's writes. The repo's `e2e/fixture/` is read-only at
-runtime.
+**Isolation.** `e2e/fixture/` is copied once per run to `e2e/.tmp-fixture/`, and one Vite dev server
+is pointed at the copy for the whole suite. Isolation is then **per file, not per directory**: each
+spec owns its own source file in the fixture (`src/ScrubTarget.tsx` and so on) and restores just that
+file from the pristine copy before each test.
+
+This replaces the per-spec-directory scheme in the approved design. A directory per spec would need a
+dev server per spec, and the server is exactly what we want stable — strategy detection is memoized
+per server process, so re-launching it repeatedly would re-derive `tailwind-first` on every spec for
+no benefit. The committed `e2e/fixture/` is read-only at runtime either way.
 
 The copy lives *inside* the repo, not in `os.tmpdir()`, so Node's `node_modules` resolution still
-walks up to the repo root. `e2e/.tmp/` is gitignored.
+walks up to the repo root. It sits at the **same depth** as `e2e/fixture/` so the relative imports
+inside it resolve identically in both locations. `e2e/.tmp-fixture/` is gitignored.
+
+The copy is guarded to the main process. Playwright re-imports the config in every worker, and by
+then Vite is watching the fixture directory — on Windows the recursive remove fails with `EPERM`, and
+re-copying mid-run would wipe the file a spec is asserting on. (Found by running it, not by reasoning.)
 
 `git checkout -- e2e/fixture` as a reset mechanism was rejected: it is a destructive git operation
 running inside a test, and it would silently discard a developer's in-progress fixture edits.
+
+**The fixture compiles Tailwind for real.** Skipping PostCSS looked free — the suite asserts on source
+bytes, so why render? Because the properties panel seeds its fields from *computed style*. With
+inert classes, writing `text-[length:20px]` leaves the element measuring the browser default, and a
+second edit to the same element silently restarts from 16px. The first version of the scrub spec
+failed exactly this way.
 
 Tests run **serially**. Parallel workers would contend over a single dev server and its HMR channel.
 
@@ -77,20 +92,30 @@ source content — the same byte-level contract the engine harness uses.
   `setTimeout(200)`) is the precedent: a baked delay encodes an assumption about the host that
   silently rots.
 
-**Test hooks.** The controls under test have no stable selectors today. The full existing set is
-`data-muse-ui`, `data-muse-loc`, `data-muse-panel`, `data-muse-dock`, `data-muse-canvas-host`,
-`data-muse-pin-hover` — nothing identifies a scrub field, a color swatch, or a reorder handle.
+**Test hooks.** Mostly true, with one correction found by mapping the source: `ScrubField` already
+carries `data-testid="scrub-${label}"`, the only test id in `src/`. Font size (`scrub-Size`) is
+unique, so the scrub spec needs **no source change at all**.
 
-This effort therefore includes adding `data-muse-*` attributes to the specific controls the suite
-drives. Scraping generated CSS classes instead was rejected as a guaranteed source of future breakage.
+The rest of the claim stands — nothing identifies a color swatch, a reorder handle, or a specific
+dock button, and `scrub-All` is emitted by linked padding, linked margin *and* radius with identical
+accessible names, so it is a strict-mode collision waiting to happen. Hooks are still required for
+the color and reorder specs, and the padding case wants `scrub-Padding`/`scrub-Margin` before it can
+be driven at all. Scraping generated CSS classes was rejected as guaranteed future breakage.
 
 **Environment.** The dev server launches with `VITE_MUSE_EPHEMERAL=0` and `VITE_MUSE_MOCK=0`
-explicitly set. A local `.env.development.local` puts dev into MOCK + EPHEMERAL, where canvas edits
-never reach the server and no file is ever written.
+explicitly set, and a preflight spec asserts the *resolved* values rather than trusting the pin.
 
-Without a guard the suite would fail with a confusing "file unchanged" message. So a preflight spec
-performs one trivial edit and asserts the file moved, failing with a message that names
-`.env.development.local` as the likely cause.
+The threat model here was wrong in the approved design and is corrected: Vite's `envDir` follows the
+root, so a repo-root `.env.development.local` does **not** leak into a fixture served from a
+subdirectory, and that file is gitignored so no clone or CI runner has one at all. The real leak
+channel is `process.env` — `loadEnv` copies matching shell variables *over* file values, so an
+exported `VITE_MUSE_EPHEMERAL=1` beats everything. Hence pinning in `webServer.env`, which wins by the
+same rule.
+
+The guard is worth having because it protects the case that actually occurs: the maintainer's main
+checkout does carry `.env.development.local` with both flags on, and that is where the suite gets run
+by hand. Verified by flipping the pin — the preflight fails naming the cause, rather than leaving
+every byte assertion to fail against an unchanged file.
 
 ## The known bug
 
@@ -121,6 +146,23 @@ harness, which continues to run on both operating systems.
 affordance to be genuinely visible before pressing, and wait on a settle signal rather than a
 duration.
 
+Mapping the source turned up a second mitigation that was not known at design time: `CanvasMode`
+registers a **keyboard reorder path** (Cmd/Ctrl + arrow on a selected reorderable element) that calls
+`commitReorder` directly, bypassing the movement threshold, pointer capture, the ghost-measure step,
+the panel fade and the post-drop click swallower entirely. That makes it a far more deterministic
+driver for the *reorder-then-gap* spec, whose job is to pin an engine bug — it should not also be
+hostage to the flakiest input path in the product. **The pointer drag keeps its own spec**, because
+the drag is the actual user gesture and its fragility is the thing worth guarding. Splitting them
+means a drag flake cannot mask the bug tripwire.
+
+**A real bug surfaced while mapping, and is deliberately not fixed here.** Three `CanvasMode`
+document-level keydown handlers try to bail when the event target is an `INPUT`, but a document
+listener sees the event retargeted to the shadow *host* — a `div` — so the bail never fires for
+Muse's own panel inputs. Ctrl+Z with a scrub field focused therefore triggers Muse's file undo rather
+than text undo, and Ctrl+Arrow triggers a reorder. The correct `composedPath()[0]` pattern already
+exists two files away. The suite works around it (plain arrows and Enter only, documented at the
+call site); the fix belongs in its own change.
+
 If the drag spec still flakes after that, the honest reading is that it is surfacing a real product
 bug rather than a test defect, and it should stay red until the product is fixed. Adding retries to
 silence it is explicitly not an option under this design.
@@ -142,9 +184,14 @@ overlay through it. The mechanism is proven in practice.
 
 Two PRs:
 
-1. **Harness** — Playwright config, fixture app, tmp-copy isolation, `data-muse-*` test hooks,
-   preflight spec, and the three stable specs (scrub, color, text edit). Green in CI.
-2. **The risky half** — reorder drag and reorder-then-gap, where the flake risk actually lives.
+1. **Harness** — Playwright config, fixture app, tmp-copy isolation, preflight spec, and the scrub
+   spec (which needs no source change, since `scrub-Size` already exists). Green in CI.
+2. **Color and text edit** — plus the `data-muse-*` hooks they require.
+3. **The risky half** — reorder drag and reorder-then-gap, where the flake risk actually lives.
 
-If PR 2 goes badly, PR 1 stands on its own and the suite still guards three previously-uncovered
-regression sites.
+Split into three rather than two once it was clear the scrub path needed no source modification: the
+harness can land and prove itself without touching a line of product code, which makes it a much
+smaller thing to review and to revert.
+
+If a later PR goes badly, the earlier ones stand on their own and the suite still guards
+previously-uncovered regression sites.
