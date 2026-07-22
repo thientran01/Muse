@@ -61,6 +61,57 @@
    * amber-400 washes out on the warm-white surface. */
   --muse-note-tint: 217 160 60;       /* warm amber tint */
   --muse-note-text: 235 190 110;      /* soft amber — readable on warm dark */
+
+  /* ── Design-system layer (2026-07-22) ──────────────────────────────────────
+   * The overlay's own type / alpha / radius / shadow scales, adopted from the
+   * Muse Design System (claude.ai/design). Named by ROLE, not size, and mapped
+   * to Tailwind utilities in tailwind.config.js. Values live here (not baked into
+   * the config) so the theme-flipping ones flip with the vars they derive from.
+   * See docs/specs/2026-07-22-overlay-design-system.md. */
+
+  /* Type — the dense overlay scale (px; the docs site uses its own rem scale). */
+  --muse-text-row: 13px;          /* list-row titles */
+  --muse-text-panel-title: 12px;  /* popover headers (semibold) */
+  --muse-text-body-sm: 12px;      /* overlay prose, inputs, control labels */
+  --muse-text-field: 11px;        /* scrub fields, chips — the workhorse */
+  --muse-text-eyebrow: 10px;      /* uppercase section labels */
+  --muse-text-chip: 10px;         /* non-uppercase 10px chips + mono readouts */
+  --muse-text-badge: 9px;         /* count badges, on-canvas numeric readouts */
+
+  /* Hairlines / fills / control tracks — alpha of --muse-line, so they flip with
+   * the overlay theme (cream on dark, ink on light) automatically. */
+  --muse-fill-recessed: rgb(var(--muse-line) / 0.05);   /* resting row/panel fill, hover wash base */
+  --muse-hairline: rgb(var(--muse-line) / 0.1);         /* panel ring, dividers */
+  --muse-wash-hover: rgb(var(--muse-line) / 0.1);        /* hover fill (same 0.1, distinct role) */
+  --muse-hairline-strong: rgb(var(--muse-line) / 0.15); /* field borders, rules */
+  --muse-hairline-contrast: rgb(var(--muse-line) / 0.2);/* outlines a swatch whose FILL is user-chosen — 0.15 vanishes on mid-tones */
+  --muse-track-quiet: rgb(var(--muse-line) / 0.2);      /* scrollbar thumb at rest */
+  --muse-track: rgb(var(--muse-line) / 0.3);            /* control tracks (toggle off) */
+  --muse-track-hover: rgb(var(--muse-line) / 0.6);      /* control track hover */
+
+  /* Accent roles. --muse-accent itself never flips (brand recognition), so a tint
+   * (brick on near-black) is unreadable in dark — accent TEXT uses --muse-accent-fg
+   * (terracotta on dark, brick on light) instead. tint/focus derive from accent. */
+  --muse-accent-fg: 227 163 132;                        /* terracotta #E3A384 — accent text on dark; flips to brick on light */
+  --muse-tint-active: rgb(var(--muse-accent) / 0.1);    /* selected/active fill */
+  --muse-tint-active-hover: rgb(var(--muse-accent) / 0.15);
+  --muse-focus-ring: rgb(var(--muse-accent) / 0.5);     /* 2px focus-visible ring */
+
+  /* Radii — a role ladder (DS names are shifted one step vs Tailwind's, so role
+   * names are the only safe mapping; see the spec). */
+  --muse-radius-knob: 2px;    /* sub-12px direct-manipulation affordances */
+  --muse-radius-chip: 4px;    /* chips, keycaps */
+  --muse-radius-field: 6px;   /* fields, small controls */
+  --muse-radius-card: 8px;    /* list rows, buttons */
+  --muse-radius-panel: 12px;  /* popovers, code blocks */
+  --muse-radius-modal: 16px;  /* dialogs */
+
+  /* Elevation — deep black glass shadows (theme-independent) + backdrop blur. */
+  --muse-shadow-dock: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  --muse-shadow-pop: 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.2);
+  --muse-shadow-modal: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --muse-blur-overlay: 8px;   /* popover glass */
+  --muse-blur-scrim: 4px;     /* modal backdrop — half the panel blur, host stays legible */
 }
 
 [data-muse-ui][data-theme='light'] {
@@ -81,6 +132,12 @@
   --muse-diff-del-text: 95 18 30;     /* very deep cherry — readable on warm white */
   --muse-note-tint: 180 120 25;       /* deep warm amber */
   --muse-note-text: 122 80 12;        /* deep amber-brown — readable on warm white */
+
+  /* Accent text flips to full brick on the warm-white surface (7.22:1 on the 10%
+   * tint) — the dark-surface terracotta would be too pale here. Everything else in
+   * the design-system layer derives from --muse-line / --muse-accent, which already
+   * flip above, so no other overrides are needed. */
+  --muse-accent-fg: 127 47 47;        /* brick #7F2F2F — accent text on warm white */
 }
 
 /* Clean, themed scrollbars for every Muse scroll area. Thin and quiet — an
