@@ -322,7 +322,7 @@ export function Breadcrumb({
               title={c.node.getAttribute('class') || c.tag}
               className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
                 c.key === selectedKey
-                  ? 'bg-accent/15 text-accent'
+                  ? 'bg-accent/15 text-accent-fg'
                   : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
               }`}
             >
@@ -933,7 +933,7 @@ function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: bo
       aria-pressed={pinned}
       title={pinned ? 'Release the forced hover state' : "Force this element's :hover styles on"}
       className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-chip ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-        pinned ? 'bg-accent/15 text-accent-hover ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
+        pinned ? 'bg-accent/15 text-accent-fg ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
       }`}
     >
       :hov

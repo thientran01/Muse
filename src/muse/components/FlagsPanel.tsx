@@ -119,8 +119,10 @@ export function FlagsPanel() {
   )
 }
 
-// A labeled action chip. `primary` (Resolve) gets the accent tint to read as the main
-// action; the default (Jump) is a quiet ghost — so the two never look interchangeable.
+// A labeled action chip. `primary` (Resolve) is the surface's one committing action,
+// so it takes the ink treatment (bg-fg/text-surface — the same primary as the Changes
+// panel's Share); the default (Jump) is a quiet ghost. Accent-on-tint text was dropped
+// here: brick on a 10% brick tint is 2.00:1 on the dark theme (fails AA). See the spec.
 function ActionBtn({
   icon,
   label,
@@ -140,7 +142,7 @@ function ActionBtn({
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-        primary ? 'bg-accent/10 text-accent hover:bg-accent/15' : 'text-fg-muted hover:bg-line/10 hover:text-fg'
+        primary ? 'bg-fg text-surface hover:opacity-90' : 'text-fg-muted hover:bg-line/10 hover:text-fg'
       }`}
     >
       {icon}
