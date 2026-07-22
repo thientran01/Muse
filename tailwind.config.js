@@ -24,7 +24,11 @@ const DUR = {
 }
 
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  // src/muse/generated/** is excluded for the same reason build-overlay-css.mjs
+  // excludes it: overlayCss.ts is compiled Tailwind output stored as a .ts
+  // string, so scanning it re-harvests class names from a previous build and
+  // keeps deleted ones alive in the docs-site bundle too.
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}', '!./src/muse/generated/**'],
   // The docs site toggles light/dark by adding a `dark` (or `light`) class on
   // <html>. Muse's own overlay reads that same class via useHostTheme, so one
   // toggle themes both the site and the overlay.

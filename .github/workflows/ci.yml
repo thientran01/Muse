@@ -35,6 +35,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # The overlay stylesheet is a committed, generated artifact. `npm run build`
+      # regenerates it, so any drift between the committed copy and a fresh build
+      # is a stale checkout — fail loudly rather than shipping a mismatched sheet.
+      # Pinned to this ubuntu-only job on purpose: Tailwind/autoprefixer output can
+      # differ across platforms, and the test job is a ubuntu+windows matrix.
+      - run: git diff --exit-code -- src/muse/generated/overlayCss.ts
 
   muse-mcp:
     runs-on: ubuntu-latest
