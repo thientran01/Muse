@@ -47,8 +47,28 @@ export async function openMuse(page: Page): Promise<void> {
  * waits on the panel node and callers must not cache bounding boxes across it.
  */
 export async function selectElement(page: Page, selector: string): Promise<void> {
+  await dismissPanel(page)
   await page.locator(selector).click()
   await expect(page.locator('[data-muse-panel]')).toBeVisible()
+}
+
+/**
+ * Close the properties card if one is open, so it cannot swallow the next click.
+ *
+ * The card floats next to the selected element and is pointer-interactive, so on
+ * a layout where it lands over the target the click is legitimately intercepted
+ * by the overlay host. That is layout-dependent, which makes it a genuine
+ * cross-platform flake rather than a local quirk: this suite passed on Windows
+ * and failed on ubuntu CI for exactly this reason, on a re-select.
+ *
+ * Escape is the product's own deselect. Pressed only when a card is actually
+ * open — with nothing selected, Escape exits Muse entirely.
+ */
+export async function dismissPanel(page: Page): Promise<void> {
+  const panel = page.locator('[data-muse-panel]')
+  if ((await panel.count()) === 0) return
+  await page.keyboard.press('Escape')
+  await expect(panel).toHaveCount(0)
 }
 
 /**
