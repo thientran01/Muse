@@ -62,6 +62,16 @@ test.describe('undo', () => {
     await expectFixtureFile(FILE, 'text-[length:20px]')
     const afterFirst = readFixtureFile(FILE)
 
+    // Wait for the first edit to reach the BROWSER, not just the disk.
+    //
+    // The write response only proves bytes landed; the Tailwind JIT rebuild and
+    // the CSS hot update are downstream of it. ScrubField latches its starting
+    // value from computed style at focus and stops syncing once typing begins,
+    // so a re-select against a stale stylesheet commits 17px instead of 21px —
+    // and that is a real edit, so the write still succeeds and nothing fails
+    // until the assertion below times out on a perfectly working product.
+    await expect(page.locator(TARGET)).toHaveCSS('font-size', '20px')
+
     await selectElement(page, TARGET)
     await nudgeScrubField(page, 'scrub-Size', 1)
     await expectFixtureFile(FILE, 'text-[length:21px]')
