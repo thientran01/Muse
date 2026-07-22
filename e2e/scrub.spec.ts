@@ -3,7 +3,7 @@ import { expectFixtureFile, nudgeScrubField, openMuse, readFixtureFile, restoreF
 
 const FILE = 'src/ScrubTarget.tsx'
 // Selected by its text, not its class: the class is the very thing under edit,
-// and other fixture targets legitimately reuse `text-base`.
+// and other fixture targets may legitimately reuse `text-base`.
 const TARGET = 'p:has-text("Scrub my font size")'
 
 /**
