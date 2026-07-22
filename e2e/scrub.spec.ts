@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test'
 import { expectFixtureFile, nudgeScrubField, openMuse, readFixtureFile, restoreFixtureFile, selectElement } from './support/muse'
 
 const FILE = 'src/ScrubTarget.tsx'
-const TARGET = 'p.text-base'
+// Selected by its text, not its class: the class is the very thing under edit,
+// and other fixture targets legitimately reuse `text-base`.
+const TARGET = 'p:has-text("Scrub my font size")'
 
 /**
  * Scrubbing a numeric property — the client half of gesture → request → write.
