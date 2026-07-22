@@ -18,7 +18,7 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
   // Re-sync if the parent updates the value (optimistic apply, or undo).
   useEffect(() => setVal(token.value), [token.value])
   return (
-    <div className="flex items-center justify-between gap-2 text-[11px]">
+    <div className="flex items-center justify-between gap-2 text-field">
       <code className="min-w-0 truncate font-mono text-fg-faint" title={token.name}>
         {token.name}
       </code>
@@ -119,12 +119,12 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
   }
 
   const errorChip = (msg: string) => (
-    <p role="status" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
+    <p role="status" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-field text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
   )
 
   if (error && !tokens) return errorChip("Couldn't read your tokens.")
-  if (!tokens) return <p className="py-1 text-[11px] text-fg-faint">Reading tokens…</p>
-  if (tokens.length === 0) return <p className="py-1 text-[11px] text-fg-faint">No CSS custom properties found.</p>
+  if (!tokens) return <p className="py-1 text-field text-fg-faint">Reading tokens…</p>
+  if (tokens.length === 0) return <p className="py-1 text-field text-fg-faint">No CSS custom properties found.</p>
 
   // Hex color tokens get the visual picker; everything else (non-hex colors, sizes,
   // radii, …) gets a value field. Colors group together regardless.
@@ -165,7 +165,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       )}
       {error && errorChip(error)}
       {notice && (
-        <p role="status" className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-muted ring-1 ring-line/15">
+        <p role="status" className="rounded-lg bg-line/[0.06] px-2.5 py-1.5 text-field leading-relaxed text-fg-muted ring-1 ring-line/15">
           {notice}
         </p>
       )}
