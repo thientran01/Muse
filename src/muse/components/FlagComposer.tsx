@@ -64,7 +64,7 @@ export function FlagComposer({
   const top = Math.max(8, Math.min(pos.y + 14, window.innerHeight - 232))
   const firstClass = draft.className.split(/\s+/).filter(Boolean)[0]
   const basename = draft.fileName.split(/[\\/]/).pop() ?? draft.fileName
-  const btnFocus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+  const btnFocus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus'
 
   return (
     <div
@@ -77,7 +77,7 @@ export function FlagComposer({
           onClose()
         }
       }}
-      className="pointer-events-auto absolute z-30 w-[264px] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
+      className="pointer-events-auto absolute z-30 w-[264px] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-hairline backdrop-blur animate-muse-step motion-reduce:animate-none"
       style={{ top, left }}
     >
       <div className="mb-1.5 flex items-baseline gap-1.5 text-field">
@@ -105,7 +105,7 @@ export function FlagComposer({
         aria-label="Describe the change you want for your agent"
         placeholder="Describe the change you want…"
         rows={3}
-        className="w-full resize-none rounded-md border border-line/20 bg-line/5 px-2 py-1.5 text-body-sm leading-snug text-fg placeholder:text-fg-faint focus:border-fg/40 focus:outline-none focus:ring-1 focus:ring-fg/20"
+        className="w-full resize-none rounded-md border border-hairline-contrast bg-scrim px-2 py-1.5 text-body-sm leading-snug text-fg placeholder:text-fg-faint focus:border-fg/40 focus:outline-none focus:ring-1 focus:ring-fg/20"
       />
       {error && <p className="mt-1 text-field text-rose-300">{error}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -116,7 +116,7 @@ export function FlagComposer({
           <button
             type="button"
             onClick={onClose}
-            className={`rounded px-2 py-1 text-field text-fg-muted transition hover:bg-line/10 hover:text-fg active:scale-95 motion-reduce:active:scale-100 ${btnFocus}`}
+            className={`rounded px-2 py-1 text-field text-fg-muted transition hover:bg-wash hover:text-fg active:scale-95 motion-reduce:active:scale-100 ${btnFocus}`}
           >
             Cancel
           </button>

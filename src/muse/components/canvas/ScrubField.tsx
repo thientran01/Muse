@@ -95,7 +95,7 @@ export function ScrubField({
       // "10" and a negative letter-spacing hid its minus sign (right-aligned text
       // clips from the left). The tighter padding + the input's min-width below
       // guarantee the value always wins the space fight.
-      className={`flex items-center gap-1 rounded-md border border-line/15 bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-accent/60 motion-reduce:transition-none ${
+      className={`flex items-center gap-1 rounded-md border border-hairline-strong bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-focus motion-reduce:transition-none ${
         disabled ? 'opacity-40' : ''
       }`}
     >

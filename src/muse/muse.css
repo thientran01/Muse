@@ -94,8 +94,11 @@
    * (terracotta on dark, brick on light) instead. tint/focus derive from accent. */
   --muse-accent-fg: 227 163 132;                        /* terracotta #E3A384 — accent text on dark; flips to brick on light */
   --muse-tint-active: rgb(var(--muse-accent) / 0.1);    /* selected/active fill */
-  --muse-tint-active-hover: rgb(var(--muse-accent) / 0.15);
-  --muse-focus-ring: rgb(var(--muse-accent) / 0.5);     /* 2px focus-visible ring */
+  --muse-tint-strong: rgb(var(--muse-accent) / 0.15); /* the stronger tint — a resting selected fill, or the hover of --muse-tint-active */
+  --muse-focus-ring: rgb(var(--muse-accent) / 0.5);     /* 2px focus-visible ring (buttons/controls) */
+  --muse-ring-selected: rgb(var(--muse-accent) / 0.6);  /* the "this item is selected" ring — swatch, preset, :hov pin */
+  --muse-focus-border: rgb(var(--muse-accent) / 0.6);   /* focus affordance for TEXT INPUTS (a border, not the ring) */
+  --muse-ring-measure: rgb(var(--muse-accent) / 0.4);   /* the Alt-hover measurement guide's region outline */
 
   /* Radii — a role ladder (DS names are shifted one step vs Tailwind's, so role
    * names are the only safe mapping; see the spec). */

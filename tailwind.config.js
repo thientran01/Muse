@@ -93,7 +93,7 @@ export default {
         'track-quiet': 'var(--muse-track-quiet)',
         'track-hover': 'var(--muse-track-hover)',
         tint: 'var(--muse-tint-active)',
-        'tint-hover': 'var(--muse-tint-active-hover)',
+        'tint-strong': 'var(--muse-tint-strong)',
       },
       // Design-system type scale — the dense overlay chrome (10–13px). Role-named
       // so they can't collide with Tailwind's t-shirt-size keys (text-sm etc. stay
@@ -138,6 +138,18 @@ export default {
         // 2px focus-visible ring — the one disciplined accent alpha, now named so
         // the PR-10 lint can ban raw ring-accent/50 without an exception.
         focus: 'var(--muse-focus-ring)',
+        // The "this item is selected" ring — one token for the swatch, shadow
+        // preset, and :hov pin, which had drifted to accent/60 / accent/60 / accent/30.
+        selected: 'var(--muse-ring-selected)',
+        // The measurement guide's region outline — decorative, its own value so it
+        // isn't conflated with focus or selection.
+        measure: 'var(--muse-ring-measure)',
+      },
+      borderColor: {
+        // Text-input focus affordance — inputs show focus with an accent BORDER
+        // (the ring is for buttons/controls). Tokenized so the lint can ban raw
+        // border-accent/60 without an exception.
+        focus: 'var(--muse-focus-border)',
       },
       // A strong ease-out (Emil: the built-in curves are too weak) for the docs
       // site's interactions — press feedback, the feedback panel, page entrances.

@@ -41,7 +41,7 @@ export function RevertConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Revert to original?"
-        className="relative w-80 animate-muse-panel rounded-2xl bg-surface-raised p-5 shadow-2xl ring-1 ring-line/10 motion-reduce:animate-none"
+        className="relative w-80 animate-muse-panel rounded-2xl bg-surface-raised p-5 shadow-2xl ring-1 ring-hairline motion-reduce:animate-none"
       >
         <div className="mb-1.5 flex items-center gap-2">
           <Warning size={16} weight="fill" className="text-rose-400" />
@@ -57,7 +57,7 @@ export function RevertConfirmDialog({
             ref={cancelRef}
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 rounded-xl border border-line/10 py-2 text-row text-fg transition hover:bg-line/5 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            className="flex-1 rounded-xl border border-hairline py-2 text-row text-fg transition hover:bg-scrim disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
           >
             Cancel
           </button>

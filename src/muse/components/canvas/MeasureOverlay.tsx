@@ -18,7 +18,7 @@ export function MeasureOverlay({ node, hoverRect }: { node: Element; hoverRect: 
   return (
     <>
       <div
-        className="pointer-events-none absolute ring-1 ring-accent/40"
+        className="pointer-events-none absolute ring-1 ring-measure"
         style={{ top: hoverRect.top, left: hoverRect.left, width: hoverRect.width, height: hoverRect.height }}
       />
       {segs.map((s, i) => {

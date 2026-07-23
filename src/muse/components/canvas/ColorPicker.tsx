@@ -171,7 +171,7 @@ export function ColorPicker({
             onClick={pickFromScreen}
             title="Sample a color from the screen"
             aria-label="Sample a color from the screen"
-            className="shrink-0 rounded p-1 text-fg-muted transition hover:bg-line/10 hover:text-fg"
+            className="shrink-0 rounded p-1 text-fg-muted transition hover:bg-wash hover:text-fg"
           >
             <Eyedropper size={15} />
           </button>
@@ -186,7 +186,7 @@ export function ColorPicker({
       {/* Hex (with leading swatch) + R/G/B on one compact grid. No duplicate
           swatch/hex readout — this row IS the readout. */}
       <div className="flex items-center gap-1.5">
-        <span className="h-6 w-6 shrink-0 rounded border border-line/20" style={{ backgroundImage: CHECKER }}>
+        <span className="h-6 w-6 shrink-0 rounded border border-hairline-contrast" style={{ backgroundImage: CHECKER }}>
           <span className="block h-full w-full rounded" style={{ backgroundColor: composed }} />
         </span>
         <HexInput value={composed} onCommit={setHex} />
@@ -224,8 +224,8 @@ export function ColorPicker({
                 title={`${s.name} · ${s.value}`}
                 aria-label={`Use ${s.name}, ${s.value}`}
                 aria-pressed={s.value === composed}
-                className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:transition-none motion-reduce:hover:scale-100 ${
-                  s.value === composed ? 'border-accent ring-1 ring-accent/60' : 'border-line/20'
+                className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus motion-reduce:transition-none motion-reduce:hover:scale-100 ${
+                  s.value === composed ? 'border-accent ring-1 ring-selected' : 'border-hairline-contrast'
                 }`}
                 style={{ backgroundColor: s.value }}
               />
@@ -336,7 +336,7 @@ function AlphaSlider({ hex, alpha, onChange }: { hex: string; alpha: number; onC
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(alpha * 100)}
-      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      className="relative h-3 w-full cursor-ew-resize touch-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
       style={{ background: `linear-gradient(to right, transparent, ${hex}), ${CHECKER}` }}
     >
       <Knob left={`${alpha * 100}%`} top="50%" />
@@ -374,7 +374,7 @@ function HexInput({ value, onCommit }: { value: string; onCommit: (hex: string) 
       onBlur={commit}
       spellCheck={false}
       aria-label="Hex color"
-      className="w-full rounded-md border border-line/15 bg-surface px-2 py-1 font-mono text-field uppercase tabular-nums text-fg outline-none transition-colors focus:border-accent/60 motion-reduce:transition-none"
+      className="w-full rounded-md border border-hairline-strong bg-surface px-2 py-1 font-mono text-field uppercase tabular-nums text-fg outline-none transition-colors focus:border-focus motion-reduce:transition-none"
     />
   )
 }
@@ -391,7 +391,7 @@ function RgbInput({ label, value, onCommit }: { label: string; value: number; on
     else setText(String(value))
   }
   return (
-    <label className="flex items-center gap-1 rounded-md border border-line/15 bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-accent/60 motion-reduce:transition-none">
+    <label className="flex items-center gap-1 rounded-md border border-hairline-strong bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-focus motion-reduce:transition-none">
       <span className="shrink-0 select-none text-fg-faint">{label}</span>
       <input
         value={text}
