@@ -25,7 +25,7 @@ const ROOT = resolveRoot(process.cwd(), rootOverride)
 const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] })
 const fail = (message: string) => ({ content: [{ type: 'text' as const, text: message }], isError: true })
 
-const server = new McpServer({ name: 'muse', version: '0.1.0' })
+const server = new McpServer({ name: 'muse', version: '0.1.1' })
 
 server.registerTool(
   'list_flags',
@@ -35,8 +35,13 @@ server.registerTool(
       'List flags a designer dropped in the running app via Muse. Each flag is a work-order: ' +
       'a repo-relative file + line + column + tag + className + the current text + a plain-English ' +
       '`comment` describing the change they want (and, for flags born from a Canvas refusal, the ' +
-      '`property` they reached for and the `reason` Canvas could not do it). Default returns only ' +
-      'OPEN flags. Read each flag, make the edit at its file:line, then call resolve_flag.',
+      '`property` they reached for and the `reason` Canvas could not do it). When the flagged ' +
+      'element lives inside a shared component, the flag may also carry instance context: `crumbs` ' +
+      '(component breadcrumb), `usage` (the nearest containing element authored in a DIFFERENT ' +
+      'file — the usage site; edit or delete THIS instance there, edit styles at the main ' +
+      'file:line), and `instanceIndex`/`instanceCount` ("2 of 3" in document order) to pin which ' +
+      'rendered instance was meant. Default returns only OPEN flags. Read each flag, make the ' +
+      'edit at its file:line, then call resolve_flag.',
     inputSchema: {
       status: z
         .enum(['open', 'resolved', 'all'])
@@ -60,7 +65,10 @@ server.registerTool(
   'get_flag',
   {
     title: 'Get one Muse flag',
-    description: 'Return a single flag by id (e.g. "f_3") with its full source context.',
+    description:
+      'Return a single flag by id (e.g. "f_3") with its full source context — including, when ' +
+      'present, the instance context (`crumbs`/`usage`/`instanceIndex`) that pins which rendered ' +
+      'instance of a shared component the designer meant.',
     inputSchema: { id: z.string().describe('The flag id, e.g. "f_3".') },
   },
   async ({ id }) => {

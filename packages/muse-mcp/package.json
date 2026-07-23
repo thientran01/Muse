@@ -1,6 +1,6 @@
 {
   "name": "muse-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hand Muse flags (in-app annotations) to your own Claude Code. A thin stdio MCP server over .muse/flags.json — Muse routes zero inference.",
   "type": "module",
   "bin": {

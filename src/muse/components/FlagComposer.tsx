@@ -64,6 +64,18 @@ export function FlagComposer({
   const top = Math.max(8, Math.min(pos.y + 14, window.innerHeight - 232))
   const firstClass = draft.className.split(/\s+/).filter(Boolean)[0]
   const basename = draft.fileName.split(/[\\/]/).pop() ?? draft.fileName
+  // Instance readout — only when the element is authored inside a shared component
+  // (usage present) or repeats on the page. Crumbs run outermost → nearest, so the
+  // last one names the component the designer would say they clicked.
+  const nearestCrumb = draft.crumbs?.[draft.crumbs.length - 1]
+  const usageBase = draft.usage ? (draft.usage.fileName.split(/[\\/]/).pop() ?? draft.usage.fileName) : null
+  const instanceLine = [
+    nearestCrumb,
+    draft.instanceCount ? `instance ${draft.instanceIndex} of ${draft.instanceCount}` : null,
+    usageBase ? `used in ${usageBase}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   const btnFocus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
 
   return (
@@ -87,6 +99,11 @@ export function FlagComposer({
           {firstClass ? `.${firstClass}` : ''}
         </span>
       </div>
+      {(draft.usage || draft.instanceCount) && instanceLine && (
+        <p className="mb-1.5 truncate text-[10px] leading-snug text-fg-faint" title={instanceLine}>
+          {instanceLine}
+        </p>
+      )}
       {draft.reason && (
         <p className="mb-1.5 text-[11px] leading-snug text-fg-muted">Canvas can’t do this: {draft.reason}</p>
       )}
