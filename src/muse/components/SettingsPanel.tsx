@@ -20,7 +20,7 @@ function CornerPicker({ corner, onPick }: { corner: DockCorner; onPick: (c: Dock
     <div
       role="radiogroup"
       aria-label="Toolbar position"
-      className="relative h-16 w-full rounded-lg border border-hairline-strong bg-scrim"
+      className="relative h-16 w-full rounded-card border border-hairline-strong bg-scrim"
     >
       {CORNERS.map((c) => (
         <button
@@ -31,7 +31,7 @@ function CornerPicker({ corner, onPick }: { corner: DockCorner; onPick: (c: Dock
           aria-label={c.label}
           title={c.label}
           onClick={() => onPick(c.id)}
-          className={`absolute ${c.pos} h-4 w-6 rounded-[4px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+          className={`absolute ${c.pos} h-4 w-6 rounded-chip transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
             corner === c.id ? 'bg-accent' : 'bg-track hover:bg-track-hover'
           }`}
         />

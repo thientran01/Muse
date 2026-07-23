@@ -151,7 +151,7 @@ export function ColorPicker({
             <span className="font-mono tabular-nums">{contrast.ratio.toFixed(2)}:1</span>
             <span className="text-fg-faint">contrast</span>
           </span>
-          <span className={`rounded px-1.5 py-0.5 text-chip font-semibold ${
+          <span className={`rounded-chip px-1.5 py-0.5 text-chip font-semibold ${
             contrast.aa ? 'bg-emerald-500/15 text-emerald-400'
             : contrast.aaLarge ? 'bg-amber-500/15 text-amber-400'
             : 'bg-rose-500/15 text-rose-400'
@@ -171,7 +171,7 @@ export function ColorPicker({
             onClick={pickFromScreen}
             title="Sample a color from the screen"
             aria-label="Sample a color from the screen"
-            className="shrink-0 rounded p-1 text-fg-muted transition hover:bg-wash hover:text-fg"
+            className="shrink-0 rounded-chip p-1 text-fg-muted transition hover:bg-wash hover:text-fg"
           >
             <Eyedropper size={15} />
           </button>
@@ -186,8 +186,8 @@ export function ColorPicker({
       {/* Hex (with leading swatch) + R/G/B on one compact grid. No duplicate
           swatch/hex readout — this row IS the readout. */}
       <div className="flex items-center gap-1.5">
-        <span className="h-6 w-6 shrink-0 rounded border border-hairline-contrast" style={{ backgroundImage: CHECKER }}>
-          <span className="block h-full w-full rounded" style={{ backgroundColor: composed }} />
+        <span className="h-6 w-6 shrink-0 rounded-chip border border-hairline-contrast" style={{ backgroundImage: CHECKER }}>
+          <span className="block h-full w-full rounded-chip" style={{ backgroundColor: composed }} />
         </span>
         <HexInput value={composed} onCommit={setHex} />
       </div>
@@ -224,7 +224,7 @@ export function ColorPicker({
                 title={`${s.name} · ${s.value}`}
                 aria-label={`Use ${s.name}, ${s.value}`}
                 aria-pressed={s.value === composed}
-                className={`h-6 w-6 shrink-0 rounded border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus motion-reduce:transition-none motion-reduce:hover:scale-100 ${
+                className={`h-6 w-6 shrink-0 rounded-chip border transition duration-[120ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus motion-reduce:transition-none motion-reduce:hover:scale-100 ${
                   s.value === composed ? 'border-accent ring-1 ring-selected' : 'border-hairline-contrast'
                 }`}
                 style={{ backgroundColor: s.value }}
@@ -280,7 +280,7 @@ function SVSquare({ hsv, hueHex, onChange }: { hsv: Hsv; hueHex: string; onChang
     <div
       ref={ref}
       {...handlers}
-      className="relative h-28 w-full cursor-crosshair touch-none rounded-md"
+      className="relative h-28 w-full cursor-crosshair touch-none rounded-field"
       style={{ backgroundColor: hueHex, backgroundImage: 'linear-gradient(to right, #fff, transparent), linear-gradient(to top, #000, transparent)' }}
     >
       <Knob left={`${hsv.s}%`} top={`${100 - hsv.v}%`} />
@@ -374,7 +374,7 @@ function HexInput({ value, onCommit }: { value: string; onCommit: (hex: string) 
       onBlur={commit}
       spellCheck={false}
       aria-label="Hex color"
-      className="w-full rounded-md border border-hairline-strong bg-surface px-2 py-1 font-mono text-field uppercase tabular-nums text-fg outline-none transition-colors focus:border-focus motion-reduce:transition-none"
+      className="w-full rounded-field border border-hairline-strong bg-surface px-2 py-1 font-mono text-field uppercase tabular-nums text-fg outline-none transition-colors focus:border-focus motion-reduce:transition-none"
     />
   )
 }
@@ -391,7 +391,7 @@ function RgbInput({ label, value, onCommit }: { label: string; value: number; on
     else setText(String(value))
   }
   return (
-    <label className="flex items-center gap-1 rounded-md border border-hairline-strong bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-focus motion-reduce:transition-none">
+    <label className="flex items-center gap-1 rounded-field border border-hairline-strong bg-surface px-1.5 py-1 text-field transition-colors focus-within:border-focus motion-reduce:transition-none">
       <span className="shrink-0 select-none text-fg-faint">{label}</span>
       <input
         value={text}

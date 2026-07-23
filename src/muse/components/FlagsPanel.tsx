@@ -72,7 +72,7 @@ export function FlagsPanel() {
         const ordinal = open.length - i // newest-first display, so the oldest open flag stays #1 (matches the pins)
         const isBusy = busy === f.id
         return (
-          <li key={f.id} className="rounded-lg border border-hairline bg-scrim px-2.5 py-2">
+          <li key={f.id} className="rounded-card border border-hairline bg-scrim px-2.5 py-2">
             <div className="flex items-start gap-2">
               <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white">
                 {ordinal}
@@ -105,7 +105,7 @@ export function FlagsPanel() {
                     disabled={isBusy}
                     title="Dismiss"
                     aria-label="Dismiss flag"
-                    className="rounded p-1 text-fg-faint transition hover:bg-rose-500/10 hover:text-rose-400 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                    className="rounded-chip p-1 text-fg-faint transition hover:bg-rose-500/10 hover:text-rose-400 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   >
                     <X size={12} weight="bold" />
                   </button>
@@ -141,7 +141,7 @@ function ActionBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-field font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+      className={`inline-flex items-center gap-1 rounded-field px-1.5 py-1 text-field font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
         primary ? 'bg-fg text-surface hover:opacity-90' : 'text-fg-muted hover:bg-wash hover:text-fg'
       }`}
     >

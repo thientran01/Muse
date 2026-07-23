@@ -24,7 +24,7 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
       </code>
       <div className="flex shrink-0 items-center gap-1.5">
         {token.isColor && (
-          <span className="h-5 w-5 shrink-0 rounded border border-hairline-contrast" style={{ backgroundColor: val }} />
+          <span className="h-5 w-5 shrink-0 rounded-chip border border-hairline-contrast" style={{ backgroundColor: val }} />
         )}
         <input
           value={val}
@@ -36,7 +36,7 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
           }}
           disabled={busy}
           aria-label={`Value for ${token.name}`}
-          className="w-[84px] shrink-0 rounded-md border border-hairline bg-scrim px-1.5 py-0.5 text-right font-mono tabular-nums text-fg outline-none transition focus:border-focus disabled:opacity-50"
+          className="w-[84px] shrink-0 rounded-field border border-hairline bg-scrim px-1.5 py-0.5 text-right font-mono tabular-nums text-fg outline-none transition focus:border-focus disabled:opacity-50"
         />
       </div>
     </div>
@@ -119,7 +119,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
   }
 
   const errorChip = (msg: string) => (
-    <p role="status" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-field text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
+    <p role="status" className="rounded-card bg-rose-500/10 px-2.5 py-1.5 text-field text-rose-300 ring-1 ring-rose-500/20">{msg}</p>
   )
 
   if (error && !tokens) return errorChip("Couldn't read your tokens.")
@@ -165,7 +165,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
       )}
       {error && errorChip(error)}
       {notice && (
-        <p role="status" className="rounded-lg bg-scrim px-2.5 py-1.5 text-field leading-relaxed text-fg-muted ring-1 ring-hairline-strong">
+        <p role="status" className="rounded-card bg-scrim px-2.5 py-1.5 text-field leading-relaxed text-fg-muted ring-1 ring-hairline-strong">
           {notice}
         </p>
       )}

@@ -181,7 +181,7 @@ export function ColorRow({
       <div
         ref={popRef}
         data-state={state}
-        className="muse-pop pointer-events-auto fixed z-[1000000] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-hairline backdrop-blur"
+        className="muse-pop pointer-events-auto fixed z-[1000000] rounded-panel bg-surface/95 p-3 shadow-pop ring-1 ring-hairline backdrop-blur-overlay"
         // Scale from the panel-facing edge (Emil tip #5): when the picker sits to the
         // right of the panel it grows from its left edge, and vice-versa.
         style={{ left: pos.left, top: pos.top, '--muse-pop-origin': pos.side === 'right' ? 'left center' : 'right center' } as React.CSSProperties}
@@ -201,13 +201,13 @@ export function ColorRow({
         <button
           ref={rowRef}
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1.5 rounded px-1 py-0.5 transition hover:bg-wash"
+          className="flex items-center gap-1.5 rounded-chip px-1 py-0.5 transition hover:bg-wash"
           aria-expanded={open}
           aria-label={ariaLabel ?? (typeof label === 'string' ? `Edit ${label} color` : 'Edit color')}
           title="Edit color"
         >
           <span className="font-mono tabular-nums text-fg-muted">{value}</span>
-          <span className="h-5 w-5 shrink-0 rounded border border-hairline-contrast" style={{ backgroundColor: value }} />
+          <span className="h-5 w-5 shrink-0 rounded-chip border border-hairline-contrast" style={{ backgroundColor: value }} />
         </button>
       )}
       {popover && portalContainer?.current ? createPortal(popover, portalContainer.current) : popover}
@@ -320,7 +320,7 @@ export function Breadcrumb({
             <button
               onClick={() => onPick(c)}
               title={c.node.getAttribute('class') || c.tag}
-              className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
+              className={`max-w-[120px] truncate rounded-chip px-1 py-0.5 font-mono transition ${
                 c.key === selectedKey
                   ? 'bg-tint-strong text-accent-fg'
                   : 'text-fg-faint hover:bg-wash hover:text-fg-muted'
@@ -339,9 +339,9 @@ export function Breadcrumb({
 export function Legend({ hasGap }: { hasGap: boolean }) {
   return (
     <div className="flex items-center gap-2.5 text-badge text-fg-faint">
-      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400/70" />Padding</span>
-      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
-      {hasGap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-knob bg-emerald-400/70" />Padding</span>
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-knob bg-amber-400/70" />Margin</span>
+      {hasGap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-knob bg-sky-400/70" />Gap</span>}
     </div>
   )
 }
@@ -378,7 +378,7 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
       {values.type.fontFamily && (
         <div
           title={values.type.fontFamilyStack}
-          className="flex items-center justify-between rounded-md border border-hairline-strong bg-surface px-1.5 py-1 text-field"
+          className="flex items-center justify-between rounded-field border border-hairline-strong bg-surface px-1.5 py-1 text-field"
         >
           <span className="shrink-0 select-none text-fg-faint">Font</span>
           <span className="truncate pl-2 font-mono text-fg-muted">{values.type.fontFamily.slice(0, 24)}</span>
@@ -523,7 +523,7 @@ function SegmentRow({
   return (
     <div className="space-y-1">
       <span className="text-eyebrow uppercase text-fg-faint">{label}</span>
-      <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-lg bg-wash p-0.5">
+      <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-card bg-wash p-0.5">
         {options.map((o) => (
           <button
             key={o.name}
@@ -533,7 +533,7 @@ function SegmentRow({
             aria-label={o.title}
             title={o.title}
             onClick={() => onPick(o.name)}
-            className={`flex flex-1 items-center justify-center rounded-md px-1 py-1 text-chip font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+            className={`flex flex-1 items-center justify-center rounded-field px-1 py-1 text-chip font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
               current === o.name ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
             }`}
           >
@@ -570,7 +570,7 @@ function shadowSummary(value: string): string {
 // numbers. The row sits on a soft well so shadows have ground to land on.
 function ShadowSwatches({ current, onCommit }: { current: string; onCommit: (m: StyleMutation[]) => void }) {
   return (
-    <div role="radiogroup" aria-label="Shadow presets" className="flex gap-1.5 rounded-lg bg-wash p-1.5">
+    <div role="radiogroup" aria-label="Shadow presets" className="flex gap-1.5 rounded-card bg-wash p-1.5">
       {SHADOW_PRESETS.map((p) => (
         <button
           key={p.name}
@@ -580,13 +580,13 @@ function ShadowSwatches({ current, onCommit }: { current: string; onCommit: (m: 
           aria-label={p.name === 'none' ? 'No shadow' : `Shadow ${p.name}`}
           title={shadowSummary(p.value)}
           onClick={() => onCommit([{ property: 'boxShadow', value: p.value }])}
-          className={`flex flex-1 items-center justify-center rounded-md py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+          className={`flex flex-1 items-center justify-center rounded-field py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
             current === p.name ? 'bg-surface ring-1 ring-selected' : 'hover:bg-surface/60'
           }`}
         >
           <span
             aria-hidden
-            className="flex h-5 w-6 items-center justify-center rounded bg-surface text-fg-faint ring-1 ring-hairline-strong"
+            className="flex h-5 w-6 items-center justify-center rounded-chip bg-surface text-fg-faint ring-1 ring-hairline-strong"
             style={p.value === 'none' ? undefined : { boxShadow: p.value }}
           >
             {p.name === 'none' ? <X size={10} /> : null}
@@ -804,7 +804,7 @@ export function SpacingFields({ values, onPreview, onCommit }: { values: CanvasV
 // scrolls inside instead of running off-screen when the element sits low.
 function PanelShell({ children }: { children: React.ReactNode }) {
   return (
-    <div data-muse-panel className="flex max-h-[min(70vh,520px)] w-[232px] flex-col gap-2.5 overflow-y-auto overflow-x-hidden rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-hairline backdrop-blur [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-track-quiet">
+    <div data-muse-panel className="flex max-h-[min(70vh,520px)] w-[232px] flex-col gap-2.5 overflow-y-auto overflow-x-hidden rounded-panel bg-surface/95 p-3 shadow-pop ring-1 ring-hairline backdrop-blur-overlay [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-track-quiet">
       {children}
     </div>
   )
@@ -899,7 +899,7 @@ function ClassChip({ token, onRemove }: { token: string; onRemove?: () => void }
   return (
     <span
       title={token}
-      className="group/chip inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-chip text-fg-muted ring-1 ring-hairline"
+      className="group/chip inline-flex max-w-full items-baseline rounded-field bg-surface-raised px-1.5 py-0.5 font-mono text-chip text-fg-muted ring-1 ring-hairline"
     >
       {variants && <span className="shrink-0 text-accent-hover">{variants}:</span>}
       <span className="truncate">{base}</span>
@@ -909,7 +909,7 @@ function ClassChip({ token, onRemove }: { token: string; onRemove?: () => void }
           aria-label={`Remove ${token}`}
           // p-1 -m-1 grows the hit area without growing the glyph — × is
           // destructive and the visual size alone is a misclick magnet.
-          className="-mr-1.5 ml-0.5 shrink-0 rounded p-1 leading-none text-fg-faint opacity-0 transition hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus group-hover/chip:opacity-100"
+          className="-mr-1.5 ml-0.5 shrink-0 rounded-chip p-1 leading-none text-fg-faint opacity-0 transition hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus group-hover/chip:opacity-100"
         >
           ×
         </button>
@@ -932,7 +932,7 @@ function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: bo
       onClick={() => onChange(!pinned)}
       aria-pressed={pinned}
       title={pinned ? 'Release the forced hover state' : "Force this element's :hover styles on"}
-      className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-chip ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+      className={`shrink-0 rounded-field px-1.5 py-0.5 font-mono text-chip ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
         pinned ? 'bg-tint-strong text-accent-fg ring-selected' : 'text-fg-faint ring-hairline hover:text-fg'
       }`}
     >
@@ -964,7 +964,7 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
   const shown = expanded ? tokens : tokens.slice(0, COLLAPSE_AT)
   const hidden = tokens.length - shown.length
   const chipBtn =
-    'rounded-md px-1.5 py-0.5 font-mono text-chip text-fg-faint ring-1 ring-hairline transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus'
+    'rounded-field px-1.5 py-0.5 font-mono text-chip text-fg-faint ring-1 ring-hairline transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus'
 
   const submit = () => {
     const adds = draft.split(/\s+/).filter(Boolean)
@@ -1035,7 +1035,7 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
               placeholder="p-4 hover:bg-…"
               aria-label="Add classes — Enter to apply"
               aria-invalid={invalid.length > 0}
-              className={`w-28 rounded-md bg-transparent px-1.5 py-0.5 font-mono text-chip text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
+              className={`w-28 rounded-field bg-transparent px-1.5 py-0.5 font-mono text-chip text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
                 invalid.length > 0 ? 'ring-rose-500/40' : 'ring-hairline-contrast focus-visible:ring-focus'
               }`}
             />
@@ -1079,7 +1079,7 @@ function ScopeToggle({
   const allLabel = shared.exported ? 'All uses' : `All ${shared.sameFileCount}`
   // Focus ring matches the panel's other interactive buttons (e.g. MuseToolbar).
   const seg =
-    'flex-1 rounded-md px-2 py-1 text-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus'
+    'flex-1 rounded-field px-2 py-1 text-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus'
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>
@@ -1088,7 +1088,7 @@ function ScopeToggle({
       {/* A two-option segmented control = a radio group: the selection is exclusive, and
           screen readers should announce which scope is active (the visual accent state
           alone isn't conveyed). */}
-      <div role="radiogroup" aria-label="Edit scope" className="flex gap-0.5 rounded-lg bg-wash p-0.5">
+      <div role="radiogroup" aria-label="Edit scope" className="flex gap-0.5 rounded-card bg-wash p-0.5">
         <button
           type="button"
           role="radio"
