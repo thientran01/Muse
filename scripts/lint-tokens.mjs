@@ -25,23 +25,29 @@ import path from 'node:path'
 const root = process.cwd()
 const scanDir = path.join(root, 'src/muse')
 
-// Same scan-only comment strip as scripts/build-overlay-css.mjs.
+// Scan-only comment strip. Unlike the CSS build's version, a block comment is
+// blanked IN PLACE (newlines preserved) rather than collapsed to one space —
+// otherwise every line number after a multi-line comment would be reported short,
+// and this tool's whole value is pointing at the right line.
 const stripComments = (src) =>
   src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
 const RULES = [
   {
-    re: /text-\[[0-9.]+px\]/g,
+    re: /text-\[[0-9.]+(?:px|pt|%)\]/g,
     msg: 'arbitrary type size — use the role scale (text-row/title/body-sm/field/eyebrow/chip/badge)',
   },
   {
-    re: /\b(?:bg|text|border|ring|divide|from|to|via)-(?:line|accent)\/(?:[0-9.]+|\[)/g,
+    // Any hyphenated utility prefix, so directional/logical infixes are covered too
+    // (border-t-line/20, border-x-accent/10, ring-offset-line/20) — not just bg-line/10.
+    re: /\b(?:[a-z][a-z0-9]*-)+(?:line|accent)\/(?:[0-9.]+|\[)/g,
     msg: 'raw alpha fraction — use a role token (scrim/wash/hairline*/track*/tint*/focus/selected)',
   },
   {
-    re: /rounded-\[/g,
+    // Includes the per-corner/per-side forms: rounded-t-[…], rounded-tl-[…].
+    re: /\brounded(?:-[a-z]{1,2})?-\[/g,
     msg: 'arbitrary radius — use the role ladder (rounded-knob/chip/field/card/panel/modal)',
   },
   { re: /tracking-\[/g, msg: 'arbitrary tracking — bake it into a fontSize tuple instead' },
@@ -49,8 +55,10 @@ const RULES = [
     // Rem-based type resolves against the HOST document's <html>, NOT the overlay:
     // a shadow root does not isolate root-relative units. A host running
     // html{font-size:62.5%} would shrink this text while the px chrome holds.
-    re: /\btext-(?:xs|sm|base|lg|[0-9]?xl)\b|\bleading-[0-9]+\b/g,
-    msg: 'rem-based type inside the shadow root — resolves against the HOST html; use the px role scale',
+    // Stock keyword sizes, numeric leadings, AND arbitrary rem/em values — the last
+    // is the sneakiest: text-[0.75rem] matches no other rule but is the exact hazard.
+    re: /\btext-(?:xs|sm|base|lg|[0-9]?xl)\b|\bleading-[0-9]+\b|text-\[[0-9.]+r?em\]/g,
+    msg: 'host-relative type inside the shadow root — resolves against the HOST html; use the px role scale',
   },
 ]
 
