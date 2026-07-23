@@ -493,7 +493,7 @@ export function ReorderOverlay({
     <div className="pointer-events-none">
       {drop?.bar && !drop.noop && (
         <div
-          className="absolute z-10 rounded-sm bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
+          className="absolute z-10 rounded-knob bg-accent shadow-[0_0_0_1px_rgb(var(--muse-accent)/0.35)]"
           style={drop.bar}
         />
       )}

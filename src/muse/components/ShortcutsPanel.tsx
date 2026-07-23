@@ -5,7 +5,7 @@
 
 export function Key({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-hairline-strong bg-scrim px-1 font-mono text-chip leading-none text-fg-muted">
+    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-chip border border-hairline-strong bg-scrim px-1 font-mono text-chip leading-none text-fg-muted">
       {children}
     </kbd>
   )

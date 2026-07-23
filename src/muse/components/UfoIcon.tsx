@@ -209,7 +209,7 @@ export function UfoIcon({
         {/* The whole body undulates as one unit so the parts never separate at
             the joins; the tail chain then carries the S on its own phase. */}
         <g ref={wingsRef}>
-          {/* tail — a 3-link chain, drawn first so the body's rounded rear lobe
+          {/* tail — a 3-link chain, drawn first so the body's rounded-chip rear lobe
               overlaps link 1's root. Each <g> nests inside the previous and
               rotates about that link's top joint, so the chain stays connected
               while curving into an S. Links overlap their joints so a bend never
@@ -238,7 +238,7 @@ export function UfoIcon({
           <path d="M14.1 6.6 C14.5 4.8 14.6 3.8 14.1 3.5 C13.6 3.8 13.2 4.9 12.9 6.6 Z" fill="currentColor" />
 
           {/* body — swept wings with concave trailing edges; the rear closes into a
-              rounded lobe (down to y≈14.1) that the tail emerges from, so the join
+              rounded-chip lobe (down to y≈14.1) that the tail emerges from, so the join
               reads as continuous instead of a gap behind a sharp point */}
           <path
             d="M12 6 C14.8 5.8 17 6.7 19 9 C19.8 9.9 19.5 10.8 18.4 10.8 C16 10.8 14.5 10.5 13.5 11.9 C12.9 13.0 12.6 14.1 12 14.1 C11.4 14.1 11.1 13.0 10.5 11.9 C9.5 10.5 8 10.8 5.6 10.8 C4.5 10.8 4.2 9.9 5 9 C7 6.7 9.2 5.8 12 6 Z"

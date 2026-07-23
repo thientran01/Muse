@@ -152,7 +152,7 @@ export function BoxModelOverlay({
     return (
       <div
         key={`lbl-${box}-${side}`}
-        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded px-1 text-badge font-semibold tabular-nums ${tone}`}
+        className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-chip px-1 text-badge font-semibold tabular-nums ${tone}`}
         style={{ left: x, top: y }}
       >
         {Math.round(value)}
@@ -163,7 +163,7 @@ export function BoxModelOverlay({
   return (
     <div className="pointer-events-none">
       {/* element outline — selection identity stays accent */}
-      <div className="absolute rounded-[2px] ring-2 ring-accent" style={{ top: r.top, left: r.left, width: r.width, height: r.height }} />
+      <div className="absolute rounded-knob ring-2 ring-accent" style={{ top: r.top, left: r.left, width: r.width, height: r.height }} />
 
       {/* margin bands (amber, outside the element) */}
       {mt > 0 && <div className="absolute bg-amber-400/15" style={{ top: r.top - mt, left: r.left, width: r.width, height: mt }} />}

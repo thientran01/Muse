@@ -210,14 +210,14 @@ export function MuseToolbar({
 
       {/* Popover — scales up from the bar/FAB corner below it (grows from the bar on
           open, shrinks back on close via usePresence + .muse-pop). Same surface as
-          the canvas properties panel (rounded-xl / blur / ring) and marked
+          the canvas properties panel (rounded-panel / blur / ring) and marked
           data-muse-panel so the token color-picker anchors beside it. */}
       {popMounted && (
         <div
           ref={popRef}
           data-muse-panel
           data-state={popState}
-          className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-hairline backdrop-blur"
+          className="muse-pop w-64 overflow-hidden rounded-panel bg-surface/95 shadow-pop ring-1 ring-hairline backdrop-blur-overlay"
           style={{ '--muse-pop-origin': POP_ORIGIN[prefs.corner] } as React.CSSProperties}
           onKeyDown={(e) => {
             // An open color picker's own document-capture Esc handler runs first
@@ -235,7 +235,7 @@ export function MuseToolbar({
               type="button"
               onClick={() => setPop('none')}
               aria-label={`Close ${POP_TITLES[shownPop].toLowerCase()}`}
-              className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-scrim hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              className="-mr-1 rounded-field p-1 text-fg-faint transition hover:bg-scrim hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             >
               <X size={13} />
             </button>
@@ -249,7 +249,7 @@ export function MuseToolbar({
       {/* The morphing pill. mounts with the FAB "catch" (only fires on a fresh
           mount — i.e. at startup — never on the in-place FAB↔toolbar morph,
           since the element persists across it). */}
-      <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-hairline animate-muse-fab-catch motion-reduce:animate-none">
+      <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-dock ring-1 ring-hairline animate-muse-fab-catch motion-reduce:animate-none">
         {/* Leading: manta + "Muse" label. Collapsed, the whole thing is the FAB
             (click to open). Expanded, the label collapses to 0 and this is just
             the manta (identity). */}

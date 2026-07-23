@@ -121,7 +121,7 @@ export function GapOverlay({
             {/* value chip on the first band only (all gaps share the value) */}
             {i === 0 && (
               <div
-                className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded px-1 text-badge font-semibold tabular-nums ${
+                className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-chip px-1 text-badge font-semibold tabular-nums ${
                   drag ? 'bg-fg text-surface shadow-sm' : 'text-sky-200/90'
                 }`}
               >

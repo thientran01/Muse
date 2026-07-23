@@ -33,7 +33,7 @@ export function RevertConfirmDialog({
       }}
     >
       <div
-        className="absolute inset-0 animate-muse-fade bg-black/60 backdrop-blur-sm motion-reduce:animate-none"
+        className="absolute inset-0 animate-muse-fade bg-black/60 backdrop-blur-scrim motion-reduce:animate-none"
         onClick={!loading ? onCancel : undefined}
       />
       <div
@@ -41,7 +41,7 @@ export function RevertConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Revert to original?"
-        className="relative w-80 animate-muse-panel rounded-2xl bg-surface-raised p-5 shadow-2xl ring-1 ring-hairline motion-reduce:animate-none"
+        className="relative w-80 animate-muse-panel rounded-modal bg-surface-raised p-5 shadow-modal ring-1 ring-hairline motion-reduce:animate-none"
       >
         <div className="mb-1.5 flex items-center gap-2">
           <Warning size={16} weight="fill" className="text-rose-400" />
@@ -57,14 +57,14 @@ export function RevertConfirmDialog({
             ref={cancelRef}
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 rounded-xl border border-hairline py-2 text-row text-fg transition hover:bg-scrim disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            className="flex-1 rounded-panel border border-hairline py-2 text-row text-fg transition hover:bg-scrim disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex-1 rounded-xl bg-rose-500/20 py-2 text-row font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
+            className="flex-1 rounded-panel bg-rose-500/20 py-2 text-row font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
           >
             {loading ? 'Reverting…' : 'Revert'}
           </button>
