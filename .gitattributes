@@ -1,0 +1,4 @@
+# The overlay stylesheet is a generated artifact that CI compares byte-for-byte
+# (`git diff --exit-code` after `npm run build`). Pin it to LF so a Windows
+# working tree and an ubuntu runner produce the same bytes.
+src/muse/generated/overlayCss.ts text eol=lf

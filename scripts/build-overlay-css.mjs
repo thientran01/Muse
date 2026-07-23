@@ -31,7 +31,11 @@ const museCssPath = path.join(root, 'src/muse/muse.css')
 const outDir = path.join(root, 'src/muse/generated')
 const outPath = path.join(outDir, 'overlayCss.ts')
 
-const museCss = fs.readFileSync(museCssPath, 'utf8')
+// Normalize line endings before the CSS is embedded in the output string. On a
+// Windows checkout muse.css arrives CRLF, which would be baked verbatim into the
+// generated module and make the artifact differ byte-for-byte from an ubuntu
+// runner's — defeating the CI staleness gate that compares it.
+const museCss = fs.readFileSync(museCssPath, 'utf8').replace(/\r\n/g, '\n')
 const baseConfig = (await import('file://' + path.join(root, 'tailwind.config.js'))).default
 
 // Strip comments so class-like example strings in code comments aren't scanned as
@@ -45,7 +49,14 @@ const stripComments = (src) =>
 const config = {
   ...baseConfig,
   content: {
-    files: ['./src/muse/**/*.{ts,tsx}'],
+    // Exclude this script's OWN output. generated/overlayCss.ts is a .ts file
+    // under src/muse, so without the negation Tailwind re-harvests class names
+    // out of the compiled CSS it emitted last time — and a class that has been
+    // deleted from every source file is re-emitted forever. Arbitrary classes
+    // self-clean (their compiled selectors escape the bracket, so the extractor
+    // can't read them back), but plain ones like `min-h-screen` are sticky, and
+    // renaming a class is exactly how they become dead.
+    files: ['./src/muse/**/*.{ts,tsx}', '!./src/muse/generated/**'],
     transform: { DEFAULT: stripComments },
   },
 }
