@@ -1665,7 +1665,7 @@ export function CanvasMode({
               which collides with exactly the narrow-window responsive testing the
               switcher serves — wrapping to a second row beats clipping. PR-14
               (banner lifecycle) refines narrow-width behavior properly. */}
-          <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] animate-muse-drop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-surface/95 px-4 py-2 text-sm text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+          <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] animate-muse-drop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-surface/95 px-4 py-2 text-row text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
             {/* Breakpoint-target pills — a MODE, so it lives in the always-visible
                 banner, not a popover. The dot marks the window's CURRENT breakpoint
                 (Tailwind default screens — a custom theme.screens host only shifts

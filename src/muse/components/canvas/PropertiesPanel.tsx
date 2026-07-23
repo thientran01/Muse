@@ -899,7 +899,7 @@ function ClassChip({ token, onRemove }: { token: string; onRemove?: () => void }
   return (
     <span
       title={token}
-      className="group/chip inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-muted ring-1 ring-line/10"
+      className="group/chip inline-flex max-w-full items-baseline rounded-md bg-surface-raised px-1.5 py-0.5 font-mono text-chip text-fg-muted ring-1 ring-line/10"
     >
       {variants && <span className="shrink-0 text-accent-hover">{variants}:</span>}
       <span className="truncate">{base}</span>
@@ -932,7 +932,7 @@ function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: bo
       onClick={() => onChange(!pinned)}
       aria-pressed={pinned}
       title={pinned ? 'Release the forced hover state' : "Force this element's :hover styles on"}
-      className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-4 ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+      className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-chip ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
         pinned ? 'bg-accent/15 text-accent-hover ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
       }`}
     >
@@ -964,7 +964,7 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
   const shown = expanded ? tokens : tokens.slice(0, COLLAPSE_AT)
   const hidden = tokens.length - shown.length
   const chipBtn =
-    'rounded-md px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg-faint ring-1 ring-line/10 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+    'rounded-md px-1.5 py-0.5 font-mono text-chip text-fg-faint ring-1 ring-line/10 transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
 
   const submit = () => {
     const adds = draft.split(/\s+/).filter(Boolean)
@@ -1035,7 +1035,7 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
               placeholder="p-4 hover:bg-…"
               aria-label="Add classes — Enter to apply"
               aria-invalid={invalid.length > 0}
-              className={`w-28 rounded-md bg-transparent px-1.5 py-0.5 font-mono text-[10px] leading-4 text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
+              className={`w-28 rounded-md bg-transparent px-1.5 py-0.5 font-mono text-chip text-fg outline-none ring-1 transition placeholder:text-fg-faint ${
                 invalid.length > 0 ? 'ring-rose-500/40' : 'ring-line/20 focus:ring-accent/50'
               }`}
             />

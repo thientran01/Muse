@@ -271,7 +271,7 @@ export function MuseToolbar({
                 manta sits flush with the icons when expanded, then the box grows
                 back to the label width at 1fr in the collapsed FAB. */}
             <span className="flex">
-              <span className="pl-1 pr-2.5 text-sm font-medium text-fg">Muse</span>
+              <span className="pl-1 pr-2.5 text-row font-medium text-fg">Muse</span>
             </span>
           </span>
         </button>
