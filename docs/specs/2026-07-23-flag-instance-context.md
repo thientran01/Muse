@@ -59,7 +59,7 @@ forced muse-mcp republish.
 2. **`draftFromElement`** (`src/muse/components/canvas/CanvasMode.tsx`) — derives
    `crumbs` / `usage` / `instanceIndex,instanceCount` via `canvasChain(el.node)` +
    `getElementInfo(el.node)` + the helpers. Both capture entry points (shift-click
-   and the four refusal `refuse(...)` sites) flow through it, so refusal-born flags
+   and the five refusal `refuse(...)` sites) flow through it, so refusal-born flags
    get the same enrichment. No signature change to `useCanvasMode`'s `onFlag`.
 3. **Server** (`handleFlag`, `server/museCore.ts`) — validates `usage.fileName`
    with the same `resolveInSrc` gate as the main loc and stores it repo-relative;

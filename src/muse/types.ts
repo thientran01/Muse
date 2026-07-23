@@ -168,6 +168,9 @@ export type Flag = {
   reason?: string
   // Instance context (see FlagDraft): authored file:line:col = where the pixels live;
   // usage + instance = which rendered instance. `usage.file` is repo-relative like `file`.
+  // Like the locs, captured at flag-time and may DRIFT (a list reorders/grows before the
+  // agent resolves; the count is document-wide, not per-container) — a hint alongside
+  // text/comment, not ground truth.
   crumbs?: string[]
   usage?: { file: string; line: number; column: number; tag: string }
   instanceIndex?: number

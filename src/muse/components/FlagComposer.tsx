@@ -59,20 +59,23 @@ export function FlagComposer({
   }
 
   // Clamp to the viewport so a flag dropped near an edge stays fully on screen. The
-  // reserve leaves room for the (optional) reason + error lines so the card never clips.
+  // reserve leaves room for the (optional) instance + reason + error lines so the
+  // card never clips.
   const left = Math.max(8, Math.min(pos.x + 14, window.innerWidth - 272))
-  const top = Math.max(8, Math.min(pos.y + 14, window.innerHeight - 232))
+  const top = Math.max(8, Math.min(pos.y + 14, window.innerHeight - 252))
   const firstClass = draft.className.split(/\s+/).filter(Boolean)[0]
   const basename = draft.fileName.split(/[\\/]/).pop() ?? draft.fileName
   // Instance readout — only when the element is authored inside a shared component
   // (usage present) or repeats on the page. Crumbs run outermost → nearest, so the
-  // last one names the component the designer would say they clicked.
+  // last one names the component the designer would say they clicked. Segments stay
+  // terse ("2 of 3", "in X.tsx") because truncate clips from the END — the usage
+  // filename is the newest information here and must survive a longer crumb.
   const nearestCrumb = draft.crumbs?.[draft.crumbs.length - 1]
   const usageBase = draft.usage ? (draft.usage.fileName.split(/[\\/]/).pop() ?? draft.usage.fileName) : null
   const instanceLine = [
     nearestCrumb,
-    draft.instanceCount ? `instance ${draft.instanceIndex} of ${draft.instanceCount}` : null,
-    usageBase ? `used in ${usageBase}` : null,
+    draft.instanceCount ? `${draft.instanceIndex} of ${draft.instanceCount}` : null,
+    usageBase ? `in ${usageBase}` : null,
   ]
     .filter(Boolean)
     .join(' · ')

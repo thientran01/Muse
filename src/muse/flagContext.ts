@@ -11,13 +11,19 @@ export type ChainLoc = { fileName: string; line: number; column: number; tag: st
 
 // Same-file check across the two locator strategies: the data-muse-loc stamp yields
 // repo-RELATIVE paths while the fiber fallback yields ABSOLUTE ones, so a mixed chain
-// can spell one file two ways. Normalize separators + case (win32) and treat a
-// path-suffix match as the same file rather than a false cross-file hit.
+// can spell one file two ways. Normalize separators + case (win32); the path-suffix
+// bridge fires ONLY across that absolute/relative mix — two paths from the SAME
+// strategy must match exactly, or `legacy/src/X.tsx` would swallow `src/X.tsx` and
+// pickUsage would silently skip a real cross-file ancestor.
 const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+const isAbsolute = (p: string) => p.startsWith('/') || /^[a-z]:\//.test(p)
 function sameFile(a: string, b: string): boolean {
   const na = norm(a)
   const nb = norm(b)
-  return na === nb || na.endsWith('/' + nb) || nb.endsWith('/' + na)
+  if (na === nb) return true
+  const absA = isAbsolute(na)
+  if (absA === isAbsolute(nb)) return false
+  return absA ? na.endsWith('/' + nb) : nb.endsWith('/' + na)
 }
 
 // The nearest chain ancestor authored in a DIFFERENT file than the leaf — the usage-site

@@ -40,8 +40,10 @@ server.registerTool(
       '(component breadcrumb), `usage` (the nearest containing element authored in a DIFFERENT ' +
       'file — the usage site; edit or delete THIS instance there, edit styles at the main ' +
       'file:line), and `instanceIndex`/`instanceCount` ("2 of 3" in document order) to pin which ' +
-      'rendered instance was meant. Default returns only OPEN flags. Read each flag, make the ' +
-      'edit at its file:line, then call resolve_flag.',
+      'rendered instance was meant. Instance context is captured at flag-time and may be stale ' +
+      'by resolve-time (a list reordered or grew; the count is document-wide) — treat it as a ' +
+      'disambiguating hint alongside `text` and `comment`, not ground truth. Default returns ' +
+      'only OPEN flags. Read each flag, make the edit at its file:line, then call resolve_flag.',
     inputSchema: {
       status: z
         .enum(['open', 'resolved', 'all'])

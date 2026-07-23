@@ -147,6 +147,18 @@ describe('pickUsage — nearest cross-file ancestor', () => {
     expect(pickUsage([])).toBeUndefined()
   })
 
+  it('treats two RELATIVE paths where one is a suffix of the other as different files', () => {
+    // The suffix bridge exists only for the absolute-fiber vs relative-stamp mix — two
+    // stamped (relative) paths must match exactly, or a vendored/legacy copy of a file
+    // (`legacy/src/FigureCaption.tsx`) would swallow the app's own `src/FigureCaption.tsx`
+    // and pickUsage would skip a real cross-file ancestor.
+    const chain = [
+      loc('src/FigureCaption.tsx', 2, 'figcaption'),
+      loc('legacy/src/FigureCaption.tsx', 5, 'div'),
+    ]
+    expect(pickUsage(chain)?.fileName).toBe('legacy/src/FigureCaption.tsx')
+  })
+
   it('does not count an absolute vs repo-relative spelling of the SAME file as cross-file', () => {
     // Mixed locator strategies: the leaf resolved via the repo-relative data-muse-loc
     // stamp, an ancestor via the fiber fallback's absolute win32 path.

@@ -21,6 +21,8 @@ export type Flag = {
   // component file, same for every instance. `usage` is the nearest containing element
   // authored in a different file (the usage-site container); instanceIndex/Count is
   // "2 of 3" among same-loc elements in document order. Older flags omit all three.
+  // Captured at flag-time like the locs — may be stale by resolve-time (list reordered
+  // or grew; the count is document-wide). A disambiguating hint, not ground truth.
   crumbs?: string[] // component breadcrumb, outermost → nearest
   usage?: { file: string; line: number; column: number; tag: string }
   instanceIndex?: number
