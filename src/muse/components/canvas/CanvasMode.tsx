@@ -7,7 +7,8 @@ import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
 import type { CanvasElement, FlagDraft, HistoryEntry, ReorderChild, Reorderable, SharedConst, StyleMutation } from '../../types'
 import { FlagComposer } from '../FlagComposer'
-import { getSourceLocation } from '../../sourceLocation'
+import { getElementInfo, getSourceLocation } from '../../sourceLocation'
+import { instanceOf, pickUsage } from '../../flagContext'
 import { pinHover } from '../../forcedState'
 import { composeVariant, currentBreakpoint, SCREEN_MIN, targetApplies, type BpTarget } from '../../style/screens'
 import { pasteDiff, snapshotMutations } from '../../style/copyPaste'
@@ -181,10 +182,16 @@ function directText(node: HTMLElement): string {
 // the live className + a text snippet so the agent gets file:line:col + tag + class +
 // text + intent — the precision edge over a bare component-name annotation. `extra`
 // seeds the intent (and property/reason) when the flag is born from a Canvas refusal.
+// Instance context (crumbs/usage/instance) rides along so a flag on an element authored
+// inside a shared component still identifies WHICH rendered instance was meant — the
+// authored loc alone pins the component file for every instance on the page.
 function draftFromElement(
   el: CanvasElement,
   extra?: { property?: string; reason?: string; comment?: string },
 ): FlagDraft {
+  const crumbs = getElementInfo(el.node)?.crumbs
+  const usage = pickUsage(canvasChain(el.node))
+  const instance = instanceOf(el.node)
   return {
     fileName: el.fileName,
     line: el.line,
@@ -195,6 +202,9 @@ function draftFromElement(
     comment: extra?.comment ?? '',
     property: extra?.property,
     reason: extra?.reason,
+    ...(crumbs && crumbs.length > 0 ? { crumbs } : {}),
+    ...(usage ? { usage } : {}),
+    ...(instance ?? {}),
   }
 }
 

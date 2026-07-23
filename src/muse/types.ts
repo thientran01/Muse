@@ -136,6 +136,15 @@ export type FlagDraft = {
   comment: string // the user's plain-English intent
   property?: string // refusal flags: which property they reached for (e.g. 'marginTop')
   reason?: string // refusal flags: why Canvas refused
+  // Instance context — present when the flagged element is authored inside a shared
+  // component. `usage` is the nearest containing element authored in a DIFFERENT file
+  // (usually the consuming page — NOT the `<Component />` call-site line, which never
+  // reaches the DOM). instanceIndex/Count = "2 of 3" among same-loc elements in
+  // document order, so "this one" survives even when the usage container is a .map().
+  crumbs?: string[] // component breadcrumb, outermost → nearest (fiber owner walk)
+  usage?: { fileName: string; line: number; column: number; tag: string }
+  instanceIndex?: number // 1-based, only when instanceCount > 1
+  instanceCount?: number
 }
 
 export type FlagStatus = 'open' | 'resolved'
@@ -157,6 +166,15 @@ export type Flag = {
   text: string
   property?: string
   reason?: string
+  // Instance context (see FlagDraft): authored file:line:col = where the pixels live;
+  // usage + instance = which rendered instance. `usage.file` is repo-relative like `file`.
+  // Like the locs, captured at flag-time and may DRIFT (a list reorders/grows before the
+  // agent resolves; the count is document-wide, not per-container) — a hint alongside
+  // text/comment, not ground truth.
+  crumbs?: string[]
+  usage?: { file: string; line: number; column: number; tag: string }
+  instanceIndex?: number
+  instanceCount?: number
   createdAt: string
   resolvedAt: string | null
   resolution: string | null // the agent's note, written via resolve_flag

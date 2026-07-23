@@ -16,6 +16,17 @@ export type Flag = {
   text: string
   property?: string
   reason?: string
+  // Instance context (newer Muse, optional): the authored file:line:col above is where
+  // the element's pixels live — for an element inside a shared component that's the
+  // component file, same for every instance. `usage` is the nearest containing element
+  // authored in a different file (the usage-site container); instanceIndex/Count is
+  // "2 of 3" among same-loc elements in document order. Older flags omit all three.
+  // Captured at flag-time like the locs — may be stale by resolve-time (list reordered
+  // or grew; the count is document-wide). A disambiguating hint, not ground truth.
+  crumbs?: string[] // component breadcrumb, outermost → nearest
+  usage?: { file: string; line: number; column: number; tag: string }
+  instanceIndex?: number
+  instanceCount?: number
   createdAt: string
   resolvedAt: string | null
   resolution: string | null

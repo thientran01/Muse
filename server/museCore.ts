@@ -1167,6 +1167,29 @@ async function handleFlag(req: IncomingMessage, res: ServerResponse, ctx: MuseCo
       return Number.isFinite(n) && n > m ? n : m
     }, 0)
     const num = Math.max(data.nextId, maxId + 1)
+    // Instance context is ADVISORY — a malformed usage/instance never rejects the flag
+    // (the work-order matters more than the disambiguator), it's just dropped. usage.file
+    // goes through the same src/ gate + repo-relative conversion as the main loc.
+    let usage: Flag['usage']
+    if (d?.usage && typeof d.usage.fileName === 'string') {
+      const uAbs = resolveInSrc(ctx.root, d.usage.fileName)
+      const uLine = Number(d.usage.line)
+      const uColumn = Number(d.usage.column)
+      if (uAbs && Number.isFinite(uLine) && Number.isFinite(uColumn)) {
+        usage = {
+          file: relOf(ctx.root, uAbs),
+          line: uLine,
+          column: uColumn,
+          tag: typeof d.usage.tag === 'string' ? d.usage.tag : '',
+        }
+      }
+    }
+    const crumbs = Array.isArray(d?.crumbs)
+      ? d.crumbs.filter((c): c is string => typeof c === 'string').slice(0, 4)
+      : []
+    const iIdx = Number(d?.instanceIndex)
+    const iCnt = Number(d?.instanceCount)
+    const hasInstance = Number.isInteger(iIdx) && Number.isInteger(iCnt) && iIdx >= 1 && iCnt >= iIdx
     const flag: Flag = {
       id: `f_${num}`,
       comment: typeof d?.comment === 'string' ? d.comment.trim() : '',
@@ -1179,6 +1202,9 @@ async function handleFlag(req: IncomingMessage, res: ServerResponse, ctx: MuseCo
       text: typeof d?.text === 'string' ? d.text : '',
       property: typeof d?.property === 'string' ? d.property : undefined,
       reason: typeof d?.reason === 'string' ? d.reason : undefined,
+      ...(crumbs.length > 0 ? { crumbs } : {}),
+      ...(usage ? { usage } : {}),
+      ...(hasInstance ? { instanceIndex: iIdx, instanceCount: iCnt } : {}),
       createdAt: new Date().toISOString(),
       resolvedAt: null,
       resolution: null,
