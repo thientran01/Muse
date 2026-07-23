@@ -1519,7 +1519,7 @@ export function CanvasMode({
           z-20 keeps it above the properties panel (same overlay container). */}
       {hint && (
         <div
-          className={`absolute z-20 max-w-[240px] rounded-md bg-surface/95 px-2.5 py-1.5 text-field text-fg-muted shadow-lg ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none ${hint.kind === 'refusal' ? 'pointer-events-auto' : 'pointer-events-none'}`}
+          className={`absolute z-20 max-w-[240px] rounded-md bg-surface/95 px-2.5 py-1.5 text-field text-fg-muted shadow-lg ring-1 ring-hairline backdrop-blur animate-muse-step motion-reduce:animate-none ${hint.kind === 'refusal' ? 'pointer-events-auto' : 'pointer-events-none'}`}
           style={{ top: hint.y + 14, left: hint.x + 14 }}
         >
           <div>{hint.text}</div>
@@ -1527,7 +1527,7 @@ export function CanvasMode({
             <button
               type="button"
               onClick={() => setFlagDraft({ draft: hint.draft!, x: hint.x, y: hint.y })}
-              className="mt-1.5 inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-1 text-field font-medium text-accent-fg transition hover:bg-accent/20 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="mt-1.5 inline-flex items-center gap-1 rounded bg-tint px-2 py-1 text-field font-medium text-accent-fg transition hover:bg-tint-strong active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             >
               Flag it for your agent
             </button>
@@ -1665,7 +1665,7 @@ export function CanvasMode({
               which collides with exactly the narrow-window responsive testing the
               switcher serves — wrapping to a second row beats clipping. PR-14
               (banner lifecycle) refines narrow-width behavior properly. */}
-          <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] animate-muse-drop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-surface/95 px-4 py-2 text-row text-fg-faint shadow-lg ring-1 ring-line/10 backdrop-blur motion-reduce:animate-none">
+          <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] animate-muse-drop flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-surface/95 px-4 py-2 text-row text-fg-faint shadow-lg ring-1 ring-hairline backdrop-blur motion-reduce:animate-none">
             {/* Breakpoint-target pills — a MODE, so it lives in the always-visible
                 banner, not a popover. The dot marks the window's CURRENT breakpoint
                 (Tailwind default screens — a custom theme.screens host only shifts
@@ -1691,7 +1691,7 @@ export function CanvasMode({
                         active
                           ? mismatch
                             ? 'bg-note/10 text-note-text ring-1 ring-note/25'
-                            : 'bg-line/15 text-fg'
+                            : 'bg-hairline-strong text-fg'
                           : 'text-fg-faint hover:text-fg'
                       }`}
                     >
@@ -1749,14 +1749,14 @@ export function CanvasMode({
                     onMouseEnter={() => setHintPeek(true)}
                     aria-label="Show the gesture hints"
                     title="Show the gesture hints"
-                    className="rounded-full px-1.5 py-0.5 text-fg-faint transition hover:bg-line/10 hover:text-fg"
+                    className="rounded-full px-1.5 py-0.5 text-fg-faint transition hover:bg-wash hover:text-fg"
                   >
                     ?
                   </button>
                 </>
               )
             })()}
-            <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-line/10 hover:text-fg">
+            <button onClick={() => setActive(false)} className="rounded-full px-2 py-0.5 text-fg-muted transition hover:bg-wash hover:text-fg">
               Done
             </button>
           </div>
@@ -1790,7 +1790,7 @@ function camelToKebab(s: string): string {
 // banner's text line, so the bar holds its height and never wraps to a second row.
 function BannerKbd({ children }: { children: string }) {
   return (
-    <kbd className="mx-px inline-block rounded border border-line/25 bg-line/10 px-1 py-px align-middle font-mono text-field font-semibold leading-none text-fg-muted">
+    <kbd className="mx-px inline-block rounded border border-hairline-strong bg-scrim px-1 py-px align-middle font-mono text-field font-semibold leading-none text-fg-muted">
       {children}
     </kbd>
   )

@@ -19,10 +19,10 @@ export function UndoRedoBar({ canUndo, canRedo, loading, onUndo, onRedo, onRever
     // stack empties and refills (undo-all then edit, revert then edit), so a keyframe
     // entrance would replay distractingly mid-work (Emil: don't animate frequent
     // state). It just appears, quietly.
-    <div className="pointer-events-auto flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10">
+    <div className="pointer-events-auto flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-hairline">
       <HistoryBtn onClick={onUndo} disabled={!canUndo || loading} label="Undo" icon={<ArrowUUpLeft size={16} />} />
       <HistoryBtn onClick={onRedo} disabled={!canRedo || loading} label="Redo" icon={<ArrowUUpRight size={16} />} />
-      <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
+      <span className="mx-0.5 h-5 w-px shrink-0 bg-hairline-strong" />
       <HistoryBtn
         onClick={onRevert}
         disabled={!canUndo || loading}
@@ -56,7 +56,7 @@ function HistoryBtn({
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-30 motion-reduce:active:scale-100 ${
         danger
           ? 'text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 focus-visible:ring-rose-500/40'
-          : 'text-fg-faint hover:bg-line/10 hover:text-fg focus-visible:ring-accent/50'
+          : 'text-fg-faint hover:bg-wash hover:text-fg focus-visible:ring-focus'
       }`}
     >
       {icon}

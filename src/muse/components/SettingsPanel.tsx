@@ -20,7 +20,7 @@ function CornerPicker({ corner, onPick }: { corner: DockCorner; onPick: (c: Dock
     <div
       role="radiogroup"
       aria-label="Toolbar position"
-      className="relative h-16 w-full rounded-lg border border-line/15 bg-line/5"
+      className="relative h-16 w-full rounded-lg border border-hairline-strong bg-scrim"
     >
       {CORNERS.map((c) => (
         <button
@@ -31,8 +31,8 @@ function CornerPicker({ corner, onPick }: { corner: DockCorner; onPick: (c: Dock
           aria-label={c.label}
           title={c.label}
           onClick={() => onPick(c.id)}
-          className={`absolute ${c.pos} h-4 w-6 rounded-[4px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-            corner === c.id ? 'bg-accent' : 'bg-line/30 hover:bg-line/60'
+          className={`absolute ${c.pos} h-4 w-6 rounded-[4px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+            corner === c.id ? 'bg-accent' : 'bg-track hover:bg-track-hover'
           }`}
         />
       ))}
@@ -58,8 +58,8 @@ export function SettingsPanel() {
             aria-checked={prefs.zen}
             aria-label="Hide Muse chrome"
             onClick={() => museStore.setPrefs({ zen: !prefs.zen })}
-            className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-              prefs.zen ? 'bg-accent' : 'bg-line/30'
+            className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+              prefs.zen ? 'bg-accent' : 'bg-track'
             }`}
           >
             {/* The knob slides via transform, not `left` — compositor-only, and
@@ -81,7 +81,7 @@ export function SettingsPanel() {
         </p>
       </div>
 
-      <div className="h-px bg-line/10" />
+      <div className="h-px bg-hairline" />
 
       <div className="space-y-1.5">
         <span className="text-eyebrow uppercase text-fg-faint">Shortcuts</span>

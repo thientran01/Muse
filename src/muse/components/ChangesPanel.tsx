@@ -87,7 +87,7 @@ export function ChangesPanel() {
           {changes.map((c) => {
             const basename = c.fileName.split('/').pop() ?? c.fileName
             return (
-              <li key={c.fileName} className="rounded-lg border border-line/10 bg-line/5 px-2.5 py-2">
+              <li key={c.fileName} className="rounded-lg border border-hairline bg-scrim px-2.5 py-2">
                 <p className="flex items-baseline gap-1.5 text-row font-medium leading-snug text-fg">
                   <span className="truncate" title={c.fileName}>{basename}</span>
                   {/* fg-muted, not fg-faint: this count is the panel's load-bearing number
@@ -98,7 +98,7 @@ export function ChangesPanel() {
                 </p>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {c.labels.map((label, i) => (
-                    <span key={i} title={label} className="max-w-full truncate rounded-md bg-line/10 px-1.5 py-0.5 text-field font-medium leading-none text-fg-muted">
+                    <span key={i} title={label} className="max-w-full truncate rounded-md bg-wash px-1.5 py-0.5 text-field font-medium leading-none text-fg-muted">
                       {label}
                     </span>
                   ))}
@@ -111,7 +111,7 @@ export function ChangesPanel() {
 
       {/* The Share footer. Order of precedence: still probing → quiet; environment
           can't share → its reason; otherwise the action + the latest outcome. */}
-      <div className="border-t border-line/10 pt-2">
+      <div className="border-t border-hairline pt-2">
         {probe === null ? (
           <p className="px-0.5 text-field leading-relaxed text-fg-muted">Checking if sharing is available…</p>
         ) : !probe.available ? (
@@ -119,7 +119,7 @@ export function ChangesPanel() {
         ) : (
           <div className="flex flex-col gap-2">
             {share.status === 'done' && (
-              <div role="status" className="rounded-lg border border-line/10 bg-line/5 px-2.5 py-2">
+              <div role="status" className="rounded-lg border border-hairline bg-scrim px-2.5 py-2">
                 <p className="text-body-sm font-medium text-fg">Your changes are on their way.</p>
                 <p className="mt-0.5 truncate font-mono text-chip text-fg-muted" title={share.branch}>
                   {share.branch}
@@ -129,7 +129,7 @@ export function ChangesPanel() {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-fg px-2 py-1 text-field font-semibold text-surface transition hover:opacity-90 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-fg px-2 py-1 text-field font-semibold text-surface transition hover:opacity-90 active:scale-95 motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   >
                     View pull request
                     <ArrowSquareOut size={11} weight="bold" />
@@ -165,7 +165,7 @@ export function ChangesPanel() {
                 onClick={() => void doShare()}
                 disabled={share.status === 'sharing'}
                 aria-busy={share.status === 'sharing'}
-                className="w-full rounded-lg bg-fg py-1.5 text-body-sm font-semibold text-surface transition hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                className="w-full rounded-lg bg-fg py-1.5 text-body-sm font-semibold text-surface transition hover:opacity-90 active:scale-[0.98] motion-reduce:active:scale-100 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
                 {share.status === 'sharing' ? (
                   <span className="animate-pulse">Sharing…</span>

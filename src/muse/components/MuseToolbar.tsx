@@ -69,8 +69,8 @@ function IconBtn({ label, onClick, children, active, expanded, badge }: { label:
       aria-expanded={expanded}
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
-      className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
-        active || expanded ? 'bg-accent/10 text-accent-fg' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
+      className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus active:scale-95 motion-reduce:active:scale-100 ${
+        active || expanded ? 'bg-tint text-accent-fg' : 'text-fg-faint hover:bg-wash hover:text-fg'
       }`}
     >
       {children}
@@ -217,7 +217,7 @@ export function MuseToolbar({
           ref={popRef}
           data-muse-panel
           data-state={popState}
-          className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-line/10 backdrop-blur"
+          className="muse-pop w-64 overflow-hidden rounded-xl bg-surface/95 shadow-xl shadow-black/20 ring-1 ring-hairline backdrop-blur"
           style={{ '--muse-pop-origin': POP_ORIGIN[prefs.corner] } as React.CSSProperties}
           onKeyDown={(e) => {
             // An open color picker's own document-capture Esc handler runs first
@@ -235,12 +235,12 @@ export function MuseToolbar({
               type="button"
               onClick={() => setPop('none')}
               aria-label={`Close ${POP_TITLES[shownPop].toLowerCase()}`}
-              className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-line/5 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              className="-mr-1 rounded-md p-1 text-fg-faint transition hover:bg-scrim hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             >
               <X size={13} />
             </button>
           </header>
-          <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line/20">
+          <div className="max-h-[340px] overflow-y-auto px-3 pb-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-track-quiet">
             {shownPop === 'flags' ? <FlagsPanel /> : shownPop === 'changes' ? <ChangesPanel /> : shownPop === 'settings' ? <SettingsPanel /> : <TokenList portalContainer={portalContainer} />}
           </div>
         </div>
@@ -249,7 +249,7 @@ export function MuseToolbar({
       {/* The morphing pill. mounts with the FAB "catch" (only fires on a fresh
           mount — i.e. at startup — never on the in-place FAB↔toolbar morph,
           since the element persists across it). */}
-      <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-line/10 animate-muse-fab-catch motion-reduce:animate-none">
+      <div className="flex items-center rounded-full bg-surface-soft p-1.5 shadow-lg shadow-black/20 ring-1 ring-hairline animate-muse-fab-catch motion-reduce:animate-none">
         {/* Leading: manta + "Muse" label. Collapsed, the whole thing is the FAB
             (click to open). Expanded, the label collapses to 0 and this is just
             the manta (identity). */}
@@ -312,7 +312,7 @@ export function MuseToolbar({
           <IconBtn label="Settings" onClick={() => setPop((p) => (p === 'settings' ? 'none' : 'settings'))} expanded={pop === 'settings'}>
             <GearSix size={17} />
           </IconBtn>
-          <span className="mx-0.5 h-5 w-px shrink-0 bg-line/15" />
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-hairline-strong" />
           <IconBtn label="Close Muse" onClick={onClose}>
             <X size={16} weight="bold" />
           </IconBtn>
