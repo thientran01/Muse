@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight } from '@phosphor-icons/react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsOutSimple, ArrowsInSimple, TextAlignCenter, TextAlignJustify, TextAlignLeft, TextAlignRight, X } from '@phosphor-icons/react'
 import type { CanvasElement, SharedConst, StyleMutation, StyleProperty } from '../../types'
 import { componentNameFor } from '../../sourceLocation'
 import { isSafeClassToken, SHADOW, splitVariants } from '../../style/tailwindScales'
@@ -53,7 +53,7 @@ const sidesEqual = (s: Sides) => s.top === s.right && s.right === s.bottom && s.
 // A small caps label that heads each section (shared so every panel variant uses
 // the exact same heading treatment).
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] font-medium text-fg-muted">{children}</span>
+  return <span className="text-field font-medium text-fg-muted">{children}</span>
 }
 
 const divider = <div className="h-px bg-line/10" />
@@ -191,10 +191,10 @@ export function ColorRow({
     ) : null
 
   return (
-    <div className="flex items-center justify-between gap-2 text-[11px]">
+    <div className="flex items-center justify-between gap-2 text-field">
       <span className="min-w-0 select-none truncate text-fg-faint">{label}</span>
       {themed ? (
-        <span className="text-[10px] italic text-fg-faint" title="This color is themed via a CSS variable; edit the design token instead">
+        <span className="text-chip italic text-fg-faint" title="This color is themed via a CSS variable; edit the design token instead">
           themed
         </span>
       ) : (
@@ -247,7 +247,7 @@ export function SideGroup({
       {/* Sub-label: lighter + uppercase tracking, distinct from the bold section
           headers (Color / Spacing) so the hierarchy reads clearly. */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-fg-faint">{title}</span>
+        <span className="text-eyebrow uppercase text-fg-faint">{title}</span>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
@@ -309,7 +309,7 @@ export function Breadcrumb({
   // class attr stays on title either way.
   const names = crumbs.map((c) => componentNameFor(c.node))
   return (
-    <div className="flex flex-wrap items-center gap-0.5 text-[10px] leading-tight">
+    <div className="flex flex-wrap items-center gap-0.5 text-chip leading-tight">
       {crumbs.map((c, i) => {
         const ownName = names[i]
         const isBoundary = ownName !== null && (i === 0 || names[i - 1] !== ownName)
@@ -322,7 +322,7 @@ export function Breadcrumb({
               title={c.node.getAttribute('class') || c.tag}
               className={`max-w-[120px] truncate rounded px-1 py-0.5 font-mono transition ${
                 c.key === selectedKey
-                  ? 'bg-accent/15 text-accent'
+                  ? 'bg-accent/15 text-accent-fg'
                   : 'text-fg-faint hover:bg-line/10 hover:text-fg-muted'
               }`}
             >
@@ -338,7 +338,7 @@ export function Breadcrumb({
 // Maps the on-canvas band hues to their meaning.
 export function Legend({ hasGap }: { hasGap: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 text-[9px] text-fg-faint">
+    <div className="flex items-center gap-2.5 text-badge text-fg-faint">
       <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-emerald-400/70" />Padding</span>
       <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-amber-400/70" />Margin</span>
       {hasGap && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-sky-400/70" />Gap</span>}
@@ -378,7 +378,7 @@ export function TypeFields({ values, onPreview, onCommit }: { values: CanvasValu
       {values.type.fontFamily && (
         <div
           title={values.type.fontFamilyStack}
-          className="flex items-center justify-between rounded-md border border-line/15 bg-surface px-1.5 py-1 text-[11px]"
+          className="flex items-center justify-between rounded-md border border-line/15 bg-surface px-1.5 py-1 text-field"
         >
           <span className="shrink-0 select-none text-fg-faint">Font</span>
           <span className="truncate pl-2 font-mono text-fg-muted">{values.type.fontFamily.slice(0, 24)}</span>
@@ -467,7 +467,7 @@ function CornerGroup({ values, onPreview, onCommit }: { values: Corners } & Edit
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-fg-faint">Radius</span>
+        <span className="text-eyebrow uppercase text-fg-faint">Radius</span>
         <button
           onClick={() => setExpanded((v) => !v)}
           className="text-fg-faint transition hover:text-fg-muted"
@@ -522,7 +522,7 @@ function SegmentRow({
 }) {
   return (
     <div className="space-y-1">
-      <span className="text-[10px] uppercase tracking-wide text-fg-faint">{label}</span>
+      <span className="text-eyebrow uppercase text-fg-faint">{label}</span>
       <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-lg bg-line/10 p-0.5">
         {options.map((o) => (
           <button
@@ -533,7 +533,7 @@ function SegmentRow({
             aria-label={o.title}
             title={o.title}
             onClick={() => onPick(o.name)}
-            className={`flex flex-1 items-center justify-center rounded-md px-1 py-1 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+            className={`flex flex-1 items-center justify-center rounded-md px-1 py-1 text-chip font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
               current === o.name ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
             }`}
           >
@@ -586,10 +586,10 @@ function ShadowSwatches({ current, onCommit }: { current: string; onCommit: (m: 
         >
           <span
             aria-hidden
-            className="flex h-5 w-6 items-center justify-center rounded bg-surface text-[8px] leading-none text-fg-faint ring-1 ring-line/15"
+            className="flex h-5 w-6 items-center justify-center rounded bg-surface text-fg-faint ring-1 ring-line/15"
             style={p.value === 'none' ? undefined : { boxShadow: p.value }}
           >
-            {p.name === 'none' ? '×' : ''}
+            {p.name === 'none' ? <X size={10} /> : null}
           </span>
         </button>
       ))}
@@ -654,7 +654,7 @@ export function AppearanceFields({ values, onPreview, onCommit }: { values: Canv
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-wide text-fg-faint">Shadow</span>
+          <span className="text-eyebrow uppercase text-fg-faint">Shadow</span>
           <button
             onClick={() => setShadowCustom((v) => !v)}
             className="text-fg-faint transition hover:text-fg-muted"
@@ -840,7 +840,7 @@ function Section({ label, open, dot, action, onToggle, children }: { label: stri
         <span
           aria-hidden
           onClick={onToggle}
-          className={`cursor-pointer text-[10px] leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+          className={`cursor-pointer text-chip leading-none text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
         >
           ›
         </span>
@@ -933,7 +933,7 @@ function HoverPinChip({ pinned, onChange }: { pinned: boolean; onChange: (on: bo
       aria-pressed={pinned}
       title={pinned ? 'Release the forced hover state' : "Force this element's :hover styles on"}
       className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-chip ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-        pinned ? 'bg-accent/15 text-accent-hover ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
+        pinned ? 'bg-accent/15 text-accent-fg ring-accent/30' : 'text-fg-faint ring-line/10 hover:text-fg'
       }`}
     >
       :hov
@@ -986,11 +986,11 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
   return (
     <div className="space-y-1.5">
       {chains.length > 0 && (
-        <p className="text-[10px] text-fg-faint">
+        <p className="text-chip text-fg-faint">
           Variants: <span className="text-fg-muted">{chains.join(' · ')}</span>
         </p>
       )}
-      {tokens.length === 0 && !onPatch && <p className="text-[11px] text-fg-faint">No classes on this element.</p>}
+      {tokens.length === 0 && !onPatch && <p className="text-field text-fg-faint">No classes on this element.</p>}
       <div className="flex flex-wrap items-center gap-1">
         {shown.map((t, i) => (
           <ClassChip key={`${t}-${i}`} token={t} onRemove={onPatch ? () => onPatch([], [t]) : undefined} />
@@ -1048,7 +1048,7 @@ function ClassChips({ classNames, onPatch }: { classNames: string; onPatch?: (ad
       {/* Visible, screen-reader-reachable validation text (FlagComposer's inline
           idiom) — a rose ring alone names neither the tokens nor the why. */}
       {invalid.length > 0 && (
-        <p role="status" className="font-mono text-[10px] text-rose-300">
+        <p role="status" className="font-mono text-chip text-rose-300">
           Not a safe class token: {invalid.join(' ')}
         </p>
       )}
@@ -1079,7 +1079,7 @@ function ScopeToggle({
   const allLabel = shared.exported ? 'All uses' : `All ${shared.sameFileCount}`
   // Focus ring matches the panel's other interactive buttons (e.g. MuseToolbar).
   const seg =
-    'flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
+    'flex-1 rounded-md px-2 py-1 text-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'
   return (
     <div className="flex flex-col gap-1.5">
       <SectionLabel>

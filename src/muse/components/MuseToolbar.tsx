@@ -70,12 +70,12 @@ function IconBtn({ label, onClick, children, active, expanded, badge }: { label:
       // active = a sticky "on" state (e.g. animations paused) — the brick accent
       // tint + tone, the same selected/active treatment the panel header uses.
       className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-95 motion-reduce:active:scale-100 ${
-        active || expanded ? 'bg-accent/10 text-accent' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
+        active || expanded ? 'bg-accent/10 text-accent-fg' : 'text-fg-faint hover:bg-line/10 hover:text-fg'
       }`}
     >
       {children}
       {badge != null && badge > 0 && (
-        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white ring-1 ring-surface-soft">
+        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white ring-1 ring-surface-soft">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -230,7 +230,7 @@ export function MuseToolbar({
           }}
         >
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="text-[12px] font-semibold tracking-tight text-fg">{POP_TITLES[shownPop]}</span>
+            <span className="text-title font-semibold text-fg">{POP_TITLES[shownPop]}</span>
             <button
               type="button"
               onClick={() => setPop('none')}

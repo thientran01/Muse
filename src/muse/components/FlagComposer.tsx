@@ -80,7 +80,7 @@ export function FlagComposer({
       className="pointer-events-auto absolute z-30 w-[264px] rounded-xl bg-surface/95 p-3 shadow-xl ring-1 ring-line/10 backdrop-blur animate-muse-step motion-reduce:animate-none"
       style={{ top, left }}
     >
-      <div className="mb-1.5 flex items-baseline gap-1.5 text-[11px]">
+      <div className="mb-1.5 flex items-baseline gap-1.5 text-field">
         <span className="font-semibold text-fg">Flag for your agent</span>
         <span className="truncate font-mono text-fg-faint">
           {draft.tag}
@@ -88,7 +88,7 @@ export function FlagComposer({
         </span>
       </div>
       {draft.reason && (
-        <p className="mb-1.5 text-[11px] leading-snug text-fg-muted">Canvas can’t do this: {draft.reason}</p>
+        <p className="mb-1.5 text-field leading-snug text-fg-muted">Canvas can’t do this: {draft.reason}</p>
       )}
       <textarea
         ref={taRef}
@@ -105,18 +105,18 @@ export function FlagComposer({
         aria-label="Describe the change you want for your agent"
         placeholder="Describe the change you want…"
         rows={3}
-        className="w-full resize-none rounded-md border border-line/20 bg-line/5 px-2 py-1.5 text-[12px] leading-snug text-fg placeholder:text-fg-faint focus:border-fg/40 focus:outline-none focus:ring-1 focus:ring-fg/20"
+        className="w-full resize-none rounded-md border border-line/20 bg-line/5 px-2 py-1.5 text-body-sm leading-snug text-fg placeholder:text-fg-faint focus:border-fg/40 focus:outline-none focus:ring-1 focus:ring-fg/20"
       />
-      {error && <p className="mt-1 text-[11px] text-rose-300">{error}</p>}
+      {error && <p className="mt-1 text-field text-rose-300">{error}</p>}
       <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[10px] text-fg-faint" title={`${basename}:${draft.line}`}>
+        <span className="truncate font-mono text-chip text-fg-faint" title={`${basename}:${draft.line}`}>
           {basename}:{draft.line}
         </span>
         <div className="flex shrink-0 gap-1.5">
           <button
             type="button"
             onClick={onClose}
-            className={`rounded px-2 py-1 text-[11px] text-fg-muted transition hover:bg-line/10 hover:text-fg active:scale-95 motion-reduce:active:scale-100 ${btnFocus}`}
+            className={`rounded px-2 py-1 text-field text-fg-muted transition hover:bg-line/10 hover:text-fg active:scale-95 motion-reduce:active:scale-100 ${btnFocus}`}
           >
             Cancel
           </button>
@@ -124,7 +124,7 @@ export function FlagComposer({
             type="button"
             onClick={() => void submit()}
             disabled={busy}
-            className={`rounded bg-fg px-2.5 py-1 text-[11px] font-medium text-surface transition hover:opacity-90 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-50 ${btnFocus}`}
+            className={`rounded bg-fg px-2.5 py-1 text-field font-medium text-surface transition hover:opacity-90 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-50 ${btnFocus}`}
           >
             {busy ? 'Flagging…' : 'Flag it'}
           </button>

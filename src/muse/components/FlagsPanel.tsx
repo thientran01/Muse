@@ -35,7 +35,7 @@ export function FlagsPanel() {
 
   if (open.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-[12px] leading-relaxed text-fg-faint">
+      <p className="px-1 py-6 text-center text-body-sm leading-relaxed text-fg-faint">
         No flags yet.
         <br />
         {AGENT_HANDOFF
@@ -74,18 +74,18 @@ export function FlagsPanel() {
         return (
           <li key={f.id} className="rounded-lg border border-line/10 bg-line/5 px-2.5 py-2">
             <div className="flex items-start gap-2">
-              <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white">
+              <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white">
                 {ordinal}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="break-words text-[13px] font-medium leading-snug text-fg [overflow-wrap:anywhere]" title={f.comment || undefined}>
+                <p className="break-words text-row font-medium leading-snug text-fg [overflow-wrap:anywhere]" title={f.comment || undefined}>
                   {f.comment ? (
                     <span className="line-clamp-4">{f.comment}</span>
                   ) : (
                     <span className="font-normal text-fg-faint">(no note)</span>
                   )}
                 </p>
-                <p className="mt-1 flex items-center gap-1 font-mono text-[10px] text-fg-faint">
+                <p className="mt-1 flex items-center gap-1 font-mono text-chip text-fg-faint">
                   <span className="truncate" title={`${f.file}:${f.line}`}>
                     {basename}:{f.line}
                   </span>
@@ -93,7 +93,7 @@ export function FlagsPanel() {
                   <span>{f.tag}</span>
                 </p>
                 {missId === f.id && (
-                  <p className="mt-1 text-[10px] text-fg-faint">Couldn’t find it on the page — the code may have moved.</p>
+                  <p className="mt-1 text-chip text-fg-faint">Couldn’t find it on the page — the code may have moved.</p>
                 )}
                 <div className="mt-2 flex items-center gap-1">
                   <ActionBtn icon={<Check size={12} weight="bold" />} label="Resolve" primary disabled={isBusy} onClick={() => void act(f.id, () => resolveFlag(f.id))} />
@@ -119,8 +119,10 @@ export function FlagsPanel() {
   )
 }
 
-// A labeled action chip. `primary` (Resolve) gets the accent tint to read as the main
-// action; the default (Jump) is a quiet ghost — so the two never look interchangeable.
+// A labeled action chip. `primary` (Resolve) is the surface's one committing action,
+// so it takes the ink treatment (bg-fg/text-surface — the same primary as the Changes
+// panel's Share); the default (Jump) is a quiet ghost. Accent-on-tint text was dropped
+// here: brick on a 10% brick tint is 2.00:1 on the dark theme (fails AA). See the spec.
 function ActionBtn({
   icon,
   label,
@@ -139,8 +141,8 @@ function ActionBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
-        primary ? 'bg-accent/10 text-accent hover:bg-accent/15' : 'text-fg-muted hover:bg-line/10 hover:text-fg'
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-field font-medium transition active:scale-95 motion-reduce:active:scale-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+        primary ? 'bg-fg text-surface hover:opacity-90' : 'text-fg-muted hover:bg-line/10 hover:text-fg'
       }`}
     >
       {icon}

@@ -32,7 +32,7 @@ export function HoverHighlight({
       />
       {info && cursor && (
         <div
-          className="pointer-events-none absolute z-10 max-w-[260px] rounded-md bg-surface/95 px-2 py-1 font-mono text-[10.5px] leading-snug shadow-lg ring-1 ring-line/10 backdrop-blur"
+          className="pointer-events-none absolute z-10 max-w-[260px] rounded-md bg-surface/95 px-2 py-1 font-mono text-chip leading-snug shadow-lg ring-1 ring-line/10 backdrop-blur"
           style={{ top: tipTop, left: tipLeft }}
         >
           {info.crumbs.length > 0 && (
