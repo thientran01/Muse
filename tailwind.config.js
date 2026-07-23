@@ -55,6 +55,10 @@ export default {
         accent: {
           DEFAULT: 'rgb(var(--muse-accent) / <alpha-value>)',
           hover: 'rgb(var(--muse-accent-hover) / <alpha-value>)',
+          // Accent TEXT. --muse-accent never flips, so brick text on a brick tint
+          // is unreadable on dark (2.00:1) — this flips to terracotta on dark for
+          // AA, and stays brick on the warm-white light surface. See the spec.
+          fg: 'rgb(var(--muse-accent-fg) / <alpha-value>)',
         },
         surface: {
           DEFAULT: 'rgb(var(--muse-surface) / <alpha-value>)',
@@ -76,6 +80,64 @@ export default {
         // error's rose), theme-flipped like the diff tokens.
         note: 'rgb(var(--muse-note-tint) / <alpha-value>)',
         'note-text': 'rgb(var(--muse-note-text) / <alpha-value>)',
+        // Design-system alpha roles (2026-07-22). Pre-composited rgb() values, so
+        // they intentionally take NO /alpha modifier — a role is one token, never a
+        // fraction. Defined in muse.css as alpha of --muse-line/--muse-accent so
+        // they flip with the overlay theme. Used as bg-scrim, border-hairline, etc.
+        scrim: 'var(--muse-fill-recessed)',
+        wash: 'var(--muse-wash-hover)',
+        hairline: 'var(--muse-hairline)',
+        'hairline-strong': 'var(--muse-hairline-strong)',
+        'hairline-contrast': 'var(--muse-hairline-contrast)',
+        track: 'var(--muse-track)',
+        'track-quiet': 'var(--muse-track-quiet)',
+        'track-hover': 'var(--muse-track-hover)',
+        tint: 'var(--muse-tint-active)',
+        'tint-hover': 'var(--muse-tint-active-hover)',
+      },
+      // Design-system type scale — the dense overlay chrome (10–13px). Role-named
+      // so they can't collide with Tailwind's t-shirt-size keys (text-sm etc. stay
+      // stock for the docs site). Tuples carry size + leading (+ tracking); WEIGHT
+      // is never baked in — text-field genuinely splits 500/400, so a font-weight
+      // in the tuple would silently flip one bucket.
+      fontSize: {
+        row: ['var(--muse-text-row)', { lineHeight: '1.375' }],
+        title: ['var(--muse-text-panel-title)', { lineHeight: '1.375', letterSpacing: '-0.01em' }],
+        'body-sm': ['var(--muse-text-body-sm)', { lineHeight: '1.625' }],
+        field: ['var(--muse-text-field)', { lineHeight: '1.375' }],
+        eyebrow: ['var(--muse-text-eyebrow)', { lineHeight: '1.15', letterSpacing: '0.02em' }],
+        chip: ['var(--muse-text-chip)', { lineHeight: '16px' }],
+        badge: ['var(--muse-text-badge)', { lineHeight: '1' }],
+      },
+      // NOTE: no `letterSpacing` extend. The overlay's title (-0.01em) and eyebrow
+      // (0.02em) tracking are baked into their fontSize tuples above, so no standalone
+      // tracking-* key is needed — and overriding stock `tracking-tight`/`tracking-wide`
+      // (which the docs site uses 11×) would change the site. Aligning the site's
+      // tracking to the DS's -0.02em is a separate, visible decision, not this layer's.
+      borderRadius: {
+        // Role ladder (2026-07-22). The DS radius names are shifted one step vs
+        // Tailwind's, so role names are the only safe mapping — a name-based swap
+        // of rounded-md would grow every field 6px→8px. Values in muse.css.
+        knob: 'var(--muse-radius-knob)',
+        chip: 'var(--muse-radius-chip)',
+        field: 'var(--muse-radius-field)',
+        card: 'var(--muse-radius-card)',
+        panel: 'var(--muse-radius-panel)',
+        modal: 'var(--muse-radius-modal)',
+      },
+      boxShadow: {
+        dock: 'var(--muse-shadow-dock)',
+        pop: 'var(--muse-shadow-pop)',
+        modal: 'var(--muse-shadow-modal)',
+      },
+      backdropBlur: {
+        overlay: 'var(--muse-blur-overlay)',
+        scrim: 'var(--muse-blur-scrim)',
+      },
+      ringColor: {
+        // 2px focus-visible ring — the one disciplined accent alpha, now named so
+        // the PR-10 lint can ban raw ring-accent/50 without an exception.
+        focus: 'var(--muse-focus-ring)',
       },
       // A strong ease-out (Emil: the built-in curves are too weak) for the docs
       // site's interactions — press feedback, the feedback panel, page entrances.
@@ -86,9 +148,22 @@ export default {
       transitionTimingFunction: {
         DEFAULT: EASE.out,
         'out-strong': 'cubic-bezier(0.23, 1, 0.32, 1)',
+        // Symmetric ease for on-screen MORPHS (the dock FAB↔toolbar stretch) —
+        // easeOut's fast start lurches a morph. Mirrors muse.css's --muse-ease-in-out.
+        // Named `morph` (→ ease-morph), NOT `in-out`, because `in-out` is the stock
+        // key behind ease-in-out and overriding it would change that curve everywhere.
+        morph: 'cubic-bezier(0.65, 0, 0.35, 1)',
       },
       transitionDuration: {
         DEFAULT: DUR.base,
+        // The full DUR scale as named utilities, so a duration-* class binds to a
+        // token instead of an arbitrary ms value. Mirrors the EASE/DUR block above.
+        fast: DUR.fast,
+        base: DUR.base,
+        mid: DUR.mid,
+        slow: DUR.slow,
+        morph: '140ms',
+        pop: '150ms',
       },
       // Muse motion — keyframes describe WHAT moves; the `animation` block below
       // binds each to a duration + easing from the EASE/DUR tokens at the top of

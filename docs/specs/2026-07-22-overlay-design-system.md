@@ -380,7 +380,10 @@ theme: { extend: {
     chip:      ['var(--text-chip)',        { lineHeight: '16px' }],
     badge:     ['var(--text-badge)',       { lineHeight: '1' }],
   },
-  letterSpacing: { tight: '-0.02em', title: '-0.01em', wide: '0.02em' },
+  // No `letterSpacing` extend (revised during PR 1): the title (-0.01em) and
+  // eyebrow (0.02em) tracking are baked into the fontSize tuples above, and
+  // overriding stock tracking-tight/tracking-wide would change the docs site
+  // (11 uses). Aligning the site to the DS's -0.02em is a separate decision.
   borderRadius: {
     knob: 'var(--radius-2xs)', chip: 'var(--radius-xs)',  field: 'var(--radius-sm)',
     card: 'var(--radius-md)',  panel: 'var(--radius-lg-ov)', modal: 'var(--radius-xl-ov)',
@@ -398,9 +401,20 @@ theme: { extend: {
   boxShadow: { dock: 'var(--shadow-dock)', pop: 'var(--shadow-pop)', modal: 'var(--shadow-modal)' },
   backdropBlur: { overlay: 'var(--overlay-blur)', scrim: 'var(--scrim-blur)' },
   transitionDuration: { fast: DUR.fast, base: DUR.base, mid: DUR.mid, slow: DUR.slow, morph: '140ms', pop: '150ms' },
-  transitionTimingFunction: { 'in-out': 'cubic-bezier(0.65, 0, 0.35, 1)' },
+  // Named `morph` (→ ease-morph), NOT `in-out` (revised during PR 1): `in-out` is
+  // the stock key behind ease-in-out; overriding it would change that curve globally.
+  transitionTimingFunction: { morph: 'cubic-bezier(0.65, 0, 0.35, 1)' },
 }}
 ```
+
+**Implementation note (PR 1).** The CSS variables land in `muse.css` **`--muse-`-prefixed**
+(`--muse-text-field`, `--muse-fill-recessed`, `--muse-radius-field`, …) to match the existing 14
+overlay tokens and eliminate any collision with host/site `:root` vars — most concretely the
+`--radius-lg` clash, which the prefix sidesteps without needing the `-ov` suffix. The Tailwind
+**keys** and therefore the utility class names (`text-field`, `bg-scrim`, `rounded-field`) are exactly
+as tabled above; only the internal var names carry the prefix. The alpha roles are defined once in the
+base `[data-muse-ui]` block as `rgb(var(--muse-line) / N)` / `rgb(var(--muse-accent) / N)`, so they
+flip with the vars they derive from; only `--muse-accent-fg` needs a `[data-theme='light']` override.
 
 Docs-site protection is **structural, not procedural**: one config serves both surfaces. Adding keys
 under `extend` is safe; redefining a stock key is not. Every key above is a role name, so the

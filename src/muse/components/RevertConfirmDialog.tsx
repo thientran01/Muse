@@ -45,9 +45,9 @@ export function RevertConfirmDialog({
       >
         <div className="mb-1.5 flex items-center gap-2">
           <Warning size={16} weight="fill" className="text-rose-400" />
-          <h3 className="text-sm font-semibold text-fg">Revert to original?</h3>
+          <h3 className="text-row font-semibold text-fg">Revert to original?</h3>
         </div>
-        <p className="mb-4 text-xs leading-relaxed text-fg-muted">
+        <p className="mb-4 text-body-sm leading-relaxed text-fg-muted">
           {EPHEMERAL
             ? 'This will undo all Muse edits in this session and restore the page to how it started. This cannot be undone.'
             : 'This will undo all Muse edits in this session and restore the file to its state before you started. This cannot be undone.'}
@@ -57,14 +57,14 @@ export function RevertConfirmDialog({
             ref={cancelRef}
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 rounded-xl border border-line/10 py-2 text-sm text-fg transition hover:bg-line/5 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            className="flex-1 rounded-xl border border-line/10 py-2 text-row text-fg transition hover:bg-line/5 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex-1 rounded-xl bg-rose-500/20 py-2 text-sm font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
+            className="flex-1 rounded-xl bg-rose-500/20 py-2 text-row font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
           >
             {loading ? 'Reverting…' : 'Revert'}
           </button>
