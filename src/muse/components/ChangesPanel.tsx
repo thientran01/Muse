@@ -4,6 +4,7 @@ import { museShare, museShareProbe } from '../api'
 import { computeSessionChanges, type SessionChange } from '../sessionChanges'
 import { museStore, useMuseStore } from '../store'
 import type { ShareProbe } from '../types'
+import { EmptyState, Row } from './ui'
 
 // Fingerprint of the current net changes — compared against the at-share snapshot
 // so the footer can tell "new edits since the share" (offer Share again) apart from
@@ -69,11 +70,11 @@ export function ChangesPanel() {
 
   if (changes.length === 0 && share.status !== 'done') {
     return (
-      <p className="px-1 py-6 text-center text-body-sm leading-relaxed text-fg-faint">
+      <EmptyState>
         No changes yet.
         <br />
         Edits appear here as you work.
-      </p>
+      </EmptyState>
     )
   }
 
@@ -87,7 +88,7 @@ export function ChangesPanel() {
           {changes.map((c) => {
             const basename = c.fileName.split('/').pop() ?? c.fileName
             return (
-              <li key={c.fileName} className="rounded-card border border-hairline bg-scrim px-2.5 py-2">
+              <Row as="li" key={c.fileName}>
                 <p className="flex items-baseline gap-1.5 text-row font-medium leading-snug text-fg">
                   <span className="truncate" title={c.fileName}>{basename}</span>
                   {/* fg-muted, not fg-faint: this count is the panel's load-bearing number
@@ -103,7 +104,7 @@ export function ChangesPanel() {
                     </span>
                   ))}
                 </div>
-              </li>
+              </Row>
             )
           })}
         </ul>
@@ -119,7 +120,7 @@ export function ChangesPanel() {
         ) : (
           <div className="flex flex-col gap-2">
             {share.status === 'done' && (
-              <div role="status" className="rounded-card border border-hairline bg-scrim px-2.5 py-2">
+              <Row role="status">
                 <p className="text-body-sm font-medium text-fg">Your changes are on their way.</p>
                 <p className="mt-0.5 truncate font-mono text-chip text-fg-muted" title={share.branch}>
                   {share.branch}
@@ -147,7 +148,7 @@ export function ChangesPanel() {
                     You've since undone these edits here — the pull request still has them.
                   </p>
                 )}
-              </div>
+              </Row>
             )}
 
             {share.status === 'error' && (

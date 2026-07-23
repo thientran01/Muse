@@ -4,6 +4,7 @@ import { dismissFlag, refreshFlags, resolveFlag } from '../flagsActions'
 import { revealFlag } from '../flagLocate'
 import { EPHEMERAL, MOCK } from '../config'
 import { useMuseStore } from '../store'
+import { EmptyState, Row } from './ui'
 
 // Same gate shape as MuseToolbar's SHARE_UI / CanvasMode's BP_UI: in the demo
 // modes flags live in an in-browser array (api.ts ephemeralFlags) and no agent
@@ -15,7 +16,7 @@ import type { Flag } from '../types'
 // panel lists every OPEN flag, newest on top). Resolving a flag removes it from the list
 // (its job is done; the resolution still lives in .muse/flags.json). Each open flag carries
 // the same 1..N ordinal as its on-page pin. Actions are visually tiered: Resolve (primary,
-// accent), Jump (ghost), Dismiss (faint icon, isolated right).
+// ink), Jump (ghost), Dismiss (faint icon, isolated right).
 export function FlagsPanel() {
   const { flags } = useMuseStore()
   const [busy, setBusy] = useState<string | null>(null)
@@ -35,13 +36,13 @@ export function FlagsPanel() {
 
   if (open.length === 0) {
     return (
-      <p className="px-1 py-6 text-center text-body-sm leading-relaxed text-fg-faint">
+      <EmptyState>
         No flags yet.
         <br />
         {AGENT_HANDOFF
           ? 'Shift-click an element to hand one to your agent.'
           : 'Shift-click an element to flag it. Demo flags stay in your browser; with the backend on, your agent picks them up.'}
-      </p>
+      </EmptyState>
     )
   }
 
@@ -72,7 +73,7 @@ export function FlagsPanel() {
         const ordinal = open.length - i // newest-first display, so the oldest open flag stays #1 (matches the pins)
         const isBusy = busy === f.id
         return (
-          <li key={f.id} className="rounded-card border border-hairline bg-scrim px-2.5 py-2">
+          <Row as="li" key={f.id}>
             <div className="flex items-start gap-2">
               <span className="mt-px flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white">
                 {ordinal}
@@ -112,7 +113,7 @@ export function FlagsPanel() {
                 </div>
               </div>
             </div>
-          </li>
+          </Row>
         )
       })}
     </ul>

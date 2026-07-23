@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Flag, GearSix, Palette, PaperPlaneTilt, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
 import { EPHEMERAL, MOCK } from '../config'
@@ -6,6 +6,7 @@ import { usePresence } from '../hooks/usePresence'
 import { useTransientSurface } from '../hooks/useTransientSurface'
 import { useMuseStore } from '../store'
 import { computeSessionChanges } from '../sessionChanges'
+import { IconButton } from './ui'
 import { UfoIcon } from './UfoIcon'
 import { UndoRedoBar } from './UndoRedoBar'
 import { TokenList } from './TokenList'
@@ -52,35 +53,6 @@ const HOTSPOT_POS: Record<DockCorner, string> = {
   bl: 'bottom-0 left-0',
   tr: 'top-0 right-0',
   tl: 'top-0 left-0',
-}
-
-function IconBtn({ label, onClick, children, active, expanded, badge }: { label: string; onClick: () => void; children: ReactNode; active?: boolean; expanded?: boolean; badge?: number }) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      // `active` is only passed by toggle buttons (e.g. pause/resume animations), so
-      // emit aria-pressed only when it's defined — a plain action button stays
-      // undefined and renders no pressed semantic. Color is then not the lone signal.
-      // Popover TRIGGERS pass `expanded` instead: a disclosure announces
-      // expanded/collapsed, not pressed (the visual active tint is shared).
-      aria-pressed={expanded === undefined ? active : undefined}
-      aria-expanded={expanded}
-      // active = a sticky "on" state (e.g. animations paused) — the brick accent
-      // tint + tone, the same selected/active treatment the panel header uses.
-      className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus active:scale-95 motion-reduce:active:scale-100 ${
-        active || expanded ? 'bg-tint text-accent-fg' : 'text-fg-faint hover:bg-wash hover:text-fg'
-      }`}
-    >
-      {children}
-      {badge != null && badge > 0 && (
-        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white ring-1 ring-surface-soft">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      )}
-    </button>
-  )
 }
 
 export function MuseToolbar({
@@ -282,40 +254,40 @@ export function MuseToolbar({
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
           {SHARE_UI && (
-            <IconBtn
+            <IconButton
               label={changedFileCount > 0 ? `Changes, ${changedFileCount} file${changedFileCount === 1 ? '' : 's'}` : 'Changes'}
               onClick={() => setPop((p) => (p === 'changes' ? 'none' : 'changes'))}
               expanded={pop === 'changes'}
               badge={changedFileCount}
             >
               <PaperPlaneTilt size={17} />
-            </IconBtn>
+            </IconButton>
           )}
-          <IconBtn
+          <IconButton
             label={openFlagCount > 0 ? `Flags, ${openFlagCount} open` : 'Flags'}
             onClick={() => setPop((p) => (p === 'flags' ? 'none' : 'flags'))}
             expanded={pop === 'flags'}
             badge={openFlagCount}
           >
             <Flag size={17} />
-          </IconBtn>
-          <IconBtn label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} expanded={pop === 'tokens'}>
+          </IconButton>
+          <IconButton label="Design tokens" onClick={() => setPop((p) => (p === 'tokens' ? 'none' : 'tokens'))} expanded={pop === 'tokens'}>
             <Palette size={17} />
-          </IconBtn>
-          <IconBtn
+          </IconButton>
+          <IconButton
             label={animationsPaused ? 'Unfreeze page' : 'Freeze page'}
             onClick={onToggleAnimations}
             active={animationsPaused}
           >
             {animationsPaused ? <Play size={17} weight="fill" /> : <Pause size={17} />}
-          </IconBtn>
-          <IconBtn label="Settings" onClick={() => setPop((p) => (p === 'settings' ? 'none' : 'settings'))} expanded={pop === 'settings'}>
+          </IconButton>
+          <IconButton label="Settings" onClick={() => setPop((p) => (p === 'settings' ? 'none' : 'settings'))} expanded={pop === 'settings'}>
             <GearSix size={17} />
-          </IconBtn>
+          </IconButton>
           <span className="mx-0.5 h-5 w-px shrink-0 bg-hairline-strong" />
-          <IconBtn label="Close Muse" onClick={onClose}>
+          <IconButton label="Close Muse" onClick={onClose}>
             <X size={16} weight="bold" />
-          </IconBtn>
+          </IconButton>
           </div>
         </div>
       </div>
