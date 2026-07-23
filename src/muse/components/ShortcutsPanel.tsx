@@ -5,7 +5,7 @@
 
 export function Key({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-line/20 bg-line/5 px-1 font-mono text-[10px] leading-none text-fg-muted">
+    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-line/20 bg-line/5 px-1 font-mono text-chip leading-none text-fg-muted">
       {children}
     </kbd>
   )
@@ -35,7 +35,7 @@ export function ShortcutsPanel() {
   return (
     <ul className="flex flex-col gap-1.5">
       {SHORTCUTS.map((s) => (
-        <li key={s.what} className="flex items-center justify-between gap-3 text-[12px]">
+        <li key={s.what} className="flex items-center justify-between gap-3 text-body-sm">
           <span className="flex shrink-0 items-center gap-1">
             {s.keys.map((k) => (
               <Key key={k}>{k}</Key>

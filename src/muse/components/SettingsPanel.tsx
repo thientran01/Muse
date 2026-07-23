@@ -45,13 +45,13 @@ export function SettingsPanel() {
   return (
     <div className="flex flex-col gap-3">
       <div className="space-y-1.5">
-        <span className="text-[10px] uppercase tracking-wide text-fg-faint">Position</span>
+        <span className="text-eyebrow uppercase text-fg-faint">Position</span>
         <CornerPicker corner={prefs.corner} onPick={(corner) => museStore.setPrefs({ corner })} />
       </div>
 
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[12px] font-medium text-fg">Hide Muse chrome</span>
+          <span className="text-body-sm font-medium text-fg">Hide Muse chrome</span>
           <button
             type="button"
             role="switch"
@@ -74,7 +74,7 @@ export function SettingsPanel() {
             />
           </button>
         </div>
-        <p className="text-[11px] leading-relaxed text-fg-muted">
+        <p className="text-field leading-relaxed text-fg-muted">
           The toolbar and banner stay out of sight — just the editing tools. Press{' '}
           <Key>R</Key> to peek at the toolbar (it tucks itself away again),
           or hover its corner any time.
@@ -84,7 +84,7 @@ export function SettingsPanel() {
       <div className="h-px bg-line/10" />
 
       <div className="space-y-1.5">
-        <span className="text-[10px] uppercase tracking-wide text-fg-faint">Shortcuts</span>
+        <span className="text-eyebrow uppercase text-fg-faint">Shortcuts</span>
         <ShortcutsPanel />
       </div>
     </div>

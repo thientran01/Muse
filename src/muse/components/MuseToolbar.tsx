@@ -75,7 +75,7 @@ function IconBtn({ label, onClick, children, active, expanded, badge }: { label:
     >
       {children}
       {badge != null && badge > 0 && (
-        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-white ring-1 ring-surface-soft">
+        <span className="absolute right-0 top-0 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-badge font-semibold leading-none text-white ring-1 ring-surface-soft">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -230,7 +230,7 @@ export function MuseToolbar({
           }}
         >
           <header className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="text-[12px] font-semibold tracking-tight text-fg">{POP_TITLES[shownPop]}</span>
+            <span className="text-title font-semibold text-fg">{POP_TITLES[shownPop]}</span>
             <button
               type="button"
               onClick={() => setPop('none')}
