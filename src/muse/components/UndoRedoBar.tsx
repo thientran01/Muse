@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
 import { ArrowCounterClockwise, ArrowUUpLeft, ArrowUUpRight } from '@phosphor-icons/react'
+import { IconButton } from './ui'
 
 type Props = {
   canUndo: boolean
@@ -20,46 +20,16 @@ export function UndoRedoBar({ canUndo, canRedo, loading, onUndo, onRedo, onRever
     // entrance would replay distractingly mid-work (Emil: don't animate frequent
     // state). It just appears, quietly.
     <div className="pointer-events-auto flex items-center rounded-full bg-surface-soft p-1.5 shadow-dock ring-1 ring-hairline">
-      <HistoryBtn onClick={onUndo} disabled={!canUndo || loading} label="Undo" icon={<ArrowUUpLeft size={16} />} />
-      <HistoryBtn onClick={onRedo} disabled={!canRedo || loading} label="Redo" icon={<ArrowUUpRight size={16} />} />
+      <IconButton onClick={onUndo} disabled={!canUndo || loading} label="Undo">
+        <ArrowUUpLeft size={16} />
+      </IconButton>
+      <IconButton onClick={onRedo} disabled={!canRedo || loading} label="Redo">
+        <ArrowUUpRight size={16} />
+      </IconButton>
       <span className="mx-0.5 h-5 w-px shrink-0 bg-hairline-strong" />
-      <HistoryBtn
-        onClick={onRevert}
-        disabled={!canUndo || loading}
-        label="Revert to original"
-        icon={<ArrowCounterClockwise size={16} />}
-        danger
-      />
+      <IconButton onClick={onRevert} disabled={!canUndo || loading} label="Revert to original" danger>
+        <ArrowCounterClockwise size={16} />
+      </IconButton>
     </div>
-  )
-}
-
-function HistoryBtn({
-  onClick,
-  disabled,
-  label,
-  icon,
-  danger = false,
-}: {
-  onClick: () => void
-  disabled: boolean
-  label: string
-  icon: ReactNode
-  danger?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      aria-label={label}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-30 motion-reduce:active:scale-100 ${
-        danger
-          ? 'text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 focus-visible:ring-rose-500/40'
-          : 'text-fg-faint hover:bg-wash hover:text-fg focus-visible:ring-focus'
-      }`}
-    >
-      {icon}
-    </button>
   )
 }
