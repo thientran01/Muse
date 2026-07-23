@@ -64,7 +64,10 @@ export function RevertConfirmDialog({
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex-1 rounded-panel bg-rose-500/20 py-2 text-row font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
+            // The focus ring matches Cancel's deliberately: the dialog traps focus and
+            // starts on Cancel, so Tab lands here — on the one irreversible action in
+            // the overlay — and it must show focus at least as clearly as the safe button.
+            className="flex-1 rounded-panel bg-rose-500/20 py-2 text-row font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
           >
             {loading ? 'Reverting…' : 'Revert'}
           </button>

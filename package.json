@@ -11,6 +11,7 @@
     "preview:demo": "vite preview",
     "muse-server": "tsx server/standaloneServer.ts",
     "build:overlay-css": "node scripts/build-overlay-css.mjs",
+    "lint:tokens": "node scripts/lint-tokens.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc"
