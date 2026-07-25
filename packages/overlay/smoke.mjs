@@ -16,6 +16,13 @@ assert.equal(typeof root.getApiBase, 'function', '. → getApiBase')
 // must fail loudly rather than ship a working-looking bundle.
 assert.equal(typeof root.isMock, 'function', '. → isMock')
 assert.equal(typeof root.isEphemeral, 'function', '. → isEphemeral')
+// And the consts must be ABSENT, not merely superseded. Checking the functions
+// exist doesn't catch a back-compat `export const MOCK = isMock()` added alongside
+// them — which is the specific regression the spec warns about, because a const in
+// the package entry re-snapshots at import for every consumer that imports it.
+for (const dead of ['MOCK', 'EPHEMERAL']) {
+  assert.ok(!(dead in root), `. → ${dead} must NOT be exported (0.2.0 removed it; a const re-latches at import)`)
+}
 
 const { musePlugin } = await import('./dist/vite.js')
 const p = musePlugin()

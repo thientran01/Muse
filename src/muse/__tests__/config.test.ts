@@ -1,10 +1,18 @@
 // ============================================================
 //  CONFIG — the flags are read LAZILY, and that is the whole point
 // ------------------------------------------------------------
-//  Every assertion here is written to FAIL against the pre-fix code, where MOCK
-//  and EPHEMERAL were `export const` resolved once at import. That is the bar:
-//  a test that passes both before and after would prove nothing about the bug it
-//  claims to pin.
+//  The REGRESSION PINS below — every test in the two describe blocks about lazy
+//  reads — are written to FAIL against the pre-fix code, where MOCK and EPHEMERAL
+//  were `export const` resolved once at import. That is the bar: a test that
+//  passes both before and after proves nothing about the bug it claims to pin.
+//  Verified by simulating the pre-fix module, not by assuming.
+//
+//  Exactly ONE test here is not a regression pin — "keeps an explicit empty
+//  configureMuse() value" — and it says so at its site. It guards a different and
+//  still-live hazard (a `||` fall-through, where '' is falsy). Labelled honestly
+//  because a test file claiming a uniform bar it doesn't meet is worse than one
+//  that states its mix. The other nine were each checked against a simulated
+//  pre-fix module and do fail there.
 //
 //  The bug: the live case study's overlay chunk shipped as `<script async>`,
 //  which executes as soon as it downloads regardless of parser position, so it
@@ -119,10 +127,16 @@ describe('getApiBase reads ambient config lazily too', () => {
   })
 
   it('keeps an explicit empty configureMuse() value rather than falling back', async () => {
-    // '' is a meaningful choice (same-origin), not "unset" — so it must beat the
-    // ambient source, which a plain `??` chain would get wrong. The fresh module
-    // is what makes this meaningful: without it the previous test's override
-    // would still be in place and this would pass for the wrong reason.
+    // NOT a regression pin — this passes against the pre-fix module too (verified
+    // by simulating it: the old code snapshotted '' at import, then configureMuse
+    // overwrote it with '', so the ambient value never got a chance to matter).
+    //
+    // It guards a DIFFERENT hazard, and a live one: '' is a meaningful choice
+    // (same-origin), not "unset". Write the fall-through as `state.apiBase || …`
+    // instead of the null check and this goes red, because '' is falsy and the
+    // ambient 'http://ambient:1111' wins — a real bug, and the obvious refactor.
+    // The fresh module matters too: without it the previous test's override would
+    // still be set and this would pass for the wrong reason.
     const { configureMuse, getApiBase } = await freshConfig()
     setHostGlobal({ apiBase: 'http://ambient:1111' })
     configureMuse({ apiBase: '' })
@@ -154,6 +168,18 @@ describe('parseJson turns a non-JSON body into something a designer can act on',
     // confusing property access downstream. (The Response constructor requires a
     // null body for 204 — an empty string is not a legal 204.)
     await expect(parseJson(new Response(null, { status: 204 }))).rejects.toThrow(/non-JSON response/)
+  })
+
+  it('gives a readable message when the body cannot be read at all', async () => {
+    // An aborted fetch or a stream error rejects res.text() itself. That happens
+    // BEFORE any parsing, so it is not covered by the JSON.parse guard — it needs
+    // its own, or the raw rejection reaches the toast exactly like the original bug.
+    const broken = {
+      status: 500,
+      text: () => Promise.reject(new TypeError('network error')),
+    } as unknown as Response
+    await expect(parseJson(broken)).rejects.toThrow(/could not be read \(HTTP 500\)/)
+    await expect(parseJson(broken)).rejects.not.toThrow(/network error/)
   })
 
   it('returns the parsed value for a valid JSON body', async () => {

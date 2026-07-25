@@ -97,7 +97,7 @@ Motion system in `tailwind.config.js` (Emil Kowalski rules): all animations use 
 | `src/muse/useCanvasMode.ts` | Canvas selection + gesture logic |
 | `src/muse/components/MuseToolbar.tsx` | Morphing FAB/toolbar dock + the Design tokens popover |
 | `src/muse/api.ts` | Fetch wrappers for `/api/muse/*` |
-| `src/muse/config.ts` | Runtime config (MOCK, EPHEMERAL, apiBase) |
+| `src/muse/config.ts` | Runtime config — `isMock()`, `isEphemeral()`, `getApiBase()`, all read lazily per call (never snapshotted at import; `npm run lint:config` enforces it) |
 | `src/muse/types.ts` | Shared types (client ↔ server contract) |
 | `server/museCore.ts` | All handler logic (canvas edits + design tokens) |
 | `server/musePlugin.ts` | Vite adapter (thin wrapper over museCore) |

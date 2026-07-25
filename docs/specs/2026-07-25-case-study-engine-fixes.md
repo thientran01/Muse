@@ -102,6 +102,34 @@ tool. This one checks for *scope*, which is a syntactic-structure property — a
 proxy it through indentation, and a false negative in this particular lint silently reintroduces the
 exact bug the task exists to remove.
 
+**Review found four ways to defeat the first version, so it does more than ask "is there a function
+parent?"** Each gap below was demonstrated by running the lint against a probe file, not argued:
+
+- **Bindings, not names.** `import { isMock as demoMode }` and `import * as cfg; cfg.isMock()` are
+  the same read. Resolved through the import declarations, so an alias *is* caught and a local
+  helper coincidentally named `isMock` is *not*.
+- **Indirection.** `const f = isMock; f()` — and the realistic one, `const read = () => isMock();
+  const X = read()` — both run at import. Module-scope functions that transitively reach a guarded
+  call are computed to a fixpoint, then their module-scope call sites are flagged.
+- **IIFEs and callbacks.** `(() => isMock())()` and `[0].forEach(() => isMock())` both run at import
+  despite having a function parent.
+- **`getApiBase` is guarded too.** It had the same latch (see item 3 below), so `const BASE =
+  getApiBase()` at module scope must fail the same way. `apiUrl`'s arrow in `api.ts` correctly does
+  not trip it.
+
+**Scope is every file that can import the config, not just the overlay chrome** — `src/**` plus
+`packages/*/src/**`. An earlier revision scanned only `src/muse` "to match `lint-tokens.mjs`", which
+was a bad transfer: the token lint's narrower scope exists because design tokens genuinely don't
+apply to the docs site, whereas this invariant applies wherever config is imported. That revision
+did not cover `packages/overlay/src/index.ts` — **the exact file this spec names as the worst place
+to reinstall the latch.**
+
+**Residual limits, stated because a guarantee nobody can describe the edges of is not a guarantee.**
+The check is per-file and static, so it cannot see a wrapper exported from module A and called at
+module scope in module B, dynamic dispatch through an object property, `eval`, or a call reached via
+a class method. All are far from the shape that caused the incident — a top-level
+`const X = !EPHEMERAL && !MOCK` — which it must catch every time, and does.
+
 ### Shorthand awareness is what makes the class-conflict check actually work
 
 Before authoring a `classPatch.add` token, resolve which `StyleProperty` claims it by scanning

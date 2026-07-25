@@ -39,7 +39,19 @@ const apiUrl = (path: string) => `${getApiBase()}${path}`
 // their parse in a try/catch with a designed fallback already — routing those
 // through here would swap one swallowed error for another.
 export async function parseJson<T>(res: Response): Promise<T> {
-  const body = await res.text()
+  let body: string
+  try {
+    // Inside the try on purpose: reading the body can itself reject (an aborted
+    // fetch, a stream error mid-download, an already-consumed body). Left outside,
+    // that rejection reaches setError() raw — the same unreadable-toast failure
+    // this helper exists to prevent, just with a different trigger.
+    body = await res.text()
+  } catch {
+    throw new Error(
+      `The Muse backend's response could not be read (HTTP ${res.status}). ` +
+        `The connection may have dropped mid-request.`,
+    )
+  }
   try {
     return JSON.parse(body) as T
   } catch {

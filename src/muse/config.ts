@@ -20,9 +20,19 @@
 //  construction, so the fix is to stop making it race: read when asked.
 //  Deliberately NOT cached after the first successful read — a latch is just the
 //  same bug with a shorter window. A host's config script always runs during page
-//  load, long before the first read (a render effect or a click); a mid-session
-//  flip would be a host bug, and defending against it costs the property that
-//  makes the whole class of failure impossible.
+//  load, long before the first read (a render effect or a click).
+//
+//  The accepted cost, named so nobody has to rediscover it: a host that mutates
+//  window.__MUSE__ MID-SESSION can now strand state that was previously
+//  unreachable-but-consistent. The concrete places are MuseOverlay's historyControls
+//  (the file-content undo stack vs the DOM-snapshot ephemeral stack — a flip makes
+//  whichever stack holds the edits invisible, and the undo bar unmounts on
+//  hasHistory), api.ts's module-level ephemeralFlags (flags captured on one side of
+//  a flip aren't in the list read from the other), and museWrite, which no-ops in
+//  demo mode while its callers still record a HistoryEntry. None of these is
+//  reachable by a host that configures Muse once during page load, which is every
+//  documented integration. Latching after first read would trade all of it back for
+//  the production incident above — a worse deal.
 //  Defaults give a real host with no config the production behavior: live
 //  backend, real writes, same-origin API.
 // ============================================================
@@ -90,7 +100,8 @@ export function isEphemeral(): boolean {
 // in-process.
 //
 // Two tiers, and the tiering is the point: an EXPLICIT configureMuse() call (a
-// <MuseOverlay apiBase=…/> prop) is a deliberate decision and wins forever;
+// host calling configureMuse({ apiBase }) before render, per docs/HOSTING.md §3)
+// is a deliberate decision and wins forever;
 // everything else is ambient config read live, for the same reason isMock() and
 // isEphemeral() are. `window.__MUSE__.apiBase` used to be captured at import
 // alongside them and lost the identical race — a host that set it after the
@@ -100,7 +111,8 @@ export function isEphemeral(): boolean {
 // An explicit configureMuse({ apiBase: '' }) is NOT null and still wins.
 const state: { apiBase: string | null } = { apiBase: null }
 
-// Host hook (e.g. a <MuseOverlay apiBase=…/> prop) to set config after load.
+// Host hook to set config after load — called as a bare function before render
+// (docs/HOSTING.md §3). NOT a component prop: MuseOverlay takes none.
 export function configureMuse(opts: { apiBase?: string }): void {
   if (typeof opts.apiBase === 'string') state.apiBase = opts.apiBase.replace(/\/+$/, '')
 }

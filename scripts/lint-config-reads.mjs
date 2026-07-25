@@ -2,32 +2,50 @@
 //  CONFIG-READ SCOPE LINT
 // ------------------------------------------------------------
 //  Guards the lazy-config invariant (docs/specs/2026-07-25-case-study-engine-fixes.md).
-//  isMock() / isEphemeral() must never be called at MODULE SCOPE — a call that
-//  runs at import time snapshots the answer, which is the bug this whole change
+//  isMock() / isEphemeral() / getApiBase() must never run at MODULE SCOPE — a call
+//  that runs at import time snapshots the answer, which is the bug this change
 //  removed: the live case study's overlay chunk shipped as `<script async>`,
 //  executed before the page's inline `window.__MUSE__` script, and latched
 //  EPHEMERAL to false for the session (49 failed API calls on a backend-less host).
 //
 //  Why this matters MORE than the original bug: a partial regression is worse than
 //  the old behavior. If one module-scope read survives while the rest read lazily,
-//  the overlay goes half-ephemeral — the Share UI resolves at import while edits
+//  the overlay goes half-ephemeral — the Share UI resolving at import while edits
 //  resolve per call — and the failure no longer has one explanation.
-//
-//  Scope is Muse's own chrome, matching lint-tokens.mjs. Excluded:
-//    • src/muse/config.ts — defines them; its own module-scope code is the reader.
-//    • generated/, __tests__/
-//    • everything outside src/muse (src/site + src/main.tsx are the docs SITE, not
-//      the overlay, and ship in no package). src/main.tsx is still written to the
-//      rule anyway — see its Root component — because an exception nobody checks
-//      is how a rule quietly stops being true.
 //
 //  MECHANISM — a real parser, deliberately, unlike lint-tokens.mjs's regex. That
 //  script matches CLASS STRINGS, where a regex is exactly right. This one asks
-//  whether a call site is lexically inside a function, which is a structural
-//  question: a regex would have to proxy it through indentation, and a false
-//  negative here silently reinstalls the bug. Concretely, CanvasMode.tsx has a
-//  read inside an IIFE inside returned JSX — legitimately per-render, and an
-//  indentation heuristic cannot tell it apart from a top-level one.
+//  whether a call site runs at import, which is structural. CanvasMode has a read
+//  inside an IIFE inside returned JSX — legitimately per-render, and no
+//  indentation heuristic can tell it from a top-level one.
+//
+//  Three things it does that a naive "is there a function parent?" check misses,
+//  each found by review probing this script rather than reading it:
+//    • BINDINGS, not names. `import { isMock as demoMode }` and
+//      `import * as cfg; cfg.isMock()` are the same read. Resolved through the
+//      import declarations, so a local helper coincidentally named isMock is NOT
+//      flagged and an alias IS.
+//    • INDIRECTION. `const f = isMock; f()` and, more realistically,
+//      `const read = () => isMock(); const X = read()` both run at import. Module-
+//      scope functions that transitively reach a guarded call are computed to a
+//      fixpoint, then their module-scope call sites are flagged.
+//    • IIFEs and callbacks. `(() => isMock())()` and `[0].forEach(() => isMock())`
+//      both run at import even though the call has a function parent.
+//
+//  RESIDUAL LIMITS — stated because a guarantee nobody can describe the edges of
+//  is not a guarantee. This is per-file and static, so it cannot see: a wrapper
+//  exported from module A and called at module scope in module B; dynamic dispatch
+//  through an object property or array; `eval`; or a call reached via a class
+//  method. Those are all far from the shape that caused the incident (a top-level
+//  `const X = !EPHEMERAL && !MOCK`), which is what this must catch every time.
+//
+//  SCOPE — every file that can import the config, not just the overlay chrome.
+//  An earlier revision scanned only src/muse "to match lint-tokens.mjs"; that was
+//  a bad transfer. The token lint's scope exists because design tokens genuinely
+//  don't apply to the docs site. The config invariant applies wherever config is
+//  imported — including packages/overlay/src/index.ts, the published entry the
+//  spec itself names as the worst place to reinstall the latch.
+//  Excluded: config.ts (it defines them), generated/, __tests__/, node_modules/, dist/.
 //
 //  Run: npm run lint:config
 // ============================================================
@@ -40,59 +58,174 @@ import _traverse from '@babel/traverse'
 const traverse = _traverse.default ?? _traverse
 
 const root = process.cwd()
-const scanDir = path.join(root, 'src/muse')
-const GUARDED = new Set(['isMock', 'isEphemeral'])
+const GUARDED = new Set(['isMock', 'isEphemeral', 'getApiBase'])
+// The module that exports them, however a file spells the path to it.
+const CONFIG_MODULE = /(^|\/)muse\/config$|(^|\/)config$/
+
+const SKIP_DIRS = new Set(['generated', '__tests__', 'node_modules', 'dist', '.tmp'])
+const roots = [path.join(root, 'src'), path.join(root, 'packages')]
 
 const files = []
-;(function walk(dir) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name)
-    if (e.isDirectory()) {
-      if (e.name !== 'generated' && e.name !== '__tests__') walk(p)
-    } else if (/\.tsx?$/.test(e.name) && p !== path.join(scanDir, 'config.ts')) {
-      files.push(p)
+for (const dir of roots) {
+  if (!fs.existsSync(dir)) continue
+  ;(function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name)
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name)) walk(p)
+      } else if (/\.tsx?$/.test(e.name) && path.resolve(p) !== path.join(root, 'src/muse/config.ts')) {
+        files.push(p)
+      }
     }
-  }
-})(scanDir)
-
-// True when `fn` is invoked immediately where it sits — `(() => …)()`. Such a
-// function body DOES run at import time, so having a function parent is not
-// sufficient to prove a call is deferred; walk past IIFEs before deciding.
-const isImmediatelyInvoked = (fnPath) =>
-  fnPath.parentPath?.isCallExpression() && fnPath.parentPath.node.callee === fnPath.node
+  })(dir)
+}
 
 let violations = 0
+
 for (const file of files) {
-  const ast = parse(fs.readFileSync(file, 'utf8'), {
-    sourceType: 'module',
-    plugins: ['typescript', 'jsx'],
+  const src = fs.readFileSync(file, 'utf8')
+  const rel = path.relative(root, file)
+
+  let ast
+  try {
+    ast = parse(src, { sourceType: 'module', plugins: ['typescript', 'jsx'], sourceFilename: rel })
+  } catch (err) {
+    // Name the file. A bare SyntaxError with only line/col sends you hunting.
+    console.error(`${rel}  could not be parsed: ${err.message}`)
+    violations++
+    continue
+  }
+
+  // ---- which local names refer to the guarded exports -------------------------
+  const guardedLocals = new Set() // `isMock`, or an alias like `demoMode`
+  const namespaceLocals = new Set() // `cfg` from `import * as cfg from './config'`
+  for (const node of ast.program.body) {
+    if (node.type !== 'ImportDeclaration') continue
+    if (!CONFIG_MODULE.test(node.source.value.replace(/\.[jt]sx?$/, ''))) continue
+    for (const s of node.specifiers) {
+      if (s.type === 'ImportSpecifier' && GUARDED.has(s.imported.name)) guardedLocals.add(s.local.name)
+      else if (s.type === 'ImportNamespaceSpecifier') namespaceLocals.add(s.local.name)
+    }
+  }
+  if (guardedLocals.size === 0 && namespaceLocals.size === 0) continue
+
+  // A call node that reads config, directly. Covers optional calls (`isMock?.()`)
+  // and namespace member calls (`cfg.isMock()`).
+  const isDirectGuardedCall = (node) => {
+    if (node.type !== 'CallExpression' && node.type !== 'OptionalCallExpression') return false
+    const c = node.callee
+    if (c.type === 'Identifier') return guardedLocals.has(c.name)
+    if (c.type === 'MemberExpression' || c.type === 'OptionalMemberExpression') {
+      return (
+        c.object.type === 'Identifier' &&
+        namespaceLocals.has(c.object.name) &&
+        c.property.type === 'Identifier' &&
+        GUARDED.has(c.property.name)
+      )
+    }
+    return false
+  }
+
+  // `const f = isMock` — an indirect binding that is just as good as the import.
+  traverse(ast, {
+    VariableDeclarator(p) {
+      const { id, init } = p.node
+      if (id.type === 'Identifier' && init?.type === 'Identifier' && guardedLocals.has(init.name)) {
+        guardedLocals.add(id.name)
+      }
+    },
   })
 
+  // ---- which module-scope functions transitively read config ------------------
+  // name -> { readsDirectly, calls: Set<name> }
+  const fns = new Map()
+  const fnNameOf = (p) => {
+    if (p.node.type === 'FunctionDeclaration' && p.node.id) return p.node.id.name
+    const parent = p.parentPath
+    if (parent?.node.type === 'VariableDeclarator' && parent.node.id.type === 'Identifier') {
+      return parent.node.id.name
+    }
+    return null
+  }
+
   traverse(ast, {
-    CallExpression(p) {
-      const callee = p.node.callee
-      if (callee.type !== 'Identifier' || !GUARDED.has(callee.name)) return
+    'FunctionDeclaration|FunctionExpression|ArrowFunctionExpression'(p) {
+      const name = fnNameOf(p)
+      if (!name || p.getFunctionParent()) return // module-scope-bound functions only
+      const entry = { readsDirectly: false, calls: new Set() }
+      p.traverse({
+        'CallExpression|OptionalCallExpression'(inner) {
+          if (isDirectGuardedCall(inner.node)) entry.readsDirectly = true
+          const c = inner.node.callee
+          if (c.type === 'Identifier') entry.calls.add(c.name)
+        },
+      })
+      fns.set(name, entry)
+    },
+  })
 
-      // Walk out through every enclosing function. An ordinary function stops the
-      // walk (the call is deferred until someone invokes it); an IIFE does not,
-      // because it runs right here.
-      let fn = p.getFunctionParent()
-      while (fn && isImmediatelyInvoked(fn)) fn = fn.getFunctionParent()
-      if (fn) return
+  const reads = new Set([...fns].filter(([, v]) => v.readsDirectly).map(([k]) => k))
+  for (let changed = true; changed; ) {
+    changed = false
+    for (const [name, v] of fns) {
+      if (reads.has(name)) continue
+      for (const callee of v.calls) {
+        if (reads.has(callee)) {
+          reads.add(name)
+          changed = true
+          break
+        }
+      }
+    }
+  }
 
-      violations++
-      console.error(
-        `${path.relative(root, file)}:${p.node.loc.start.line}  ${callee.name}()\n` +
-          '    module-scope config read — the value is snapshotted at import.\n' +
-          '    Move it into the component/function body that uses it.',
-      )
+  // ---- does this call site run at import? -------------------------------------
+  // An immediately-invoked function runs where it sits, so it does not defer.
+  // Neither does a callback handed to something invoked at module scope — the
+  // callback's function parent is not its own callee, so check the enclosing call.
+  const runsAtImport = (p) => {
+    let cur = p
+    for (;;) {
+      const fn = cur.getFunctionParent()
+      if (!fn) return true // nothing between here and the module body
+      const parent = fn.parentPath
+      const iife = parent?.isCallExpression() && parent.node.callee === fn.node
+      // A function literal passed as an argument runs iff the receiving call runs.
+      const asArgument = parent?.isCallExpression() && parent.node.arguments.includes(fn.node)
+      if (!iife && !asArgument) return false // a real deferral (component body, handler, method)
+      cur = parent
+    }
+  }
+
+  const report = (line, what, why) => {
+    violations++
+    console.error(`${rel}:${line}  ${what}\n    ${why}\n    Move it into the function or component body that uses it.`)
+  }
+
+  traverse(ast, {
+    'CallExpression|OptionalCallExpression'(p) {
+      if (isDirectGuardedCall(p.node)) {
+        if (runsAtImport(p)) {
+          report(p.node.loc.start.line, 'config read at module scope', 'the value is snapshotted at import.')
+        }
+        return
+      }
+      // A call to a module-scope helper that reaches a guarded call.
+      const c = p.node.callee
+      if (c.type === 'Identifier' && reads.has(c.name) && runsAtImport(p)) {
+        report(
+          p.node.loc.start.line,
+          `${c.name}() at module scope reads config`,
+          'indirect, but it still runs at import and snapshots the answer.',
+        )
+      }
     },
   })
 }
 
 if (violations > 0) {
   console.error(
-    `\n[lint-config] ${violations} module-scope read${violations === 1 ? '' : 's'}.\n` +
+    `\n[lint-config] ${violations} problem${violations === 1 ? '' : 's'}.\n` +
       'See docs/specs/2026-07-25-case-study-engine-fixes.md § "Lazy config reads".',
   )
   process.exit(1)
