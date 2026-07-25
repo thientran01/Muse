@@ -1,6 +1,6 @@
 {
   "name": "@thientran01/muse",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Point at anything in your running React app, shape it like a design tool, and Muse rewrites the real source. A dev-only visual editing overlay — deterministic, keyless, no model call.",
   "type": "module",
   "exports": {

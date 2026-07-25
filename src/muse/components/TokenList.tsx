@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { museTokenEdit, museTokens, museWrite, type DesignToken } from '../api'
-import { EPHEMERAL, MOCK } from '../config'
+import { isEphemeral, isMock } from '../config'
 import { museStore } from '../store'
 import type { HistoryEntry } from '../types'
 import { ColorRow, SectionLabel } from './canvas/PropertiesPanel'
@@ -77,7 +77,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
     document.documentElement.style.setProperty(name, value)
   }
   const clearLive = (name: string) => {
-    if (MOCK || EPHEMERAL) return // the override IS the persistence in the demo
+    if (isMock() || isEphemeral()) return // the override IS the persistence in the demo
     document.documentElement.style.removeProperty(name)
   }
 
@@ -87,7 +87,7 @@ export function TokenList({ portalContainer }: { portalContainer?: React.RefObje
     applyLive(name, value)
     setTokens((cur) => cur?.map((t) => (t.name === name ? { ...t, value } : t)) ?? null)
     // MOCK / EPHEMERAL: no backend write — the live override IS the applied state.
-    if (MOCK || EPHEMERAL) return
+    if (isMock() || isEphemeral()) return
     setBusy(name)
     setNotice(null)
     try {

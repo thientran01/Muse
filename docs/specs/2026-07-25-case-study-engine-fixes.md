@@ -137,18 +137,44 @@ touch `src/muse/api.ts` in non-overlapping regions; merge sequentially and rebas
    `isEphemeral()`. The `flag()` helper is unchanged; only the binding moves from const to call. The
    header comment currently documents the at-import resolution *as a constraint hosts must respect*
    — it is rewritten to say the opposite.
-2. Every consumer moves to the getter. Module-scope reads are **restructured**, not renamed:
-   `MuseToolbar.tsx:30`'s `SHARE_UI` becomes a value computed in the component body.
-3. `museReorderable` gains the `if (isEphemeral()) return { reorderable: false, reason: … }`
-   short-circuit its 14 siblings have. It fails closed by contract already, so demo mode simply
-   shows no drag handle instead of making a network call it shouldn't.
-4. `parseJson` replaces bare `await res.json()` where a non-JSON body would otherwise surface raw.
-   `museShare` is exempt — its documented contract reads the body regardless of HTTP status and uses
-   `ok` as the discriminator.
-5. `packages/overlay/src/index.ts` stops re-exporting the consts and exports the getters instead;
+2. Every consumer moves to the getter. Module-scope reads are **restructured**, not renamed.
+   There turned out to be **four, not the one this spec originally named** — an exhaustive
+   parse-based sweep found the rest:
+   - `MuseToolbar.tsx:30` `SHARE_UI` → `shareUi` in the component body.
+   - `CanvasMode.tsx:30` `BP_UI` → `bpUi` in the component body.
+   - `FlagsPanel.tsx:12` `AGENT_HANDOFF` → `agentHandoff` in the component body. This one sits
+     *between two import statements*, so any sweep assuming module code starts after the last
+     import misses it entirely.
+   - `src/main.tsx:16` — a top-level `render()` argument with no named const to grep for. Now a
+     `Root` component. It is outside the lint's scope (the docs site is not the overlay) and its
+     value comes from a build-time Vite var, so the race cannot bite there; it is fixed anyway
+     because an exception nobody checks is how the rule quietly stops being true.
+3. **`getApiBase` had the same bug and nobody had noticed.** `window.__MUSE__.apiBase` was
+   snapshotted at import in the same object literal as the flags, so a host setting both after the
+   bundle loaded got `ephemeral` honored and `apiBase` silently dropped. Now two-tier: an explicit
+   `configureMuse()` call wins permanently (a deliberate host decision), everything else reads
+   ambient per call. Not in the vault's list — found reading the file.
+4. `museReorderable` gains the `if (isEphemeral()) return { reorderable: false, reason: … }`
+   short-circuit its 14 siblings have — but **as a documented backstop, not a live fix.** Both call
+   sites (`CanvasMode.tsx:775`, `:785`) sit *after* CanvasMode's own ephemeral branch, which answers
+   from the live DOM and returns. So the network calls the vault observed were only possible
+   *because* `EPHEMERAL` had wrongly latched false: **item #5 is a symptom of item #1, not an
+   independent bug.** The guard's comment records that its `reorderable: false` is deliberately
+   *not* the shape CanvasMode produces — that branch can fail open (an in-browser move can't corrupt
+   a file) and has the parent element this module doesn't.
+5. `parseJson` replaces bare `await res.json()` at the **10** sites where a throw reaches the UI.
+   The five probe-style calls (`museStyleScope`, `museTextEditable`, `museReorderable`,
+   `museShareProbe`, `museShare`) keep their own try/catch with a designed fallback — routing those
+   through the helper would swap one swallowed error for another. `museShare` in particular reads
+   its body regardless of HTTP status and uses `ok` as the discriminator.
+6. `packages/overlay/src/index.ts` stops re-exporting the consts and exports the getters instead;
    `packages/overlay/package.json` goes to `0.2.0`. Keeping the const export would preserve exactly
-   the footgun being removed, and the package is 8 days old with one plausible consumer.
-6. The lint + its npm script + its CI step.
+   the footgun being removed — worse, `export const MOCK = isMock()` in the package entry *is* a
+   module-scope read, reinstalling the latch in the first file every consumer imports. The package
+   is 8 days old with one plausible consumer. `smoke.mjs` gains assertions for the new surface: it
+   previously checked only `MuseOverlay` and `configureMuse`, so deleting a public export would
+   have shipped green.
+7. The lint + its npm script + its CI step (beside `lint:tokens`).
 
 **Interfaces — produced:**
 
@@ -283,6 +309,14 @@ is visible only through `StyleEditResponse.warnings`.
   function call cannot. If any build path depends on `EPHEMERAL` folding away, Task 1 changes bundle
   contents. Checked before implementation; if it turns out to be load-bearing for `build:demo`, the
   fix is a build-time define, not reverting to a const.
+- **The three unmerged e2e branches break on rebase.** `feature/e2e-gesture-suite`,
+  `feature/e2e-color-text` and `feature/e2e-reorder` each carry `e2e/fixture/src/App.tsx`, which
+  imports `{ EPHEMERAL, MOCK }` from `src/muse/config`. After the rename that is an unresolved
+  import: Vite fails the module, the fixture never mounts, and `preflight.spec.ts` trips its own
+  "the fixture never published its mode flags" assertion. Two lines per branch, and the fixture's
+  comment ("Both flags are module-level consts in the overlay, resolved once at import") becomes
+  false. The Playwright env pinning itself is unaffected — all four keys are pinned to `'0'` and
+  `flag()` still tests `=== '1'`.
 - **[#172](https://github.com/thientran01/Muse/pull/172) is CONFLICTING with `main`** and touches
   `CanvasMode.tsx` — the same function as Task 2's em-dash rider. Two characters, trivially
   resolved, but #172 already needs a rebase against the design-system merge (#164–#173) regardless.

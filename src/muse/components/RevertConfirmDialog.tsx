@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import { Warning } from '@phosphor-icons/react'
-import { EPHEMERAL } from '../config'
+import { isEphemeral } from '../config'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 
 export function RevertConfirmDialog({
@@ -48,7 +48,7 @@ export function RevertConfirmDialog({
           <h3 className="text-row font-semibold text-fg">Revert to original?</h3>
         </div>
         <p className="mb-4 text-body-sm leading-relaxed text-fg-muted">
-          {EPHEMERAL
+          {isEphemeral()
             ? 'This will undo all Muse edits in this session and restore the page to how it started. This cannot be undone.'
             : 'This will undo all Muse edits in this session and restore the file to its state before you started. This cannot be undone.'}
         </p>

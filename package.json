@@ -12,6 +12,7 @@
     "muse-server": "tsx server/standaloneServer.ts",
     "build:overlay-css": "node scripts/build-overlay-css.mjs",
     "lint:tokens": "node scripts/lint-tokens.mjs",
+    "lint:config": "node scripts/lint-config-reads.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc"

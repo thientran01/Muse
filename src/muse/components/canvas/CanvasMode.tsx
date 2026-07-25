@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Flag } from '@phosphor-icons/react'
 import { museReorder, museReorderable, museStyleEdit, museStyleScope, museTextEdit, museTextEditable, museWrite } from '../../api'
-import { EPHEMERAL, MOCK } from '../../config'
+import { isEphemeral, isMock } from '../../config'
 import { useHostTheme } from '../../hooks/useHostTheme'
 import { museStore } from '../../store'
 import { PROPERTIES } from '../../style/properties'
@@ -24,10 +24,6 @@ import { ResizeHandles } from './ResizeHandles'
 const PANEL_W = 232 // keep in sync with PanelShell's w-[232px] (PropertiesPanel)
 const GAP = 12
 
-// The breakpoint-target switcher needs the real backend: ephemeral commits are
-// inline-style snapshots, where a responsive variant would be a lie. Same
-// gating idiom as the toolbar's SHARE_UI.
-const BP_UI = !EPHEMERAL && !MOCK
 const BP_TARGETS: BpTarget[] = ['', 'sm', 'md', 'lg', 'xl', '2xl']
 
 // The style clipboard (Ctrl/Cmd+Alt+C / V) — module-level off-state like the
@@ -425,7 +421,12 @@ export function CanvasMode({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision])
-  // Breakpoint-target switcher (real backend only — see BP_UI). The target is
+  // The breakpoint-target switcher needs the real backend: ephemeral commits are
+  // inline-style snapshots, where a responsive variant would be a lie. Same
+  // gating idiom as the toolbar's shareUi. Per render, never at module scope —
+  // see config.ts: the mode isn't knowable at import time.
+  const bpUi = !isEphemeral() && !isMock()
+  // Breakpoint-target switcher (real backend only — see bpUi). The target is
   // store state (survives the panel, session-only by design) and — unlike
   // `scope`, which resets per selection — deliberately PERSISTS across
   // selections: the always-visible banner pills + the sticky mismatch strip
@@ -736,7 +737,7 @@ export function CanvasMode({
     // reorderable when the parent has ≥2 visible element children including the
     // selection (DOM order is authoritative; an ephemeral move can't corrupt a
     // file, so this safely fails open where the real probe fails closed).
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       const parent = selected.node.parentElement
       const kids = parent
         ? ([...parent.children] as Element[]).filter(
@@ -800,7 +801,7 @@ export function CanvasMode({
   useEffect(() => {
     setScope('element')
     setStyleScope(null)
-    if (!selected || EPHEMERAL) return
+    if (!selected || isEphemeral()) return
     let cancelled = false
     void museStyleScope({
       fileName: selected.fileName,
@@ -870,7 +871,7 @@ export function CanvasMode({
   useEffect(() => {
     const step = async (dir: 'undo' | 'redo') => {
       // EPHEMERAL: undo/redo run on the DOM-snapshot stack, not file content.
-      if (EPHEMERAL) {
+      if (isEphemeral()) {
         clearPreview()
         if (dir === 'undo' ? museStore.ephemeralUndo() : museStore.ephemeralRedo()) bump((v) => v + 1)
         return
@@ -1035,7 +1036,7 @@ export function CanvasMode({
     // EPHEMERAL: the inline preview IS the committed state. Record a DOM-snapshot
     // undo entry (before/after cssText, captured per peer node), keep the inline
     // style on the nodes, and skip the server + disk write entirely.
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       const p = previewRef.current
       if (p) {
         const nodes = p.nodes
@@ -1124,7 +1125,7 @@ export function CanvasMode({
   async function commitClassPatch(add: string[], remove: string[]) {
     if (!selected) return
     const label = ['classes', ...add.map((t) => `+${t}`), ...remove.map((t) => `−${t}`)].join(' ').slice(0, 80)
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       const node = selected.node
       const before = node.getAttribute('class') ?? ''
       for (const t of remove) node.classList.remove(t)
@@ -1203,7 +1204,7 @@ export function CanvasMode({
 
     // EPHEMERAL: the node already shows the typed text (contentEditable). Sync the
     // same-source peers and record a text-snapshot undo entry; no server, no write.
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       const peers = peerNodes(el).filter((p) => p !== node)
       for (const peer of peers) peer.textContent = raw
       const all = [node, ...peers]
@@ -1276,7 +1277,7 @@ export function CanvasMode({
     // EPHEMERAL: physically move the DOM node among its siblings (DOM order ===
     // source order under the host-only gate), record an order-snapshot undo, and
     // re-select the same (still-live) node — no server, no write, no HMR to await.
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       if (!parent) return
       const beforeOrder = [...parent.children] as HTMLElement[]
       const target = siblings[toIndex] ?? null // element at the source slot, or null = append
@@ -1380,7 +1381,7 @@ export function CanvasMode({
     // ELEMENT children would let contentEditable + peer textContent-sync destroy
     // them, and undo (which restores text only) couldn't bring them back. Refuse
     // with the same calm hint the probe would give.
-    if (EPHEMERAL && [...node.childNodes].some((n) => n.nodeType === Node.ELEMENT_NODE)) {
+    if (isEphemeral() && [...node.childNodes].some((n) => n.nodeType === Node.ELEMENT_NODE)) {
       const r = node.getBoundingClientRect()
       refuse(r.left, r.top, "This text can't be edited here", draftFromElement(el, {
         property: 'text',
@@ -1671,7 +1672,7 @@ export function CanvasMode({
                 (Tailwind default screens — a custom theme.screens host only shifts
                 the dot, never what an edit writes); an active target below the
                 window's width turns note-amber (edits write, nothing paints here). */}
-            {BP_UI && (
+            {bpUi && (
               // Exactly one target is active — radio semantics, same pattern as
               // the panel's ScopeToggle (role=radiogroup / radio / aria-checked).
               <span role="radiogroup" aria-label="Breakpoint target for edits" className="flex items-center gap-0.5">
@@ -1724,7 +1725,7 @@ export function CanvasMode({
               // them. NOTE: this makes the retired "?" peek branch below (and its
               // hintPeek state) unreachable in EPHEMERAL — both branches are live
               // only in non-ephemeral sessions.
-              const retired = !EPHEMERAL && prefs.hintUses[gesture] >= HINT_RETIRES
+              const retired = !isEphemeral() && prefs.hintUses[gesture] >= HINT_RETIRES
               const message = editing ? (
                 'Editing text · Enter to save · Esc to cancel'
               ) : selected ? (

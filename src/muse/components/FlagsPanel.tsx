@@ -2,14 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Crosshair, X } from '@phosphor-icons/react'
 import { dismissFlag, refreshFlags, resolveFlag } from '../flagsActions'
 import { revealFlag } from '../flagLocate'
-import { EPHEMERAL, MOCK } from '../config'
+import { isEphemeral, isMock } from '../config'
 import { useMuseStore } from '../store'
 import { EmptyState, Row } from './ui'
-
-// Same gate shape as MuseToolbar's SHARE_UI / CanvasMode's BP_UI: in the demo
-// modes flags live in an in-browser array (api.ts ephemeralFlags) and no agent
-// ever picks them up, so the empty state must not promise the handoff.
-const AGENT_HANDOFF = !EPHEMERAL && !MOCK
 import type { Flag } from '../types'
 
 // The flag list — the reliable surface for captured flags (pins are best-effort; the
@@ -35,11 +30,16 @@ export function FlagsPanel() {
   const open = flags.filter((f) => f.status === 'open')
 
   if (open.length === 0) {
+    // Same gate shape as MuseToolbar's shareUi / CanvasMode's bpUi: in the demo
+    // modes flags live in an in-browser array (api.ts ephemeralFlags) and no agent
+    // ever picks them up, so the empty state must not promise the handoff.
+    // Per render, never at module scope — see config.ts.
+    const agentHandoff = !isEphemeral() && !isMock()
     return (
       <EmptyState>
         No flags yet.
         <br />
-        {AGENT_HANDOFF
+        {agentHandoff
           ? 'Shift-click an element to hand one to your agent.'
           : 'Shift-click an element to flag it. Demo flags stay in your browser; with the backend on, your agent picks them up.'}
       </EmptyState>

@@ -1,4 +1,4 @@
-import { EPHEMERAL, MOCK, getApiBase } from './config'
+import { isEphemeral, isMock, getApiBase } from './config'
 import { listCssVars, looksLikeColor } from './style/cssVarEdit'
 import type {
   FileEdit,
@@ -26,9 +26,36 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 // muse-server on another origin. Resolved per-call so configureMuse() takes effect.
 const apiUrl = (path: string) => `${getApiBase()}${path}`
 
+// Read a response body as JSON, turning a NON-JSON body into a sentence a designer
+// can act on. Every handler here answers in JSON, so a body that isn't JSON means
+// the request never reached Muse — a host framework's own 404 page, a proxy error,
+// a login redirect. `res.json()` reports that as `JSON.parse: unexpected character
+// at line 1 column 1`, and CanvasMode pipes a raw exception message straight into
+// its toast (`setError((e as Error).message)`), so that string is what the user
+// saw on the live case study. The status code is kept because it's the one piece
+// of the original failure that's actually diagnostic.
+//
+// Only for the calls that let a throw reach the UI. The probe-style calls wrap
+// their parse in a try/catch with a designed fallback already — routing those
+// through here would swap one swallowed error for another.
+export async function parseJson<T>(res: Response): Promise<T> {
+  const body = await res.text()
+  try {
+    return JSON.parse(body) as T
+  } catch {
+    // Same shape as src/site/feedback.ts: the raw detail goes to the console for
+    // whoever is debugging, the user gets a sentence.
+    console.error('[muse] non-JSON response:', res.status, body.slice(0, 200))
+    throw new Error(
+      `The Muse backend returned a non-JSON response (HTTP ${res.status}). ` +
+        `Check that the Muse middleware is installed and serving /api/muse/* on this host.`,
+    )
+  }
+}
+
 export async function museWrite(files: FileEdit[]): Promise<void> {
-  if (MOCK || EPHEMERAL) {
-    await delay(MOCK ? 300 : 0) // no real disk change in mock/ephemeral mode
+  if (isMock() || isEphemeral()) {
+    await delay(isMock() ? 300 : 0) // no real disk change in mock/ephemeral mode
     return
   }
 
@@ -37,7 +64,7 @@ export async function museWrite(files: FileEdit[]): Promise<void> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ files }),
   })
-  const data = (await res.json()) as { ok?: boolean; error?: string }
+  const data = await parseJson<{ ok?: boolean; error?: string }>(res)
   if (!data.ok) throw new Error(data.error ?? 'Write failed')
 }
 
@@ -51,7 +78,7 @@ export async function museStyleEdit(
 ): Promise<StyleEditResponse> {
   // Ephemeral demo: there's no backend and nothing to write — CanvasMode keeps the
   // live inline preview as the committed state. Backstop in case a path reaches here.
-  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  if (isEphemeral()) return { edits: [], originals: {}, warnings: [] }
   // Omitting `strategy` lets the server detect it from the host project (Tailwind →
   // utility classes, else inline). JSON.stringify drops the key when undefined.
   const res = await fetch(apiUrl('/api/muse/style-edit'), {
@@ -59,7 +86,7 @@ export async function museStyleEdit(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: requests, strategy }),
   })
-  const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
+  const data = await parseJson<Partial<StyleEditResponse> & { error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return {
     edits: Array.isArray(data.edits) ? data.edits : [],
@@ -75,7 +102,7 @@ export async function museStyleEdit(
 export async function museStyleScope(
   req: Omit<StyleEditRequest, 'mutations' | 'scope'>,
 ): Promise<SharedConst | null> {
-  if (EPHEMERAL) return null // no backend; const-scope edits need a real write
+  if (isEphemeral()) return null // no backend; const-scope edits need a real write
   try {
     const res = await fetch(apiUrl('/api/muse/style-scope'), {
       method: 'POST',
@@ -93,13 +120,13 @@ export async function museStyleScope(
 // server rewrites the element's single static JSXText and returns the new file
 // contents + originals, flowing through the SAME museWrite + history as styles.
 export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEditResponse> {
-  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  if (isEphemeral()) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch(apiUrl('/api/muse/text-edit'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: requests }),
   })
-  const data = (await res.json()) as Partial<TextEditResponse> & { error?: string }
+  const data = await parseJson<Partial<TextEditResponse> & { error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return {
     edits: Array.isArray(data.edits) ? data.edits : [],
@@ -115,7 +142,7 @@ export async function museTextEdit(requests: TextEditRequest[]): Promise<TextEdi
 export async function museTextEditable(
   req: Omit<TextEditRequest, 'text' | 'renderedText'> & { renderedText?: string },
 ): Promise<{ editable: boolean; reason?: string }> {
-  if (EPHEMERAL) return { editable: true } // in-browser edits are always reversible
+  if (isEphemeral()) return { editable: true } // in-browser edits are always reversible
   try {
     const res = await fetch(apiUrl('/api/muse/text-editable'), {
       method: 'POST',
@@ -134,13 +161,13 @@ export async function museTextEditable(
 // new file contents + originals, flowing through the SAME museWrite + history as
 // styles/text. `toIndex` is the source-order slot to land before (count === end).
 export async function museReorder(req: ReorderRequest): Promise<ReorderResponse> {
-  if (EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  if (isEphemeral()) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch(apiUrl('/api/muse/reorder'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ edits: [req] }),
   })
-  const data = (await res.json()) as Partial<ReorderResponse> & { error?: string }
+  const data = await parseJson<Partial<ReorderResponse> & { error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return {
     edits: Array.isArray(data.edits) ? data.edits : [],
@@ -162,6 +189,14 @@ export async function museReorderable(
   // whose own DOM node can't be located in source.
   req: Omit<ReorderRequest, 'toIndex' | 'fromIndex'> & { container?: boolean },
 ): Promise<Reorderable> {
+  // Backstop in case a path reaches here — CanvasMode answers the demo case itself,
+  // from the live DOM, and returns before calling this. Deliberately NOT the shape
+  // that branch produces: it can afford to fail OPEN (an in-browser move can't
+  // corrupt a file), and it has the parent element this module doesn't. So the
+  // honest answer at THIS layer is "no", not a fabricated child list.
+  // If you ever delete CanvasMode's ephemeral branch expecting this to cover it,
+  // the demo loses its drag handle — move that DOM logic here first.
+  if (isEphemeral()) return { reorderable: false, reason: 'demo mode answers this from the DOM' }
   try {
     const res = await fetch(apiUrl('/api/muse/reorderable'), {
       method: 'POST',
@@ -189,7 +224,7 @@ export async function museReorderable(
 // any transport error, and short-circuits in the demo modes (no backend, nothing real
 // to share) so the panel explains itself instead of offering a doomed action.
 export async function museShareProbe(files: string[]): Promise<ShareProbe> {
-  if (MOCK || EPHEMERAL) {
+  if (isMock() || isEphemeral()) {
     return { available: false, reason: 'Demo mode edits live in the browser only — run Muse with its backend to share changes.' }
   }
   try {
@@ -212,7 +247,7 @@ export async function museShareProbe(files: string[]): Promise<ShareProbe> {
 // regardless of HTTP status (validation 400s carry the same ShareResult shape) — the
 // ok discriminator is the contract, so don't add a !res.ok guard here.
 export async function museShare(req: ShareRequest): Promise<ShareResult> {
-  if (MOCK || EPHEMERAL) {
+  if (isMock() || isEphemeral()) {
     return { ok: false, error: 'Demo mode edits live in the browser only — run Muse with its backend to share changes.' }
   }
   try {
@@ -237,9 +272,9 @@ export async function museTokens(): Promise<DesignToken[]> {
   // No backend in the demo modes — read the page's REAL tokens from the live
   // CSSOM instead of a canned fixture (a fixture silently drifts every time the
   // site's tokens change; the old one predated and hid the strategy-zoo tokens).
-  if (MOCK || EPHEMERAL) return readCssomTokens()
+  if (isMock() || isEphemeral()) return readCssomTokens()
   const res = await fetch(apiUrl('/api/muse/tokens'))
-  const data = (await res.json()) as { tokens?: DesignToken[]; error?: string }
+  const data = await parseJson<{ tokens?: DesignToken[]; error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return Array.isArray(data.tokens) ? data.tokens : []
 }
@@ -304,13 +339,13 @@ function readCssomTokens(): DesignToken[] {
 // Set a token's base value in the stylesheet that defines it. Returns the same
 // { edits, originals } contract as canvas edits, so the caller writes + records history.
 export async function museTokenEdit(name: string, value: string): Promise<StyleEditResponse> {
-  if (MOCK || EPHEMERAL) return { edits: [], originals: {}, warnings: [] }
+  if (isMock() || isEphemeral()) return { edits: [], originals: {}, warnings: [] }
   const res = await fetch(apiUrl('/api/muse/token-edit'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name, value }),
   })
-  const data = (await res.json()) as Partial<StyleEditResponse> & { error?: string }
+  const data = await parseJson<Partial<StyleEditResponse> & { error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return { edits: data.edits ?? [], originals: data.originals ?? {}, warnings: data.warnings ?? [] }
 }
@@ -326,15 +361,15 @@ let ephemeralFlags: Flag[] = []
 let ephemeralNextId = 1
 
 export async function museListFlags(): Promise<Flag[]> {
-  if (EPHEMERAL || MOCK) return [...ephemeralFlags]
+  if (isEphemeral() || isMock()) return [...ephemeralFlags]
   const res = await fetch(apiUrl('/api/muse/flags'))
-  const data = (await res.json()) as { flags?: Flag[]; error?: string }
+  const data = await parseJson<{ flags?: Flag[]; error?: string }>(res)
   if (data.error) throw new Error(data.error)
   return Array.isArray(data.flags) ? data.flags : []
 }
 
 export async function museAddFlag(draft: FlagDraft): Promise<Flag> {
-  if (EPHEMERAL || MOCK) {
+  if (isEphemeral() || isMock()) {
     const flag: Flag = {
       id: `f_${ephemeralNextId++}`,
       comment: draft.comment.trim(),
@@ -359,13 +394,13 @@ export async function museAddFlag(draft: FlagDraft): Promise<Flag> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(draft),
   })
-  const data = (await res.json()) as { ok?: boolean; flag?: Flag; error?: string }
+  const data = await parseJson<{ ok?: boolean; flag?: Flag; error?: string }>(res)
   if (data.error || !data.flag) throw new Error(data.error ?? 'Could not save the flag.')
   return data.flag
 }
 
 export async function museResolveFlag(id: string, note?: string): Promise<void> {
-  if (EPHEMERAL || MOCK) {
+  if (isEphemeral() || isMock()) {
     const f = ephemeralFlags.find((x) => x.id === id)
     if (f) {
       f.status = 'resolved'
@@ -379,12 +414,12 @@ export async function museResolveFlag(id: string, note?: string): Promise<void> 
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id, note }),
   })
-  const data = (await res.json()) as { ok?: boolean; error?: string }
+  const data = await parseJson<{ ok?: boolean; error?: string }>(res)
   if (data.error) throw new Error(data.error)
 }
 
 export async function museDeleteFlag(id: string): Promise<void> {
-  if (EPHEMERAL || MOCK) {
+  if (isEphemeral() || isMock()) {
     ephemeralFlags = ephemeralFlags.filter((x) => x.id !== id)
     return
   }
@@ -393,7 +428,7 @@ export async function museDeleteFlag(id: string): Promise<void> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ id }),
   })
-  const data = (await res.json()) as { ok?: boolean; error?: string }
+  const data = await parseJson<{ ok?: boolean; error?: string }>(res)
   if (data.error) throw new Error(data.error)
 }
 
