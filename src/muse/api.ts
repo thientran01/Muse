@@ -327,20 +327,34 @@ function readCssomTokens(): DesignToken[] {
         if (rule.styleSheet) walkSheet(rule.styleSheet)
         continue
       }
-      // Grouping rules (@media/@supports/@layer) can hold root-scoped tokens —
-      // the server's file scan sees those, so the CSSOM read does too.
-      if (rule instanceof CSSGroupingRule) {
-        walkRules(rule.cssRules, file)
-        continue
+      // HARVEST FIRST, THEN RECURSE — never either/or.
+      //
+      // This used to test CSSGroupingRule first and `continue`. Since CSS Nesting
+      // shipped, `CSSStyleRule` ALSO inherits from `CSSGroupingRule` on Firefox but
+      // not Chromium (`CSSStyleRule.prototype instanceof CSSGroupingRule` → true /
+      // false). So on Firefox every `:root` rule was classified as a container,
+      // recursed into (no children), and skipped before yielding a single token —
+      // and the panel then HONESTLY reported "no tokens found". Measured on the
+      // live case study: 99 tokens on Chromium, 0 on Firefox.
+      //
+      // src/muse/cssom.ts and forcedState.ts already had this discipline; this was
+      // the one straggler.
+      if (rule instanceof CSSStyleRule && ROOT_RULE_RE.test(rule.selectorText)) {
+        for (const v of listCssVars(rule.cssText)) {
+          if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
+          seen.add(v.name)
+          const override = document.documentElement.style.getPropertyValue(v.name).trim()
+          const value = override || v.value
+          tokens.push({ name: v.name, value, isColor: looksLikeColor(value), file })
+        }
       }
-      if (!(rule instanceof CSSStyleRule) || !ROOT_RULE_RE.test(rule.selectorText)) continue
-      for (const v of listCssVars(rule.cssText)) {
-        if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
-        seen.add(v.name)
-        const override = document.documentElement.style.getPropertyValue(v.name).trim()
-        const value = override || v.value
-        tokens.push({ name: v.name, value, isColor: looksLikeColor(value), file })
-      }
+      // Then descend. Grouping rules (@media/@supports/@layer) can hold root-scoped
+      // tokens — the server's file scan sees those, so the CSSOM read does too — and
+      // a style rule's own nested children live here as well. Read through the duck
+      // type rather than `instanceof CSSGroupingRule`, so the engines' disagreement
+      // about the prototype chain cannot decide whether we descend at all.
+      const children = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined
+      if (children && children.length) walkRules(children, file)
     }
   }
 
