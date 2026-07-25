@@ -1,4 +1,5 @@
 import { isEphemeral, isMock, getApiBase } from './config'
+import { walkCssRules } from './cssom'
 import { listCssVars, looksLikeColor } from './style/cssVarEdit'
 import type {
   FileEdit,
@@ -308,6 +309,21 @@ function readCssomTokens(): DesignToken[] {
   const tokens: DesignToken[] = []
   const visitedSheets = new Set<CSSStyleSheet>()
 
+  // Harvest one root-scoped rule's vars. First definition wins — sheets author
+  // `:root` before any `html.dark` override — and Muse's own --muse-* are excluded.
+  // An inline override on <html> is a prior demo edit from this session, so it
+  // reads back as the current value.
+  const harvest = (rule: CSSStyleRule, file: string) => {
+    if (!ROOT_RULE_RE.test(rule.selectorText)) return
+    for (const v of listCssVars(rule.cssText)) {
+      if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
+      seen.add(v.name)
+      const override = document.documentElement.style.getPropertyValue(v.name).trim()
+      const value = override || v.value
+      tokens.push({ name: v.name, value, isColor: looksLikeColor(value), file })
+    }
+  }
+
   const walkSheet = (sheet: CSSStyleSheet) => {
     if (visitedSheets.has(sheet)) return // @import cycles
     visitedSheets.add(sheet)
@@ -315,46 +331,30 @@ function readCssomTokens(): DesignToken[] {
       // cssRules throws cross-origin; a weird href (blob:, constructed sheet)
       // could trip the URL parse — either way, skip the sheet, never the panel.
       const file = sheet.href ? (new URL(sheet.href).pathname.split('/').pop() ?? 'stylesheet') : 'page styles'
-      walkRules(sheet.cssRules, file)
+      // THE TRAVERSAL IS SHARED, and that is the actual fix.
+      //
+      // This function used to hand-roll its own walk that tested `CSSGroupingRule`
+      // FIRST and `continue`d. Since CSS Nesting shipped, `CSSStyleRule` also
+      // inherits from `CSSGroupingRule` on Firefox but not Chromium
+      // (`CSSStyleRule.prototype instanceof CSSGroupingRule` → true / false), so on
+      // Firefox every `:root` rule was classified as a container, recursed into,
+      // and skipped before yielding a token — and the panel then HONESTLY reported
+      // "no tokens found". Measured on the live case study: 99 on Chromium, 0 on
+      // Firefox.
+      //
+      // walkCssRules never had that bug, because it visits style rules and descends
+      // through the duck-typed `.cssRules` instead of asking the prototype chain
+      // anything. Calling it — rather than re-deriving the same traversal a third
+      // time next to cssom.ts and forcedState.ts — is what stops the next
+      // cross-engine quirk needing three separate fixes.
+      //
+      // Measured on Chromium while reviewing this: a plain CSSStyleRule DOES expose
+      // `.cssRules` (length 0) and a nested one reports its children, while
+      // `instanceof CSSGroupingRule` stays false. So the old gate was ALSO skipping
+      // real CSS-nested content on Chromium — a second, quieter half of this bug.
+      walkCssRules(sheet.cssRules, (rule) => harvest(rule, file), walkSheet)
     } catch {
       /* not the host's readable source — skip */
-    }
-  }
-
-  const walkRules = (rules: CSSRuleList, file: string) => {
-    for (const rule of Array.from(rules)) {
-      if (rule instanceof CSSImportRule) {
-        if (rule.styleSheet) walkSheet(rule.styleSheet)
-        continue
-      }
-      // HARVEST FIRST, THEN RECURSE — never either/or.
-      //
-      // This used to test CSSGroupingRule first and `continue`. Since CSS Nesting
-      // shipped, `CSSStyleRule` ALSO inherits from `CSSGroupingRule` on Firefox but
-      // not Chromium (`CSSStyleRule.prototype instanceof CSSGroupingRule` → true /
-      // false). So on Firefox every `:root` rule was classified as a container,
-      // recursed into (no children), and skipped before yielding a single token —
-      // and the panel then HONESTLY reported "no tokens found". Measured on the
-      // live case study: 99 tokens on Chromium, 0 on Firefox.
-      //
-      // src/muse/cssom.ts and forcedState.ts already had this discipline; this was
-      // the one straggler.
-      if (rule instanceof CSSStyleRule && ROOT_RULE_RE.test(rule.selectorText)) {
-        for (const v of listCssVars(rule.cssText)) {
-          if (seen.has(v.name) || v.name.startsWith('--muse-')) continue
-          seen.add(v.name)
-          const override = document.documentElement.style.getPropertyValue(v.name).trim()
-          const value = override || v.value
-          tokens.push({ name: v.name, value, isColor: looksLikeColor(value), file })
-        }
-      }
-      // Then descend. Grouping rules (@media/@supports/@layer) can hold root-scoped
-      // tokens — the server's file scan sees those, so the CSSOM read does too — and
-      // a style rule's own nested children live here as well. Read through the duck
-      // type rather than `instanceof CSSGroupingRule`, so the engines' disagreement
-      // about the prototype chain cannot decide whether we descend at all.
-      const children = (rule as CSSGroupingRule).cssRules as CSSRuleList | undefined
-      if (children && children.length) walkRules(children, file)
     }
   }
 
