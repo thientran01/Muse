@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElementInfo, getSourceLocation, type ElementInfo } from './sourceLocation'
 import type { CanvasElement, Rect, SelectedElement } from './types'
 
+// How many Canvas instances are currently active. Module-level so the
+// `data-muse-active` marker survives one overlay closing while another is still
+// open — see the effect that maintains it.
+let activeInstances = 0
+
 function isMuseUI(el: Element | null): boolean {
   if (!el) return false
   // Dogfooding escape hatch: a `[data-muse-canvas-host]` region is selectable even
@@ -155,12 +160,24 @@ export function useCanvasMode(opts?: {
   // Deliberately NOT gated on the demo modes. The live case study is ephemeral, and
   // that is the only place this has actually been reported — gating it on a real
   // backend would miss the whole reported case.
+  //
+  // REFCOUNTED, because a bare set/remove is wrong the moment a host mounts two
+  // overlays: the first one to close would removeAttribute while the second is
+  // still active, silently handing the host its cursor back mid-session — exactly
+  // the failure this attribute exists to prevent. That is not hypothetical here;
+  // Portfolio v2 ran two overlay instances in dev, which is why its MUSE_DEMO=off
+  // toggle exists. The count is module-level so every instance shares it.
   useEffect(() => {
     if (!active) return
     const root = document.documentElement
-    root.setAttribute('data-muse-active', '')
+    if (++activeInstances === 1) root.setAttribute('data-muse-active', '')
     // Runs when Canvas closes AND on unmount, so the host is never left stood down.
-    return () => root.removeAttribute('data-muse-active')
+    return () => {
+      if (--activeInstances <= 0) {
+        activeInstances = 0 // never go negative if cleanups ever double-fire
+        root.removeAttribute('data-muse-active')
+      }
+    }
   }, [active])
 
   useEffect(() => {

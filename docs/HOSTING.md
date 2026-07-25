@@ -241,7 +241,11 @@ export function DevMuse() {
 
 ---
 
-## 4. Stand your own pointer UI down — `data-muse-active`
+## Stand your own pointer UI down — `data-muse-active`
+
+*Optional — only relevant if your app has a custom cursor, a command palette, or global
+hotkeys. The three pieces above are the required wiring; this is a hook for coexisting
+with them.*
 
 While Canvas Mode is on, Muse sets a marker attribute on the document root:
 
@@ -251,7 +255,8 @@ While Canvas Mode is on, Muse sets a marker attribute on the document root:
 
 It is present exactly while Canvas is active and removed the moment it closes (and on
 unmount). **Presence is the whole contract** — there is no value and there are no states.
-It is set in every mode, including the demo/ephemeral one.
+It is set in every mode, including the demo/ephemeral one, and it is refcounted, so it
+survives one overlay closing while another is still open.
 
 Scope anything of your own that competes for the pointer or the keyboard to
 `:not([data-muse-active])`:
@@ -277,6 +282,27 @@ surfaces, and any global key handler.
 > cursor for their hover feedback — e.g. variants keyed off a `data-cursor` attribute, with
 > no real `cursor: pointer` on the element — then standing the cursor down reveals that they
 > had no affordance of their own. Give them real CSS states.
+
+**Limits.** It is a same-document signal, so it does not cross an `<iframe>` boundary — a
+page embedding Muse in a frame can't observe the frame's state, or vice versa. And it says
+only "Canvas is on", not what gesture is in flight.
+
+### The other `data-muse-*` attributes
+
+`data-muse-active` is the only one intended as a host-facing contract. The rest are
+internal and listed so you can recognise them, **not** so you can depend on them — they
+may change without notice:
+
+| Attribute | Where | Meaning |
+|---|---|---|
+| `data-muse-active` | `<html>` | **Host contract.** Canvas Mode is on. |
+| `data-muse-loc` | your elements | the locator stamp, `file:line:col` (see §1) |
+| `data-muse-ui` | Muse's own chrome | marks overlay DOM so Canvas skips it when selecting |
+| `data-muse-dock` / `-panel` / `-canvas-host` | Muse's own chrome | internal structure hooks |
+| `data-muse-pin-hover` | one of **your** elements | set transiently on the selected element while its `:hover` state is pinned |
+
+Only the first two are stable. If you need something the internal ones would give you,
+open an issue rather than reading them — that's how `data-muse-active` came to exist.
 
 ---
 
