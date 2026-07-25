@@ -241,6 +241,45 @@ export function DevMuse() {
 
 ---
 
+## 4. Stand your own pointer UI down — `data-muse-active`
+
+While Canvas Mode is on, Muse sets a marker attribute on the document root:
+
+```html
+<html data-muse-active>
+```
+
+It is present exactly while Canvas is active and removed the moment it closes (and on
+unmount). **Presence is the whole contract** — there is no value and there are no states.
+It is set in every mode, including the demo/ephemeral one.
+
+Scope anything of your own that competes for the pointer or the keyboard to
+`:not([data-muse-active])`:
+
+```css
+/* A custom cursor that replaces the native one */
+html:not([data-muse-active]) .my-cursor-ring { display: block; }
+html[data-muse-active]      .my-cursor-ring { display: none; }
+```
+
+```ts
+// A command palette or global hotkey
+if (!document.documentElement.hasAttribute('data-muse-active')) openPalette()
+```
+
+**Why this exists.** A host that replaces the native cursor fights Canvas directly: a
+spring-lagged ring trails the true pointer through a gap or resize drag, and an enlarged
+hover state covers the element you're trying to select. Without a signal, the only fix was
+disabling the cursor for a whole route. This generalises to command palettes, drag-and-drop
+surfaces, and any global key handler.
+
+> **Watch for affordances that live only in your cursor.** If your buttons rely on a custom
+> cursor for their hover feedback — e.g. variants keyed off a `data-cursor` attribute, with
+> no real `cursor: pointer` on the element — then standing the cursor down reveals that they
+> had no affordance of their own. Give them real CSS states.
+
+---
+
 ## Environment
 
 | Var | Purpose |

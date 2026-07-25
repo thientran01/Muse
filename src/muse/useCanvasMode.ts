@@ -139,6 +139,30 @@ export function useCanvasMode(opts?: {
     setHoverInfo(null)
   }, [])
 
+  // Tell the HOST that Canvas is on, so it can stand down its own pointer UI.
+  //
+  // Muse had no document-level signal at all, so a host with a custom cursor,
+  // command palette, or global hotkeys had no way to scope them to "Muse is idle".
+  // Portfolio v2 ships a cursor that sets `!cursor-none` on <html> (replacing the
+  // native one) plus a spring-lagged ring and a 46px hover state — all three fight
+  // Canvas: the ring trails the true pointer through a gap drag, and the hover
+  // state covers the element you're trying to select. The only workaround was
+  // blanket-disabling the cursor for the whole route.
+  //
+  // Presence IS the contract — no value, no states. It is a public host-integration
+  // API; docs/HOSTING.md is its spec. Hosts scope with `html:not([data-muse-active])`.
+  //
+  // Deliberately NOT gated on the demo modes. The live case study is ephemeral, and
+  // that is the only place this has actually been reported — gating it on a real
+  // backend would miss the whole reported case.
+  useEffect(() => {
+    if (!active) return
+    const root = document.documentElement
+    root.setAttribute('data-muse-active', '')
+    // Runs when Canvas closes AND on unmount, so the host is never left stood down.
+    return () => root.removeAttribute('data-muse-active')
+  }, [active])
+
   useEffect(() => {
     if (!active) {
       setHoverRect(null)
