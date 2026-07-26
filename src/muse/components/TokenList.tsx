@@ -47,7 +47,7 @@ function ValueRow({ token, busy, onCommit }: { token: DesignToken; busy: boolean
 // color picker (live-previewing the CSS var on the page), other tokens get a value
 // field. Self-contained: reads tokens on mount and commits each edit through the
 // same write + shared-history path as canvas edits.
-export function TokenList({ portalContainer }: { portalContainer?: React.RefObject<HTMLElement> }) {
+export function TokenList({ portalContainer }: { portalContainer?: React.RefObject<HTMLElement | null> }) {
   const [tokens, setTokens] = useState<DesignToken[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Non-fatal write notes (e.g. "themed in 2 selectors — updated the base value").

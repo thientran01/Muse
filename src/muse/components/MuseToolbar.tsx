@@ -71,7 +71,7 @@ export function MuseToolbar({
   onToggleAnimations: () => void
   // Themed overlay root the token color-picker popover portals into (escapes the
   // popover's own overflow + backdrop-filter containing block).
-  portalContainer?: React.RefObject<HTMLElement>
+  portalContainer?: React.RefObject<HTMLElement | null>
 }) {
   const [pop, setPop] = useState<Pop>('none')
   // One-transient-surface discipline: the open popover claims the shared slot,

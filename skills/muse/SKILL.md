@@ -72,10 +72,17 @@ Clone Muse and copy the engine into the target. Run from the target project root
 ```bash
 TMP="$(mktemp -d)"
 git clone --depth 1 https://github.com/thientran01/Muse "$TMP/muse"
+# rm -rf first: `cp -r src/muse ./src/muse` NESTS into an existing directory
+# (creating ./src/muse/muse) instead of replacing it. Matters on a RE-vendor.
+rm -rf ./src/muse ./muse-server ./muse-babel
 cp -r "$TMP/muse/src/muse"  ./src/muse           # overlay + deterministic engine (client)
 cp -r "$TMP/muse/server"    ./muse-server         # museCore, musePlugin, webAdapter, standaloneServer, styleEdit
 cp -r "$TMP/muse/babel"     ./muse-babel          # muse-loc.cjs — the universal locator plugin
 cp "$TMP/muse/docs/HOSTING.md" ./muse-server/HOSTING.md   # the canonical wiring reference
+# Drop the test suites. They import `vitest`, which a host has no reason to have —
+# and a typical Next/Vite tsconfig includes **/*.ts, so leaving them in fails the
+# host's typecheck (and its build) on an unresolved import.
+rm -rf ./src/muse/__tests__ ./muse-server/__tests__
 ```
 
 `src/muse/` is the client (overlay, components, hooks, store, `style/`, `muse.css`).
