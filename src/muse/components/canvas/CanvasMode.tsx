@@ -987,11 +987,11 @@ export function CanvasMode({
       refuse(
         r.left,
         r.top,
-        'Spacing here is set by the parent’s space-y/x — adjust it on the parent',
+        'Spacing here is set by the parent’s space-y/x. Adjust it on the parent',
         draftFromElement(selected, {
           property: props,
           reason: 'spacing is controlled by the parent’s space-y/x utility',
-          comment: `Adjust the ${props} spacing on this ${selected.tag} — it’s set by the parent’s space-y/x, so it can’t change from here.`,
+          comment: `Adjust the ${props} spacing on this ${selected.tag}. It’s set by the parent’s space-y/x, so it can’t change from here.`,
         }),
       )
       clearPreview()
