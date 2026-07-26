@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElementInfo, getSourceLocation, type ElementInfo } from './sourceLocation'
 import type { CanvasElement, Rect, SelectedElement } from './types'
 
+// How many Canvas instances are currently active. Module-level so the
+// `data-muse-active` marker survives one overlay closing while another is still
+// open — see the effect that maintains it.
+let activeInstances = 0
+
 function isMuseUI(el: Element | null): boolean {
   if (!el) return false
   // Dogfooding escape hatch: a `[data-muse-canvas-host]` region is selectable even
@@ -138,6 +143,42 @@ export function useCanvasMode(opts?: {
     setHoverRect(null)
     setHoverInfo(null)
   }, [])
+
+  // Tell the HOST that Canvas is on, so it can stand down its own pointer UI.
+  //
+  // Muse had no document-level signal at all, so a host with a custom cursor,
+  // command palette, or global hotkeys had no way to scope them to "Muse is idle".
+  // Portfolio v2 ships a cursor that sets `!cursor-none` on <html> (replacing the
+  // native one) plus a spring-lagged ring and a 46px hover state — all three fight
+  // Canvas: the ring trails the true pointer through a gap drag, and the hover
+  // state covers the element you're trying to select. The only workaround was
+  // blanket-disabling the cursor for the whole route.
+  //
+  // Presence IS the contract — no value, no states. It is a public host-integration
+  // API; docs/HOSTING.md is its spec. Hosts scope with `html:not([data-muse-active])`.
+  //
+  // Deliberately NOT gated on the demo modes. The live case study is ephemeral, and
+  // that is the only place this has actually been reported — gating it on a real
+  // backend would miss the whole reported case.
+  //
+  // REFCOUNTED, because a bare set/remove is wrong the moment a host mounts two
+  // overlays: the first one to close would removeAttribute while the second is
+  // still active, silently handing the host its cursor back mid-session — exactly
+  // the failure this attribute exists to prevent. That is not hypothetical here;
+  // Portfolio v2 ran two overlay instances in dev, which is why its MUSE_DEMO=off
+  // toggle exists. The count is module-level so every instance shares it.
+  useEffect(() => {
+    if (!active) return
+    const root = document.documentElement
+    if (++activeInstances === 1) root.setAttribute('data-muse-active', '')
+    // Runs when Canvas closes AND on unmount, so the host is never left stood down.
+    return () => {
+      if (--activeInstances <= 0) {
+        activeInstances = 0 // never go negative if cleanups ever double-fire
+        root.removeAttribute('data-muse-active')
+      }
+    }
+  }, [active])
 
   useEffect(() => {
     if (!active) {
