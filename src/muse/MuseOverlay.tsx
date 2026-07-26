@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useShadowHost } from './hooks/useShadowHost'
 import { freezePage } from './animationFreeze'
 import { museWrite } from './api'
-import { EPHEMERAL } from './config'
+import { isEphemeral } from './config'
 import { refreshFlags } from './flagsActions'
 import { useHostTheme } from './hooks/useHostTheme'
 import { museStore, useMuseStore } from './store'
@@ -108,7 +108,7 @@ export function MuseOverlay() {
     // Ephemeral session: the "files" are DOM snapshots — revert is undo-everything.
     // Same nothing-to-do guard shape as the file path below (the dialog is gated on
     // hasHistory, so this is belt only).
-    if (EPHEMERAL) {
+    if (isEphemeral()) {
       const s = museStore.getState()
       if (s.eUndoCount > 0 || s.eRedoCount > 0) museStore.ephemeralRevert()
       museStore.setState({ showRevertConfirm: false })
@@ -145,7 +145,7 @@ export function MuseOverlay() {
   // EPHEMERAL (the hosted demo): the toolbar drives the in-browser DOM-snapshot
   // stack via the reactive count mirrors — previously these buttons sat dead there
   // (only the keyboard path worked) because ePast/eFuture are off-state.
-  const historyControls: HistoryControls = EPHEMERAL
+  const historyControls: HistoryControls = isEphemeral()
     ? {
         canUndo: eUndoCount > 0,
         canRedo: eRedoCount > 0,
@@ -162,7 +162,7 @@ export function MuseOverlay() {
         onRedo: redo,
         onRevert: () => museStore.setState({ showRevertConfirm: true }),
       }
-  const hasHistory = EPHEMERAL ? eUndoCount > 0 || eRedoCount > 0 : past.length > 0 || future.length > 0
+  const hasHistory = isEphemeral() ? eUndoCount > 0 || eRedoCount > 0 : past.length > 0 || future.length > 0
 
   // Global hotkey: R toggles Muse on/off from anywhere on the page. Guarded so it
   // never fires while typing — composedPath()[0] is the REAL focused node even

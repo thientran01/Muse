@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Flag, GearSix, Palette, PaperPlaneTilt, Pause, Play, X } from '@phosphor-icons/react'
 import type { HistoryControls } from '../MuseOverlay'
-import { EPHEMERAL, MOCK } from '../config'
+import { isEphemeral, isMock } from '../config'
 import { usePresence } from '../hooks/usePresence'
 import { useTransientSurface } from '../hooks/useTransientSurface'
 import { useMuseStore } from '../store'
@@ -24,10 +24,6 @@ import type { DockCorner } from '../prefs'
 // tokens open as a popover above it (the bar stays put).
 
 type Pop = 'none' | 'tokens' | 'flags' | 'changes' | 'settings'
-
-// The Changes/Share surface needs the real backend (session edits must be on disk
-// to become a branch) — in the in-browser demo modes the button is hidden entirely.
-const SHARE_UI = !EPHEMERAL && !MOCK
 
 const POP_TITLES = { tokens: 'Design tokens', flags: 'Flags', changes: 'Changes', settings: 'Settings' } as const
 
@@ -89,7 +85,12 @@ export function MuseToolbar({
   // the Changes badge (both reactive — undo shrinks the changes count live).
   const { flags, past, prefs } = useMuseStore()
   const openFlagCount = flags.filter((f) => f.status === 'open').length
-  const changedFileCount = SHARE_UI ? computeSessionChanges(past).filter((c) => c.changed).length : 0
+  // The Changes/Share surface needs the real backend (session edits must be on disk
+  // to become a branch) — in the in-browser demo modes the button is hidden entirely.
+  // Computed per render, never at module scope: the mode isn't knowable at import
+  // (see config.ts — a host may set window.__MUSE__ after this module loads).
+  const shareUi = !isEphemeral() && !isMock()
+  const changedFileCount = shareUi ? computeSessionChanges(past).filter((c) => c.changed).length : 0
   // Zen: the dock stays hidden, revealed two ways — hovering its corner, or any
   // open/close of Muse itself (the PEEK below). It re-hides when the pointer
   // leaves (unless a popover is open — closing the settings you just opened out
@@ -253,7 +254,7 @@ export function MuseToolbar({
             monotonically — the FAB expanding, no overshoot. */}
         <div className="muse-dock-trail" style={{ gridTemplateColumns: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}>
           <div className="flex items-center">
-          {SHARE_UI && (
+          {shareUi && (
             <IconButton
               label={changedFileCount > 0 ? `Changes, ${changedFileCount} file${changedFileCount === 1 ? '' : 's'}` : 'Changes'}
               onClick={() => setPop((p) => (p === 'changes' ? 'none' : 'changes'))}
