@@ -17,7 +17,7 @@ import { useEffect } from 'react'
  * the effect would bail on that null and never write `data-theme`, leaving the
  * overlay stuck on its CSS default (dark) no matter the host theme.
  */
-export function useHostTheme(rootRef: React.RefObject<HTMLElement>, ready?: unknown) {
+export function useHostTheme(rootRef: React.RefObject<HTMLElement | null>, ready?: unknown) {
   useEffect(() => {
     const root = rootRef.current
     if (!root) return

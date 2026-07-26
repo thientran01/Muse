@@ -78,7 +78,7 @@ export function ColorRow({
   value: string
   themed: boolean
   contrastAgainst?: string // paired color for the WCAG check (Fill behind Text, etc.)
-  portalContainer?: React.RefObject<HTMLElement> // themed overlay root to portal the popover into
+  portalContainer?: React.RefObject<HTMLElement | null> // themed overlay root to portal the popover into
   onPreview: (v: string) => void
   onCommit: (v: string) => void
   onClose?: () => void // fires when the picker popover closes (token editor uses it to drop a live preview)
@@ -417,7 +417,7 @@ export function ColorFields({
   portalContainer,
   onPreview,
   onCommit,
-}: { values: CanvasValues; portalContainer?: React.RefObject<HTMLElement> } & EditProps) {
+}: { values: CanvasValues; portalContainer?: React.RefObject<HTMLElement | null> } & EditProps) {
   // An <svg> root paints through `color` (the universal fill="currentColor"
   // icon idiom) — one row, labeled plainly; Fill/Border rows are HTML-box
   // concepts and stay off.
@@ -1135,7 +1135,7 @@ export function PropertiesPanel({
   chain: CanvasElement[]
   selectedKey: string
   onPick: (c: CanvasElement) => void
-  portalContainer?: React.RefObject<HTMLElement> // themed overlay root for popovers
+  portalContainer?: React.RefObject<HTMLElement | null> // themed overlay root for popovers
   sharedConst?: SharedConst | null // set when style={X} resolves to a shared const
   scope?: 'element' | 'const'
   onScopeChange?: (s: 'element' | 'const') => void
