@@ -15,6 +15,14 @@ dist-ssr
 # Muse flags — local capture handed to your own Claude Code via muse-mcp (not shared)
 .muse/
 
+# E2E scratch — a throwaway copy of e2e/fixture/ that the specs rewrite. Lives
+# inside the repo (not os.tmpdir) so node_modules resolution still walks up to
+# the root, and at the same depth as e2e/fixture/ so relative imports resolve
+# identically in both. The committed e2e/fixture/ is read-only at runtime.
+/e2e/.tmp-fixture/
+/playwright-report/
+/test-results/
+
 # Local AI-tooling state (per-machine; CLAUDE.md itself IS committed).
 # Root-anchored so e.g. a future docs/DESIGN.md stays committable.
 /.agents/

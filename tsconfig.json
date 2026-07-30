@@ -16,5 +16,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "server", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "server", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
+  // The throwaway fixture copy is a duplicate of e2e/fixture/ — typechecking it
+  // would double every error and it does not exist on a clean checkout.
+  "exclude": ["e2e/.tmp-fixture"]
 }
